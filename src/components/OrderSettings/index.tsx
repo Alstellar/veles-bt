@@ -2,6 +2,7 @@ import { Tabs, Text, ThemeIcon, Group, Paper } from '@mantine/core';
 import { IconAbacus, IconAdjustments, IconAntenna } from '@tabler/icons-react';
 import type { OrderState, GridMode } from '../../types';
 import { SimpleMode } from './SimpleMode';
+import { SignalMode } from './SignalMode'; // <-- Импорт
 import { SmartMultiSelect } from '../SmartMultiSelect';
 
 interface Props {
@@ -9,21 +10,21 @@ interface Props {
   onChange: (newState: OrderState) => void;
 }
 
-// --- ГЕНЕРАТОР ---
+// ... (функция r и PULL_UP_PRESETS остаются без изменений) ...
 const r = (start: number, end: number, step: number) => {
-  const result = [];
-  for (let i = start; i <= end + 0.00001; i += step) {
-    result.push(parseFloat(i.toFixed(2)).toString());
-  }
-  return result;
-};
-
-// Генерируем список для Pull Up и сразу добавляем '%'
+    const result = [];
+    for (let i = start; i <= end + 0.00001; i += step) {
+      result.push(parseFloat(i.toFixed(2)).toString());
+    }
+    return result;
+  };
+  
 const PULL_UP_PRESETS = [
-  ...r(0.1, 1.5, 0.05),
-  ...r(2, 50, 1),
-  ...r(60, 200, 10)
-].map(val => `${val}%`); // <-- ДОБАВИЛИ %
+    ...r(0.1, 1.5, 0.05),
+    ...r(2, 50, 1),
+    ...r(60, 200, 10)
+].map(val => `${val}%`);
+
 
 export function OrderSettings({ state, onChange }: Props) {
   
@@ -38,7 +39,7 @@ export function OrderSettings({ state, onChange }: Props) {
         <Text fw={700} size="lg">Ордера сделки</Text>
       </Group>
 
-      {/* ОБЩАЯ НАСТРОЙКА: PULL UP */}
+      {/* PULL UP */}
       <Paper mb="md" p="md" withBorder radius="md" bg="white">
          <SmartMultiSelect
             label="Подтяжка сетки (Pull Up %)"
@@ -59,9 +60,9 @@ export function OrderSettings({ state, onChange }: Props) {
             Простой
           </Tabs.Tab>
           <Tabs.Tab value="CUSTOM" leftSection={<IconAdjustments size={16}/>} disabled>
-            Свой
+            Свой (Скоро)
           </Tabs.Tab>
-          <Tabs.Tab value="SIGNAL" leftSection={<IconAntenna size={16}/>} disabled>
+          <Tabs.Tab value="SIGNAL" leftSection={<IconAntenna size={16}/>}>
             Сигнал
           </Tabs.Tab>
         </Tabs.List>
@@ -70,6 +71,13 @@ export function OrderSettings({ state, onChange }: Props) {
           <SimpleMode 
             config={state.simple} 
             onChange={(newSimple) => onChange({ ...state, simple: newSimple })} 
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="SIGNAL" pt="xs">
+          <SignalMode 
+            config={state.signal} 
+            onChange={(newSignal) => onChange({ ...state, signal: newSignal })} 
           />
         </Tabs.Panel>
       </Tabs>

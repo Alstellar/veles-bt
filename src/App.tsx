@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Container, Title, Button, Stack, Paper, Center, ThemeIcon, Group } from '@mantine/core';
+import { Container, Title, Button, Stack, Paper, Text, Center, ThemeIcon, Group } from '@mantine/core';
 import { IconExternalLink, IconRocket, IconSettings } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
 import { StaticSettings } from './components/StaticSettings';
 import { OrderSettings } from './components/OrderSettings';
-// Добавляем 'type' к импорту
 import type { StaticConfig, OrderState } from './types';
 
-// --- ПОПАП ---
+// --- КОМПОНЕНТ: МАЛЕНЬКИЙ ПОПАП ---
 function PopupMode() {
   const openFullTab = () => {
     if (chrome.tabs) {
@@ -25,8 +24,11 @@ function PopupMode() {
           <IconRocket size={34} />
         </ThemeIcon>
         <Title order={3} mb="sm">VelesBT Pro</Title>
+        <Text size="sm" c="dimmed" mb="xl">
+          Конфигуратор стратегий и менеджер очередей бектестов.
+        </Text>
         <Button 
-          fullWidth size="md" mt="xl"
+          fullWidth size="md" 
           rightSection={<IconExternalLink size={20} />}
           onClick={openFullTab}
         >
@@ -37,7 +39,7 @@ function PopupMode() {
   );
 }
 
-// --- FULLSCREEN ---
+// --- КОМПОНЕНТ: ПОЛНОЦЕННАЯ ВКЛАДКА ---
 function FullscreenMode() {
   
   // 1. Статические настройки
@@ -49,8 +51,7 @@ function FullscreenMode() {
     deposit: 50,
     leverage: 10,
     marginType: 'CROSS',
-    portion: 7, // Default
-    
+    portion: 7,
     dateFrom: dayjs().subtract(7, 'day').toDate(),
     dateTo: new Date(),
     makerFee: '0.02',
@@ -59,20 +60,33 @@ function FullscreenMode() {
     useWicks: false
   });
 
-  // 2. Настройки Ордеров (Новая структура)
+  // 2. Настройки Ордеров
   const [orderState, setOrderState] = useState<OrderState>({
     mode: 'SIMPLE',
     general: {
-      pullUp: ['0.4'] // Общий параметр
+      pullUp: ['0.4'] 
     },
     simple: {
       orders: ['10'],
       martingale: ['5'],
       indent: ['0.2'],
       overlap: ['15'],
-      logarithmicEnabled: true, // По умолчанию как в твоем JSON
+      logarithmicEnabled: true,
       logarithmicFactor: ['2.1'],
       includePosition: true
+    },
+    // Инициализация режима SIGNAL
+    signal: {
+      baseOrder: {
+        indent: ['0'], 
+        volume: 10 
+      },
+      indentType: 'ORDER', 
+      orders: [
+        // ИСПРАВЛЕНО: conditions -> filterSlots
+        { id: 'init-1', indent: ['0.5'], volume: 10, filterSlots: [] }, 
+        { id: 'init-2', indent: ['1.0'], volume: 20, filterSlots: [] }, 
+      ]
     }
   });
 
@@ -81,14 +95,39 @@ function FullscreenMode() {
     console.log("Static:", staticConfig);
     console.log("Order State:", orderState);
     
-    // Пример подсчета комбинаций
-    const s = orderState.simple;
-    const count = 
-      orderState.general.pullUp.length *
-      s.orders.length * s.martingale.length * s.indent.length * s.overlap.length *
-      (s.logarithmicEnabled && s.logarithmicFactor.length ? s.logarithmicFactor.length : 1);
+    // Подсчет комбинаций
+    let count = 0;
+    if (orderState.mode === 'SIMPLE') {
+       const s = orderState.simple;
+       count = 
+        orderState.general.pullUp.length *
+        s.orders.length * s.martingale.length * s.indent.length * s.overlap.length *
+        (s.logarithmicEnabled && s.logarithmicFactor.length ? s.logarithmicFactor.length : 1);
+    } else {
+      // Для Signal считаем комбинации по ордерам
+      let signalCombinations = 1;
       
-    alert(`Конфигурация валидна. Комбинаций: ${count}`);
+      // Базовый ордер (только отступ)
+      signalCombinations *= orderState.signal.baseOrder.indent.length || 1;
+      
+      // Остальные ордера (отступы * слоты фильтров)
+      orderState.signal.orders.forEach(o => {
+         let indentComb = o.indent.length || 1;
+         
+         // Перебор по слотам (Grid Search)
+         // Если в слоте 3 варианта, это множитель x3.
+         let filterComb = 1;
+         if (o.filterSlots && o.filterSlots.length > 0) {
+            filterComb = o.filterSlots.reduce((acc, slot) => acc * (slot.variants.length || 1), 1);
+         }
+
+         signalCombinations *= (indentComb * filterComb);
+      });
+      
+      count = signalCombinations;
+    }
+      
+    alert(`Конфигурация валидна. Режим: ${orderState.mode}. Комбинаций: ${count}`);
   };
 
   return (
@@ -100,8 +139,6 @@ function FullscreenMode() {
 
       <Stack gap="xl">
         <StaticSettings config={staticConfig} onChange={setStaticConfig} />
-        
-        {/* Передаем новый стейт */}
         <OrderSettings state={orderState} onChange={setOrderState} />
 
         <Button size="lg" color="green" onClick={handleLogConfig}>
@@ -112,14 +149,19 @@ function FullscreenMode() {
   );
 }
 
-// --- ROOT ---
+// --- ГЛАВНЫЙ КОМПОНЕНТ ---
 function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setIsFullscreen(params.get('mode') === 'fullscreen');
   }, []);
-  if (isFullscreen) return <FullscreenMode />;
+
+  if (isFullscreen) {
+    return <FullscreenMode />;
+  }
+
   return <PopupMode />;
 }
 
