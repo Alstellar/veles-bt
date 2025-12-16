@@ -1,73 +1,96 @@
-# React + TypeScript + Vite
+# 🚀 VelesBT Pro
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Профессиональный конфигуратор и менеджер очередей бектестов для платформы Veles Finance.**
 
-Currently, two official plugins are available:
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Tech](https://img.shields.io/badge/stack-React_|_TypeScript_|_Vite-violet.svg)
+![UI](https://img.shields.io/badge/UI-Mantine_v7-cyan.svg)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+> **VelesBT Pro** — это расширение для Google Chrome, которое превращает рутинный процесс создания бектестов в мощную систему **Grid Search**. Оно позволяет задавать диапазоны параметров (мартингейл, перекрытие, сетка ордеров) и автоматически генерировать сотни вариаций конфигураций для поиска идеальной торговой стратегии.
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## ✨ Возможности
 
-## Expanding the ESLint configuration
+### 🏗 Архитектура расширения
+- **Dual Mode UI**: Компактный попап для быстрого доступа и полноценный **Fullscreen Mode** (отдельная вкладка) для основной работы.
+- **Интеграция с Chrome API**: Работает в контексте браузера, имеет доступ к вкладкам.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 🎛 Мощный Конфигуратор
+- **Smart Multi-Inputs**: Ввод параметров "чипсами" (tags).
+- **Grid Search Generator**: Возможность задавать несколько значений для одного параметра (например, Перекрытие: `15%, 20%, 25%`). Система автоматически рассчитывает количество комбинаций.
+- **Smart Presets**: Встроенные генераторы популярных значений (шаги 0.05, 0.1, 1, 10 и т.д.) для быстрой настройки.
+- **Валидация типов**: Строгая типизация всех полей.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 📊 Поддерживаемые настройки
+- **Базовые**: Биржа, Пара, Алгоритм (Long/Short), Депозит, Плечо.
+- **Сетка (Simple Mode)**:
+  - Количество ордеров.
+  - Мартингейл (%).
+  - Отступ и Перекрытие (%).
+  - Логарифмическое распределение цен.
+  - Подтяжка сетки.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🛠 Технический стек
+
+Проект построен на современном стеке технологий (2025 Standard):
+
+* **Core**: [React 18](https://react.dev/), [TypeScript](https://www.typescriptlang.org/)
+* **Build Tool**: [Vite](https://vitejs.dev/)
+* **UI Framework**: [Mantine v7](https://mantine.dev/)
+* **Icons**: [Tabler Icons](https://tabler-icons.io/)
+* **Dates**: [Day.js](https://day.js.org/)
+* **Linting**: ESLint + Prettier
+
+---
+
+## 🚀 Установка и запуск (для разработки)
+
+### 1. Клонирование и установка зависимостей
+```bash
+git clone https://github.com/alstellar/veles-bt.git
+cd VelesBT
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 2. Режим разработки (Dev)
+```bash
+npm run dev
 ```
+
+### 3. Сборка (Build)
+```bash
+npm run build
+```
+
+### 4. Загрузка в Chrome
+1. Перейдите в chrome://extensions/.
+2. Включите Developer mode.
+3. Нажмите Load unpacked.
+4. Выберите папку dist из проекта.
+
+---
+
+## 📂 Структура проекта
+```Plaintext
+src/
+├── components/          # UI Компоненты
+│   ├── OrderSettings/   # Блок настроек сетки (Simple/Custom)
+│   ├── StaticSettings/  # Блок неизменных настроек
+│   └── SmartMultiSelect # Кастомный селект с пресетами
+├── types.ts             # Глобальные TypeScript интерфейсы
+├── App.tsx              # Точка входа и роутинг
+└── main.tsx             # Подключение провайдеров
+```
+
+<br/>
+
+---
+
+<div align="center">
+
+### Developed by **Alstellar** 🚀
+
+</div>
