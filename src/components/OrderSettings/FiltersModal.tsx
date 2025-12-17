@@ -34,6 +34,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
         variants: Array.isArray(slot.variants) ? slot.variants.map(v => ({
             ...v,
             id: v.id || randomId(),
+            // Приводим value к строке, даже если пришел массив (совместимость)
             value: Array.isArray(v.value) ? (v.value[0] || '') : (v.value || ''),
             basic: v.basic !== undefined ? v.basic : true
         })) : []
@@ -106,8 +107,13 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
     }));
   };
 
+  // Обработчик ввода значения с заменой запятой на точку
   const handleValueChange = (slotId: string, variantId: string, text: string) => {
-    updateVariant(slotId, variantId, 'value', text);
+    // Разрешаем вводить только цифры, точки и запятые
+    // Но сразу заменяем запятую на точку для сохранения
+    const sanitized = text.replace(/,/g, '.');
+    // Можно добавить проверку, чтобы нельзя было ввести две точки, но для простоты оставим так
+    updateVariant(slotId, variantId, 'value', sanitized);
   };
 
   // --- ДАННЫЕ ДЛЯ UI ---
@@ -183,12 +189,12 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
 
                     {/* ПЕРЕБОР ВАРИАНТОВ ВНУТРИ СЛОТА */}
                     {slot.variants.map((variant, vIndex) => {
-                         const libData = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
-                         const isExpanded = !variant.basic;
-                         
-                         const stringValue = typeof variant.value === 'string' ? variant.value : '';
+                          const libData = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
+                          const isExpanded = !variant.basic;
+                          
+                          const stringValue = typeof variant.value === 'string' ? variant.value : '';
 
-                         return (
+                          return (
                             <Paper key={variant.id} withBorder p="xs" radius="sm" bg="white">
                                 
                                 {/* СТРОКА 1: ОСНОВНОЕ */}
@@ -219,65 +225,73 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                     )}
 
                                     <Group gap={4}>
-                                        {libData?.hasBasicMode && (
+                                            {libData?.hasBasicMode && (
+                                                <ActionIcon 
+                                                    variant={isExpanded ? "filled" : "light"} 
+                                                    color="blue" 
+                                                    size="md"
+                                                    onClick={() => updateVariant(slot.id, variant.id!, 'basic', !variant.basic)}
+                                                >
+                                                    <IconPencil size={16} />
+                                                </ActionIcon>
+                                            )}
                                             <ActionIcon 
-                                                variant={isExpanded ? "filled" : "light"} 
-                                                color="blue" 
+                                                variant="light" 
+                                                color="red" 
                                                 size="md"
-                                                onClick={() => updateVariant(slot.id, variant.id!, 'basic', !variant.basic)}
+                                                onClick={() => removeVariant(slot.id, variant.id!)}
                                             >
-                                                <IconPencil size={16} />
+                                                <IconTrash size={16} />
                                             </ActionIcon>
-                                        )}
-                                        <ActionIcon 
-                                            variant="light" 
-                                            color="red" 
-                                            size="md"
-                                            onClick={() => removeVariant(slot.id, variant.id!)}
-                                        >
-                                            <IconTrash size={16} />
-                                        </ActionIcon>
                                     </Group>
                                 </Group>
 
                                 {/* СТРОКА 2: ДЕТАЛИ (COLLAPSE) */}
                                 <Collapse in={isExpanded}>
                                     <Group mt="xs" align="flex-start" grow wrap="nowrap" pl={28}> 
-                                        
-                                        <Select
-                                            size="xs"
-                                            label="Тип цены"
-                                            data={typeOptions}
-                                            value={variant.closed ? 'true' : 'false'}
-                                            onChange={(v) => updateVariant(slot.id, variant.id!, 'closed', v === 'true')}
-                                            allowDeselect={false}
-                                            disabled
-                                        />
-                                        
-                                        <Select
-                                            size="xs"
-                                            label="Условие"
-                                            data={[
-                                                { value: 'GREATER', label: 'Больше' },
-                                                { value: 'LESS', label: 'Меньше' },
-                                            ]}
-                                            value={variant.operation}
-                                            onChange={(v) => updateVariant(slot.id, variant.id!, 'operation', v as OperationType)}
-                                            allowDeselect={false}
-                                        />
+                                            
+                                            <Select
+                                                size="xs"
+                                                label="Тип цены"
+                                                data={typeOptions}
+                                                value={variant.closed ? 'true' : 'false'}
+                                                onChange={(v) => updateVariant(slot.id, variant.id!, 'closed', v === 'true')}
+                                                allowDeselect={false}
+                                                disabled
+                                            />
+                                            
+                                            <Select
+                                                size="xs"
+                                                label="Условие"
+                                                data={[
+                                                    { value: 'GREATER', label: 'Больше' },
+                                                    { value: 'LESS', label: 'Меньше' },
+                                                ]}
+                                                value={variant.operation}
+                                                onChange={(v) => updateVariant(slot.id, variant.id!, 'operation', v as OperationType)}
+                                                allowDeselect={false}
+                                            />
 
-                                        <TextInput
-                                            size="xs"
-                                            label="Значение"
-                                            placeholder="30"
-                                            value={stringValue}
-                                            onChange={(e) => handleValueChange(slot.id, variant.id!, e.target.value)}
-                                        />
+                                            <TextInput
+                                                size="xs"
+                                                label="Значение"
+                                                placeholder="30"
+                                                value={stringValue}
+                                                onChange={(e) => handleValueChange(slot.id, variant.id!, e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    // Валидация: цифры, точка, запятая, навигация
+                                                    if (!/[0-9.,]/.test(e.key) && 
+                                                        !['Backspace', 'Delete', 'Tab', 'Enter', 'ArrowLeft', 'ArrowRight'].includes(e.key) &&
+                                                        !(e.ctrlKey || e.metaKey)) {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
+                                            />
                                     </Group>
                                 </Collapse>
 
                             </Paper>
-                         );
+                          );
                     })}
 
                     <Button 

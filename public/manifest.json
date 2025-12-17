@@ -2,7 +2,17 @@
   "manifest_version": 3,
   "name": "VelesBT Pro",
   "version": "1.0.0",
-  "action": { "default_popup": "index.html" },
-  "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["https://veles.finance/*"]
+  "action": {
+    "default_popup": "index.html"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "cookies",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://veles.finance/*"
+  ]
 }

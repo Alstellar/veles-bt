@@ -4,7 +4,9 @@ import {
   NumberInput, Badge, Tooltip, ThemeIcon, SimpleGrid, Stack 
 } from '@mantine/core';
 import { IconPlus, IconTrash, IconFilter, IconCalculator } from '@tabler/icons-react';
-import { SmartMultiSelect } from '../SmartMultiSelect';
+
+// Используем MultiInput вместо SmartMultiSelect
+import { MultiInput } from '../MultiInput';
 import { FiltersModal } from './FiltersModal';
 import type { OrderSignalConfig, SignalOrderLine, FilterSlot } from '../../types';
 
@@ -14,10 +16,6 @@ interface Props {
   config: OrderSignalConfig;
   onChange: (cfg: OrderSignalConfig) => void;
 }
-
-const PRESETS = {
-  indent: ['0.2', '0.5', '1.0', '1.5', '2.0', '5.0']
-};
 
 export function SignalMode({ config, onChange }: Props) {
   
@@ -49,7 +47,7 @@ export function SignalMode({ config, onChange }: Props) {
       id: randomId(),
       indent: [], 
       volume: 10,
-      filterSlots: [] // Инициализируем пустым списком слотов
+      filterSlots: [] 
     };
     update('orders', [...config.orders, newOrder]);
   };
@@ -61,7 +59,6 @@ export function SignalMode({ config, onChange }: Props) {
   // --- ЛОГИКА ОТКРЫТИЯ МОДАЛКИ ---
   const openFiltersModal = (orderId: string, slots: FilterSlot[] | undefined) => {
     setActiveOrderId(orderId);
-    // Защита от undefined (если старые данные)
     setCurrentSlots(slots || []);
     setModalOpened(true);
   };
@@ -133,7 +130,7 @@ export function SignalMode({ config, onChange }: Props) {
                 <NumberInput 
                     label="Мартингейл (%)" 
                     size="xs" 
-                    description="Прирост лота"
+                    // Удалили description="Прирост лота"
                     w="100%"
                     value={calcMartingale} 
                     onChange={(v) => setCalcMartingale(Number(v))} 
@@ -150,7 +147,7 @@ export function SignalMode({ config, onChange }: Props) {
                 </Button>
              </Group>
              <Text size="xs" c="dimmed" ta="center">
-               Авторасчет стартового лота для суммы 100%
+                Авторасчет объемов ордеров с заданным % Мартингейла
              </Text>
           </Stack>
         </Paper>
@@ -186,13 +183,13 @@ export function SignalMode({ config, onChange }: Props) {
         <Table.Tbody>
           <Table.Tr bg="blue.0">
             <Table.Td ta="center">
-               <Text fw={700} size="sm">1</Text>
-               <Text size="8px" c="dimmed" style={{ lineHeight: 1 }}>BASE</Text>
+                <Text fw={700} size="sm">1</Text>
+                <Text size="8px" c="dimmed" style={{ lineHeight: 1 }}>BASE</Text>
             </Table.Td>
             <Table.Td>
-              <SmartMultiSelect
+              {/* Заменили SmartMultiSelect на MultiInput */}
+              <MultiInput
                 label="" placeholder="0"
-                data={PRESETS.indent}
                 value={config.baseOrder.indent}
                 onChange={(v) => updateBaseOrder('indent', v)}
               />
@@ -216,7 +213,6 @@ export function SignalMode({ config, onChange }: Props) {
 
           {config.orders.map((order, index) => {
             const slotsCount = order.filterSlots?.length || 0;
-            // Подсчет комбинаций: 1 * (кол-во вариантов в слоте 1) * (кол-во вариантов в слоте 2) ...
             const combinations = order.filterSlots?.reduce((acc, slot) => acc * (slot.variants.length || 1), 1) || 1;
 
             return (
@@ -225,9 +221,9 @@ export function SignalMode({ config, onChange }: Props) {
                   <Text fw={500} size="sm">{index + 2}</Text>
                 </Table.Td>
                 <Table.Td>
-                  <SmartMultiSelect
+                  {/* Заменили SmartMultiSelect на MultiInput */}
+                  <MultiInput
                     label="" placeholder="Отступ"
-                    data={PRESETS.indent}
                     value={order.indent}
                     onChange={(v) => updateGridOrder(order.id, 'indent', v)}
                   />

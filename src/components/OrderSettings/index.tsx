@@ -1,28 +1,27 @@
-import { Tabs, Text, ThemeIcon, Group, Paper } from '@mantine/core';
+import { Tabs, Text, ThemeIcon, Group, Paper, Select } from '@mantine/core';
 import { IconAbacus, IconAdjustments, IconAntenna } from '@tabler/icons-react';
 import type { OrderState, GridMode } from '../../types';
 import { SimpleMode } from './SimpleMode';
-import { SignalMode } from './SignalMode'; // <-- Импорт
-import { SmartMultiSelect } from '../SmartMultiSelect';
+import { SignalMode } from './SignalMode';
 
 interface Props {
   state: OrderState;
   onChange: (newState: OrderState) => void;
 }
 
-// ... (функция r и PULL_UP_PRESETS остаются без изменений) ...
+// Генератор пресетов (как и был)
 const r = (start: number, end: number, step: number) => {
-    const result = [];
-    for (let i = start; i <= end + 0.00001; i += step) {
-      result.push(parseFloat(i.toFixed(2)).toString());
-    }
-    return result;
-  };
+  const result = [];
+  for (let i = start; i <= end + 0.00001; i += step) {
+    result.push(parseFloat(i.toFixed(2)).toString());
+  }
+  return result;
+};
   
 const PULL_UP_PRESETS = [
-    ...r(0.1, 1.5, 0.05),
-    ...r(2, 50, 1),
-    ...r(60, 200, 10)
+  ...r(0.1, 1.5, 0.05),
+  ...r(2, 50, 1),
+  ...r(60, 200, 10)
 ].map(val => `${val}%`);
 
 
@@ -32,6 +31,14 @@ export function OrderSettings({ state, onChange }: Props) {
     if (val) onChange({ ...state, mode: val as GridMode });
   };
 
+  // Хелпер для изменения поля general
+  const updateGeneral = (key: keyof typeof state.general, value: any) => {
+    onChange({
+        ...state,
+        general: { ...state.general, [key]: value }
+    });
+  };
+
   return (
     <Paper p={0} bg="transparent">
       <Group mb="xs">
@@ -39,19 +46,20 @@ export function OrderSettings({ state, onChange }: Props) {
         <Text fw={700} size="lg">Ордера сделки</Text>
       </Group>
 
-      {/* PULL UP */}
+      {/* PULL UP: Теперь обычный Select */}
       <Paper mb="md" p="md" withBorder radius="md" bg="white">
-         <SmartMultiSelect
-            label="Подтяжка сетки (Pull Up %)"
+         <Select
+            label="Подтяжка сетки (%)"
             description="Смещение сетки за ценой"
-            placeholder="Выберите или введите..."
+            placeholder="Выберите значение"
             data={PULL_UP_PRESETS}
-            value={state.general.pullUp}
-            onChange={(v) => onChange({
-              ...state,
-              general: { ...state.general, pullUp: v }
-            })}
-          />
+            searchable
+            // Берем первый элемент массива или пустую строку
+            value={state.general.pullUp[0] || ''} 
+            // Сохраняем как массив из одного элемента, чтобы соответствовать типу string[]
+            onChange={(val) => updateGeneral('pullUp', val ? [val] : [])}
+            allowDeselect={false}
+         />
       </Paper>
 
       <Tabs value={state.mode} onChange={handleTabChange} variant="outline" radius="md">

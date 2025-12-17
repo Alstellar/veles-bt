@@ -1,9 +1,43 @@
 // src/types.ts
 
 // --- 1. Статические настройки (База) ---
-export type ExchangeType = 'BINANCE_FUTURES' | 'BINANCE_SPOT' | 'BYBIT_FUTURES' | 'BYBIT_SPOT' | 'OKX_FUTURES' | 'OKX_SPOT';
+
+// Полный список бирж (актуализирован по ТЗ)
+export type ExchangeType = 
+  | 'BINANCE'           // API Veles использует "BINANCE" для спота
+  | 'BINANCE_FUTURES'
+  | 'BYBIT_SPOT'
+  | 'BYBIT_FUTURES'
+  | 'OKX_SPOT'
+  | 'OKX_FUTURES'
+  | 'BINGX_FUTURES'
+  | 'BITGET_FUTURES'
+  | 'GATE_IO_SPOT'
+  | 'GATE_IO_FUTURES'
+  | 'HUOBI_SPOT';
+
 export type AlgoType = 'LONG' | 'SHORT';
 export type MarginType = 'CROSS' | 'ISOLATED';
+
+// Интерфейсы для ответов API Veles (для получения лимитов и дат)
+export interface SymbolLimitation {
+  exchange: ExchangeType;
+  type: string; // "FUTURES" | "SPOT"
+  symbol: string; // "BTC/USDT"
+  externalId: string; // "BTCUSDT"
+  pricePrecision: number;
+  quantityPrecision: number;
+  minQuantity: number;
+  minNotional: number;
+  priceStep: number;
+  quantityStep: number;
+  leverage?: number; // Может отсутствовать на споте
+}
+
+export interface SymbolAvailability {
+  symbol: string; 
+  availableFrom: string; // ISO Date
+}
 
 export interface StaticConfig {
   namePrefix: string;
@@ -36,6 +70,7 @@ export type IntervalType =
   | 'FOUR_HOUR' 
   | 'ONE_DAY';
 
+// Полный список индикаторов (сохранен без изменений)
 export type IndicatorType = 
   | 'PRICE' | 'VOLUME' | 'NOMINAL_VOLUME' | 'PRICE_CHANGE'
   | 'PRICE_CHANGE_PERIOD_5' | 'PRICE_CHANGE_PERIOD_10' | 'PRICE_CHANGE_PERIOD_20'
@@ -128,3 +163,12 @@ export interface OrderState {
   simple: OrderSimpleConfig;
   signal: OrderSignalConfig;
 }
+
+// --- 6. Helpers ---
+
+// Функция для определения, является ли биржа спотовой
+// Используется для скрытия поля Плечо в интерфейсе
+export const isSpot = (exchange: ExchangeType): boolean => {
+  // BINANCE без суффикса - это спот. Остальные споты содержат _SPOT.
+  return exchange === 'BINANCE' || exchange.includes('_SPOT');
+};
