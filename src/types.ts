@@ -143,8 +143,6 @@ export interface SignalOrderLine {
   id: string;
   indent: string[]; 
   volume: number;   
-  
-  // ВАЖНО: Заменили conditions на filterSlots
   filterSlots: FilterSlot[]; 
 }
 
@@ -169,7 +167,6 @@ export interface OrderCustomConfig {
     indent: string[];
     volume: number;
   };
-  // indentType не нужен, так как всегда 'ENTRY' (скрыто)
   orders: CustomOrderLine[];
 }
 
@@ -177,15 +174,19 @@ export interface OrderState {
   mode: GridMode;
   general: OrderGeneralConfig;
   simple: OrderSimpleConfig;
-  custom: OrderCustomConfig; // <-- Добавили
+  custom: OrderCustomConfig;
   signal: OrderSignalConfig;
 }
 
-// --- 6. Helpers ---
+// --- 6. Entry Settings (Условия входа) ---
+
+export interface EntryConfig {
+  filterSlots: FilterSlot[];
+}
+
+// --- 7. Helpers ---
 
 // Функция для определения, является ли биржа спотовой
-// Используется для скрытия поля Плечо в интерфейсе
 export const isSpot = (exchange: ExchangeType): boolean => {
-  // BINANCE без суффикса - это спот. Остальные споты содержат _SPOT.
   return exchange === 'BINANCE' || exchange.includes('_SPOT');
 };

@@ -5,7 +5,9 @@ import dayjs from 'dayjs';
 
 import { StaticSettings } from './components/StaticSettings';
 import { OrderSettings } from './components/OrderSettings';
-import type { StaticConfig, OrderState } from './types';
+import { EntrySettings } from './components/EntrySettings'; // <--- Импорт нового компонента
+
+import type { StaticConfig, OrderState, EntryConfig } from './types'; // <--- Добавили EntryConfig
 
 // --- КОМПОНЕНТ: МАЛЕНЬКИЙ ПОПАП ---
 function PopupMode() {
@@ -60,7 +62,12 @@ function FullscreenMode() {
     useWicks: true
   });
 
-  // 2. Настройки Ордеров
+  // 2. Условия входа (Entry Settings) --- НОВОЕ
+  const [entryConfig, setEntryConfig] = useState<EntryConfig>({
+    filterSlots: []
+  });
+
+  // 3. Настройки Ордеров
   const [orderState, setOrderState] = useState<OrderState>({
     mode: 'SIMPLE',
     general: {
@@ -75,13 +82,10 @@ function FullscreenMode() {
       logarithmicFactor: ['2.1'],
       includePosition: true
     },
-    // --- ДОБАВЛЕН РЕЖИМ CUSTOM ---
     custom: {
       baseOrder: { indent: [], volume: 100 },
       orders: []
     },
-    // -----------------------------
-    // Инициализация режима SIGNAL
     signal: {
       baseOrder: {
         indent: ['0'], 
@@ -98,46 +102,45 @@ function FullscreenMode() {
   const handleLogConfig = () => {
     console.log("=== CONFIG ===");
     console.log("Static:", staticConfig);
+    console.log("Entry:", entryConfig);
     console.log("Order State:", orderState);
     
-    // Подсчет комбинаций
-    let count = 0;
+    // 1. Подсчет комбинаций Условий Входа (Entry)
+    let entryCombinations = 1;
+    if (entryConfig.filterSlots.length > 0) {
+        // Перемножаем количество вариантов в каждом слоте
+        entryCombinations = entryConfig.filterSlots.reduce((acc, slot) => acc * (slot.variants.length || 1), 1);
+    }
+
+    // 2. Подсчет комбинаций Сетки (Orders)
+    let orderCombinations = 0;
     
     if (orderState.mode === 'SIMPLE') {
        const s = orderState.simple;
-       count = 
+       orderCombinations = 
         orderState.general.pullUp.length *
         s.orders.length * s.martingale.length * s.indent.length * s.overlap.length *
         (s.logarithmicEnabled && s.logarithmicFactor.length ? s.logarithmicFactor.length : 1);
     } 
-    // --- РАСЧЕТ ДЛЯ CUSTOM ---
     else if (orderState.mode === 'CUSTOM') {
       const c = orderState.custom;
       const baseIndent = c.baseOrder.indent.length || 1;
       let customCombinations = baseIndent;
       
       c.orders.forEach(o => {
-        // Здесь только отступы, фильтров нет
         const indentComb = o.indent.length || 1;
         customCombinations *= indentComb;
       });
-      
-      count = customCombinations;
+      orderCombinations = customCombinations;
     }
-    // --- РАСЧЕТ ДЛЯ SIGNAL ---
     else {
-      // Для Signal считаем комбинации по ордерам
+      // SIGNAL Mode
       let signalCombinations = 1;
-      
-      // Базовый ордер (только отступ)
       signalCombinations *= orderState.signal.baseOrder.indent.length || 1;
       
-      // Остальные ордера (отступы * слоты фильтров)
       orderState.signal.orders.forEach(o => {
          let indentComb = o.indent.length || 1;
          
-         // Перебор по слотам (Grid Search)
-         // Если в слоте 3 варианта, это множитель x3.
          let filterComb = 1;
          if (o.filterSlots && o.filterSlots.length > 0) {
             filterComb = o.filterSlots.reduce((acc, slot) => acc * (slot.variants.length || 1), 1);
@@ -145,11 +148,13 @@ function FullscreenMode() {
 
          signalCombinations *= (indentComb * filterComb);
       });
-      
-      count = signalCombinations;
+      orderCombinations = signalCombinations;
     }
+
+    // 3. Итого (Умножаем сетку на входы)
+    const totalCount = orderCombinations * entryCombinations;
       
-    alert(`Конфигурация валидна. Режим: ${orderState.mode}. Комбинаций: ${count}`);
+    alert(`Конфигурация валидна.\nРежим: ${orderState.mode}\nКомбинаций входа: ${entryCombinations}\nКомбинаций сетки: ${orderCombinations}\nИТОГО ТЕСТОВ: ${totalCount}`);
   };
 
   return (
@@ -161,6 +166,10 @@ function FullscreenMode() {
 
       <Stack gap="xl">
         <StaticSettings config={staticConfig} onChange={setStaticConfig} />
+        
+        {/* Блок условий входа теперь здесь */}
+        <EntrySettings config={entryConfig} onChange={setEntryConfig} />
+
         <OrderSettings state={orderState} onChange={setOrderState} />
 
         <Button size="lg" color="green" onClick={handleLogConfig}>
