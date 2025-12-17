@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { 
   Modal, Button, Group, Select, ActionIcon, Paper, Text, 
-  Stack, TextInput, Collapse, Badge 
+  Stack, TextInput, Collapse, Badge, Tooltip 
 } from '@mantine/core';
-import { IconTrash, IconPlus, IconPencil, IconCheck } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconPencil, IconCheck, IconArrowsRightLeft } from '@tabler/icons-react';
 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
 import type { IndicatorDef } from '../../filtersLibrary';
@@ -24,7 +24,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
   
   const [slots, setSlots] = useState<FilterSlot[]>([]);
 
-  // 1. Инициализация и Санитаризация
+  // 1. Инициализация
   useEffect(() => {
     if (opened) {
       const safeSlots = Array.isArray(initialSlots) ? initialSlots : [];
@@ -34,7 +34,6 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
         variants: Array.isArray(slot.variants) ? slot.variants.map(v => ({
             ...v,
             id: v.id || randomId(),
-            // Приводим value к строке, даже если пришел массив (совместимость)
             value: Array.isArray(v.value) ? (v.value[0] || '') : (v.value || ''),
             basic: v.basic !== undefined ? v.basic : true
         })) : []
@@ -62,7 +61,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
     setSlots(slots.filter(s => s.id !== slotId));
   };
 
-  // --- УПРАВЛЕНИЕ ВАРИАНТАМИ (Внутри слота) ---
+  // --- УПРАВЛЕНИЕ ВАРИАНТАМИ ---
 
   const addVariant = (slotId: string) => {
     const newVariant: Condition = {
@@ -73,7 +72,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
       basic: true, 
       closed: true, 
       operation: 'GREATER',
-      value: '30', // Дефолтное значение
+      value: '30', 
       reverse: false
     };
 
@@ -107,12 +106,8 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
     }));
   };
 
-  // Обработчик ввода значения с заменой запятой на точку
   const handleValueChange = (slotId: string, variantId: string, text: string) => {
-    // Разрешаем вводить только цифры, точки и запятые
-    // Но сразу заменяем запятую на точку для сохранения
     const sanitized = text.replace(/,/g, '.');
-    // Можно добавить проверку, чтобы нельзя было ввести две точки, но для простоты оставим так
     updateVariant(slotId, variantId, 'value', sanitized);
   };
 
@@ -139,6 +134,11 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
     { value: 'true', label: 'На закрытии бара' },
     { value: 'false', label: 'В моменте (Текущая)' },
   ];
+
+  // Константы выравнивания (как в EntrySettings)
+  const NUMBER_WIDTH = 24; 
+  const GAP_WIDTH = 10; 
+  const LEFT_OFFSET = NUMBER_WIDTH + GAP_WIDTH;
 
   return (
     <Modal 
@@ -171,7 +171,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                     <Group gap="xs">
                         <Badge size="lg" radius="sm" variant="filled">ГРУППА {slotIndex + 1}</Badge>
                         <Text size="xs" c="dimmed" style={{ lineHeight: 1.2 }}>
-                          Внутри группы индикаторы работают как ИЛИ: конфигуратор переберет варианты с каждым из них
+                          Внутри группы индикаторы работают как ИЛИ
                         </Text>
                     </Group>
                     <ActionIcon color="red" variant="subtle" onClick={() => removeSlot(slot.id)}>
@@ -190,16 +190,26 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                     {/* ПЕРЕБОР ВАРИАНТОВ ВНУТРИ СЛОТА */}
                     {slot.variants.map((variant, vIndex) => {
                           const libData = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
-                          const isExpanded = !variant.basic;
+                          const settings = libData?.settings; 
+                          
+                          // Логика отображения полей
+                          const showTimeframe = settings?.hasTimeframe;
+                          const showBasicToggle = settings?.allowBasic && (settings?.hasValue || settings?.hasOperation);
+                          const showReverse = settings?.hasReverse;
+                          
+                          // ОСТАВЛЕНО КАК БЫЛО (Без хаков):
+                          const showInputs = !variant.basic && (settings?.hasValue || settings?.hasOperation);
                           
                           const stringValue = typeof variant.value === 'string' ? variant.value : '';
 
                           return (
                             <Paper key={variant.id} withBorder p="xs" radius="sm" bg="white">
                                 
-                                {/* СТРОКА 1: ОСНОВНОЕ */}
-                                <Group align="flex-end" wrap="nowrap">
-                                    <Text fw={700} c="dimmed" size="xs" w={20} ta="center">{vIndex + 1}</Text>
+                                {/* СТРОКА 1: Выравнивание номера (w=24, align=center) */}
+                                <Group align="center" wrap="nowrap" gap="xs">
+                                    <Text fw={700} c="dimmed" size="xs" w={NUMBER_WIDTH} ta="center" style={{ lineHeight: 1 }}>
+                                        {vIndex + 1}
+                                    </Text>
                                     
                                     <Select
                                         placeholder="Индикатор"
@@ -212,7 +222,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                         size="xs"
                                     />
 
-                                    {libData?.hasTimeframe && (
+                                    {showTimeframe && (
                                         <Select
                                             placeholder="ТФ"
                                             data={intervalOptions}
@@ -225,16 +235,32 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                     )}
 
                                     <Group gap={4}>
-                                            {libData?.hasBasicMode && (
-                                                <ActionIcon 
-                                                    variant={isExpanded ? "filled" : "light"} 
-                                                    color="blue" 
-                                                    size="md"
-                                                    onClick={() => updateVariant(slot.id, variant.id!, 'basic', !variant.basic)}
-                                                >
-                                                    <IconPencil size={16} />
-                                                </ActionIcon>
+                                            {showReverse && (
+                                                <Tooltip label="Реверс сигнала (Long <-> Short)">
+                                                    <ActionIcon 
+                                                        variant={variant.reverse ? "filled" : "light"} 
+                                                        color={variant.reverse ? "orange" : "gray"} 
+                                                        size="md"
+                                                        onClick={() => updateVariant(slot.id, variant.id!, 'reverse', !variant.reverse)}
+                                                    >
+                                                        <IconArrowsRightLeft size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
                                             )}
+
+                                            {showBasicToggle && (
+                                                <Tooltip label={variant.basic ? "Настройки по умолчанию" : "Ручная настройка значений"}>
+                                                    <ActionIcon 
+                                                        variant={!variant.basic ? "filled" : "light"} 
+                                                        color="blue" 
+                                                        size="md"
+                                                        onClick={() => updateVariant(slot.id, variant.id!, 'basic', !variant.basic)}
+                                                    >
+                                                        <IconPencil size={16} />
+                                                    </ActionIcon>
+                                                </Tooltip>
+                                            )}
+
                                             <ActionIcon 
                                                 variant="light" 
                                                 color="red" 
@@ -246,13 +272,13 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                     </Group>
                                 </Group>
 
-                                {/* СТРОКА 2: ДЕТАЛИ (COLLAPSE) */}
-                                <Collapse in={isExpanded}>
-                                    <Group mt="xs" align="flex-start" grow wrap="nowrap" pl={28}> 
+                                {/* СТРОКА 2: Отступ слева (pl={34}) */}
+                                <Collapse in={!!showInputs}>
+                                    <Group mt="xs" align="flex-start" grow wrap="nowrap" pl={LEFT_OFFSET}> 
                                             
                                             <Select
                                                 size="xs"
-                                                label="Тип цены"
+                                                label="Тип"
                                                 data={typeOptions}
                                                 value={variant.closed ? 'true' : 'false'}
                                                 onChange={(v) => updateVariant(slot.id, variant.id!, 'closed', v === 'true')}
@@ -260,33 +286,29 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                                 disabled
                                             />
                                             
-                                            <Select
-                                                size="xs"
-                                                label="Условие"
-                                                data={[
-                                                    { value: 'GREATER', label: 'Больше' },
-                                                    { value: 'LESS', label: 'Меньше' },
-                                                ]}
-                                                value={variant.operation}
-                                                onChange={(v) => updateVariant(slot.id, variant.id!, 'operation', v as OperationType)}
-                                                allowDeselect={false}
-                                            />
+                                            {settings?.hasOperation && (
+                                                <Select
+                                                    size="xs"
+                                                    label="Условие"
+                                                    data={[
+                                                        { value: 'GREATER', label: 'Больше' },
+                                                        { value: 'LESS', label: 'Меньше' },
+                                                    ]}
+                                                    value={variant.operation}
+                                                    onChange={(v) => updateVariant(slot.id, variant.id!, 'operation', v as OperationType)}
+                                                    allowDeselect={false}
+                                                />
+                                            )}
 
-                                            <TextInput
-                                                size="xs"
-                                                label="Значение"
-                                                placeholder="30"
-                                                value={stringValue}
-                                                onChange={(e) => handleValueChange(slot.id, variant.id!, e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    // Валидация: цифры, точка, запятая, навигация
-                                                    if (!/[0-9.,]/.test(e.key) && 
-                                                        !['Backspace', 'Delete', 'Tab', 'Enter', 'ArrowLeft', 'ArrowRight'].includes(e.key) &&
-                                                        !(e.ctrlKey || e.metaKey)) {
-                                                        e.preventDefault();
-                                                    }
-                                                }}
-                                            />
+                                            {settings?.hasValue && (
+                                                <TextInput
+                                                    size="xs"
+                                                    label="Значение"
+                                                    placeholder="30"
+                                                    value={stringValue}
+                                                    onChange={(e) => handleValueChange(slot.id, variant.id!, e.target.value)}
+                                                />
+                                            )}
                                     </Group>
                                 </Collapse>
 
@@ -307,7 +329,6 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
             </Paper>
         ))}
 
-        {/* НИЖНЯЯ СЕКЦИЯ: Кнопка добавления и действия */}
         <Stack gap="md">
             <Button 
                 variant="outline" 

@@ -1,7 +1,7 @@
 import { 
-  Paper, Group, Select, ActionIcon, Text, Stack, TextInput, Collapse, Badge, Button, ThemeIcon 
+  Paper, Group, Select, ActionIcon, Text, Stack, TextInput, Collapse, Badge, Button, ThemeIcon, Tooltip 
 } from '@mantine/core';
-import { IconTrash, IconPlus, IconPencil, IconAntenna } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconPencil, IconAntenna, IconArrowsRightLeft } from '@tabler/icons-react';
 
 import { FILTERS_LIBRARY } from '../filtersLibrary';
 import type { IndicatorDef } from '../filtersLibrary';
@@ -91,19 +91,20 @@ export function EntrySettings({ config, onChange }: Props) {
 
   const safeLibrary = FILTERS_LIBRARY || {};
   
+  // Плоский список индикаторов
   const indicatorOptions = Object.values(safeLibrary).map((ind: IndicatorDef) => ({
     value: ind.code,
     label: ind.label,
   }));
 
   const intervalOptions: { value: IntervalType; label: string }[] = [
-    { value: 'ONE_MINUTE', label: '1 минута' },
-    { value: 'FIVE_MINUTES', label: '5 минут' },
-    { value: 'FIFTEEN_MINUTES', label: '15 минут' },
-    { value: 'THIRTY_MINUTES', label: '30 минут' },
-    { value: 'ONE_HOUR', label: '1 час' },
-    { value: 'FOUR_HOUR', label: '4 часа' },
-    { value: 'ONE_DAY', label: '1 день' },
+    { value: 'ONE_MINUTE', label: '1m' },
+    { value: 'FIVE_MINUTES', label: '5m' },
+    { value: 'FIFTEEN_MINUTES', label: '15m' },
+    { value: 'THIRTY_MINUTES', label: '30m' },
+    { value: 'ONE_HOUR', label: '1h' },
+    { value: 'FOUR_HOUR', label: '4h' },
+    { value: 'ONE_DAY', label: '1d' },
   ];
 
   const typeOptions = [
@@ -111,16 +112,20 @@ export function EntrySettings({ config, onChange }: Props) {
     { value: 'false', label: 'В моменте' },
   ];
 
+  // --- КОНСТАНТЫ ВЫРАВНИВАНИЯ ---
+  const NUMBER_WIDTH = 24; 
+  const GAP_WIDTH = 10; // Размер gap="xs" в Mantine по умолчанию ~10px
+  const LEFT_OFFSET = NUMBER_WIDTH + GAP_WIDTH; // 34px
+
   return (
     <Paper p={0} bg="transparent">
       
-      {/* ЗАГОЛОВОК */}
       <Group mb="xs">
         <ThemeIcon variant="light" color="cyan"><IconAntenna size={20}/></ThemeIcon>
         <Text fw={700} size="lg">Условия открытия сделки</Text>
       </Group>
 
-      {/* ОПИСАНИЕ И КНОПКА ДОБАВЛЕНИЯ ЕСЛИ ПУСТО */}
+      {/* Если пусто */}
       {config.filterSlots.length === 0 && (
           <Paper p="lg" withBorder bg="white" ta="center">
               <Text c="dimmed" mb="sm">Условия входа не заданы. Сделка будет открываться сразу.</Text>
@@ -136,7 +141,6 @@ export function EntrySettings({ config, onChange }: Props) {
 
       <Stack gap="md">
         
-        {/* ПЕРЕБОР СЛОТОВ (ГРУПП) */}
         {config.filterSlots.map((slot, slotIndex) => (
             <Paper 
                 key={slot.id} 
@@ -145,7 +149,7 @@ export function EntrySettings({ config, onChange }: Props) {
                 radius="md" 
                 style={{ overflow: 'hidden' }}
             >
-                {/* ЗАГОЛОВОК СЛОТА */}
+                {/* Шапка группы */}
                 <Group justify="space-between" bg="cyan.0" px="md" py={8} style={{ borderBottom: '1px solid #e9ecef' }}>
                     <Group gap="xs">
                         <Badge size="sm" radius="sm" variant="filled" color="cyan">ГРУППА {slotIndex + 1}</Badge>
@@ -166,17 +170,34 @@ export function EntrySettings({ config, onChange }: Props) {
                         </Text>
                     )}
 
-                    {/* ПЕРЕБОР ВАРИАНТОВ */}
                     {slot.variants.map((variant, vIndex) => {
-                          const libData = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
-                          const isExpanded = !variant.basic;
+                          const def = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
+                          const settings = def?.settings || { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false };
+                          
+                          const showTimeframe = settings.hasTimeframe;
+                          // Кнопка Basic
+                          const showBasicToggle = settings.allowBasic && (settings.hasValue || settings.hasOperation);
+                          // Кнопка Reverse
+                          const showReverse = settings.hasReverse;
+                          
+                          // Поля ввода (Value/Op) показываем, только если НЕ Basic и индикатор их поддерживает
+                          // Для PRICE: allowBasic=false, но по дефолту basic=true. 
+                          // Чтобы открыть PRICE, пользователь должен нажать карандаш? Нет, его нет.
+                          // Поэтому условие: (!variant.basic ИЛИ если basic запрещен вообще)
+                          const showInputs = (!variant.basic || !settings.allowBasic) && (settings.hasValue || settings.hasOperation);
+                          
                           const stringValue = typeof variant.value === 'string' ? variant.value : '';
 
                           return (
                             <Paper key={variant.id} withBorder p="xs" radius="sm" bg="white">
                                 
-                                <Group align="flex-end" wrap="nowrap" gap="xs">
-                                    <Text fw={700} c="dimmed" size="xs" w={15} ta="center">{vIndex + 1}</Text>
+                                {/* СТРОКА 1: align="center" - чтобы номер был по центру высоты 
+                                    gap="xs" - соответствует GAP_WIDTH 
+                                */}
+                                <Group align="center" wrap="nowrap" gap="xs">
+                                    <Text fw={700} c="dimmed" size="xs" w={NUMBER_WIDTH} ta="center" style={{ lineHeight: 1 }}>
+                                        {vIndex + 1}
+                                    </Text>
                                     
                                     <Select
                                         placeholder="Индикатор"
@@ -189,28 +210,45 @@ export function EntrySettings({ config, onChange }: Props) {
                                         size="xs"
                                     />
 
-                                    {libData?.hasTimeframe && (
+                                    {showTimeframe && (
                                         <Select
                                             placeholder="ТФ"
                                             data={intervalOptions}
                                             value={variant.interval}
                                             onChange={(v) => updateVariant(slot.id, variant.id!, 'interval', v)}
                                             allowDeselect={false}
-                                            w={95}
+                                            w={80}
                                             size="xs"
                                         />
                                     )}
 
-                                    <Group gap={2}>
-                                            {libData?.hasBasicMode && (
-                                                <ActionIcon 
-                                                    variant={isExpanded ? "filled" : "light"} 
-                                                    color="blue" size="md"
-                                                    onClick={() => updateVariant(slot.id, variant.id!, 'basic', !variant.basic)}
-                                                >
-                                                    <IconPencil size={14} />
-                                                </ActionIcon>
+                                    {/* Кнопки справа */}
+                                    <Group gap={4}>
+                                            {showReverse && (
+                                                <Tooltip label="Реверс сигнала (Long <-> Short)">
+                                                    <ActionIcon 
+                                                        variant={variant.reverse ? "filled" : "light"} 
+                                                        color={variant.reverse ? "orange" : "gray"} 
+                                                        size="md"
+                                                        onClick={() => updateVariant(slot.id, variant.id!, 'reverse', !variant.reverse)}
+                                                    >
+                                                        <IconArrowsRightLeft size={14} />
+                                                    </ActionIcon>
+                                                </Tooltip>
                                             )}
+
+                                            {showBasicToggle && (
+                                                <Tooltip label={variant.basic ? "Настройки по умолчанию" : "Ручная настройка значений"}>
+                                                    <ActionIcon 
+                                                        variant={!variant.basic ? "filled" : "light"} 
+                                                        color="blue" size="md"
+                                                        onClick={() => updateVariant(slot.id, variant.id!, 'basic', !variant.basic)}
+                                                    >
+                                                        <IconPencil size={14} />
+                                                    </ActionIcon>
+                                                </Tooltip>
+                                            )}
+
                                             <ActionIcon 
                                                 variant="light" color="red" size="md"
                                                 onClick={() => removeVariant(slot.id, variant.id!)}
@@ -220,34 +258,48 @@ export function EntrySettings({ config, onChange }: Props) {
                                     </Group>
                                 </Group>
 
-                                {/* РАСШИРЕННЫЕ НАСТРОЙКИ (COLLAPSE) */}
-                                <Collapse in={isExpanded}>
-                                    <Group mt="xs" align="flex-start" grow wrap="nowrap" pl={23}> 
+                                {/* СТРОКА 2: Дополнительные настройки */}
+                                <Collapse in={!!showInputs}>
+                                    {/* padding-left = Ширина номера + gap 
+                                      Это выравнивает начало инпутов ровно под селектом индикатора
+                                    */}
+                                    <Group mt="xs" align="flex-start" grow wrap="nowrap" pl={LEFT_OFFSET}> 
+                                            
+                                            {/* Поле Тип (disabled) */}
                                             <Select
-                                                size="xs" label="Тип цены"
+                                                size="xs"
+                                                label="Тип"
                                                 data={typeOptions}
                                                 value={variant.closed ? 'true' : 'false'}
                                                 onChange={(v) => updateVariant(slot.id, variant.id!, 'closed', v === 'true')}
                                                 allowDeselect={false}
-                                                disabled 
+                                                disabled
                                             />
                                             
-                                            <Select
-                                                size="xs" label="Условие"
-                                                data={[
-                                                    { value: 'GREATER', label: 'Больше' },
-                                                    { value: 'LESS', label: 'Меньше' },
-                                                ]}
-                                                value={variant.operation}
-                                                onChange={(v) => updateVariant(slot.id, variant.id!, 'operation', v as OperationType)}
-                                                allowDeselect={false}
-                                            />
+                                            {settings.hasOperation && (
+                                                <Select
+                                                    size="xs"
+                                                    label="Условие"
+                                                    data={[
+                                                        { value: 'GREATER', label: 'Больше (>)' },
+                                                        { value: 'LESS', label: 'Меньше (<)' },
+                                                    ]}
+                                                    value={variant.operation}
+                                                    onChange={(v) => updateVariant(slot.id, variant.id!, 'operation', v as OperationType)}
+                                                    allowDeselect={false}
+                                                    w={100}
+                                                />
+                                            )}
 
-                                            <TextInput
-                                                size="xs" label="Значение" placeholder="30"
-                                                value={stringValue}
-                                                onChange={(e) => handleValueChange(slot.id, variant.id!, e.target.value)}
-                                            />
+                                            {settings.hasValue && (
+                                                <TextInput
+                                                    size="xs"
+                                                    label="Значение"
+                                                    placeholder="30"
+                                                    value={stringValue}
+                                                    onChange={(e) => handleValueChange(slot.id, variant.id!, e.target.value)}
+                                                />
+                                            )}
                                     </Group>
                                 </Collapse>
 
@@ -260,7 +312,6 @@ export function EntrySettings({ config, onChange }: Props) {
                         leftSection={<IconPlus size={14} />} 
                         onClick={() => addVariant(slot.id)}
                         style={{ alignSelf: 'flex-start' }}
-                        // compact удален
                     >
                         Добавить вариант
                     </Button>
