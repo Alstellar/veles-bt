@@ -75,6 +75,12 @@ function FullscreenMode() {
       logarithmicFactor: ['2.1'],
       includePosition: true
     },
+    // --- ДОБАВЛЕН РЕЖИМ CUSTOM ---
+    custom: {
+      baseOrder: { indent: [], volume: 100 },
+      orders: []
+    },
+    // -----------------------------
     // Инициализация режима SIGNAL
     signal: {
       baseOrder: {
@@ -83,7 +89,6 @@ function FullscreenMode() {
       },
       indentType: 'ORDER', 
       orders: [
-        // ИСПРАВЛЕНО: conditions -> filterSlots
         { id: 'init-1', indent: ['0.5'], volume: 10, filterSlots: [] }, 
         { id: 'init-2', indent: ['1.0'], volume: 20, filterSlots: [] }, 
       ]
@@ -97,13 +102,30 @@ function FullscreenMode() {
     
     // Подсчет комбинаций
     let count = 0;
+    
     if (orderState.mode === 'SIMPLE') {
        const s = orderState.simple;
        count = 
         orderState.general.pullUp.length *
         s.orders.length * s.martingale.length * s.indent.length * s.overlap.length *
         (s.logarithmicEnabled && s.logarithmicFactor.length ? s.logarithmicFactor.length : 1);
-    } else {
+    } 
+    // --- РАСЧЕТ ДЛЯ CUSTOM ---
+    else if (orderState.mode === 'CUSTOM') {
+      const c = orderState.custom;
+      const baseIndent = c.baseOrder.indent.length || 1;
+      let customCombinations = baseIndent;
+      
+      c.orders.forEach(o => {
+        // Здесь только отступы, фильтров нет
+        const indentComb = o.indent.length || 1;
+        customCombinations *= indentComb;
+      });
+      
+      count = customCombinations;
+    }
+    // --- РАСЧЕТ ДЛЯ SIGNAL ---
+    else {
       // Для Signal считаем комбинации по ордерам
       let signalCombinations = 1;
       

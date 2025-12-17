@@ -3,6 +3,7 @@ import { IconAbacus, IconAdjustments, IconAntenna } from '@tabler/icons-react';
 import type { OrderState, GridMode } from '../../types';
 import { SimpleMode } from './SimpleMode';
 import { SignalMode } from './SignalMode';
+import { CustomMode } from './CustomMode';
 
 interface Props {
   state: OrderState;
@@ -46,7 +47,7 @@ export function OrderSettings({ state, onChange }: Props) {
         <Text fw={700} size="lg">Ордера сделки</Text>
       </Group>
 
-      {/* PULL UP: Теперь обычный Select */}
+      {/* PULL UP: Обычный Select */}
       <Paper mb="md" p="md" withBorder radius="md" bg="white">
          <Select
             label="Подтяжка сетки (%)"
@@ -54,9 +55,7 @@ export function OrderSettings({ state, onChange }: Props) {
             placeholder="Выберите значение"
             data={PULL_UP_PRESETS}
             searchable
-            // Берем первый элемент массива или пустую строку
             value={state.general.pullUp[0] || ''} 
-            // Сохраняем как массив из одного элемента, чтобы соответствовать типу string[]
             onChange={(val) => updateGeneral('pullUp', val ? [val] : [])}
             allowDeselect={false}
          />
@@ -67,9 +66,12 @@ export function OrderSettings({ state, onChange }: Props) {
           <Tabs.Tab value="SIMPLE" leftSection={<IconAbacus size={16}/>}>
             Простой
           </Tabs.Tab>
-          <Tabs.Tab value="CUSTOM" leftSection={<IconAdjustments size={16}/>} disabled>
-            Свой (Скоро)
+          
+          {/* РЕЖИМ СВОЙ ТЕПЕРЬ АКТИВЕН */}
+          <Tabs.Tab value="CUSTOM" leftSection={<IconAdjustments size={16}/>}>
+            Свой
           </Tabs.Tab>
+          
           <Tabs.Tab value="SIGNAL" leftSection={<IconAntenna size={16}/>}>
             Сигнал
           </Tabs.Tab>
@@ -80,6 +82,14 @@ export function OrderSettings({ state, onChange }: Props) {
             config={state.simple} 
             onChange={(newSimple) => onChange({ ...state, simple: newSimple })} 
           />
+        </Tabs.Panel>
+
+        {/* ПАНЕЛЬ CUSTOM */}
+        <Tabs.Panel value="CUSTOM" pt="xs">
+           <CustomMode
+             config={state.custom}
+             onChange={(newCustom) => onChange({ ...state, custom: newCustom })}
+           />
         </Tabs.Panel>
 
         <Tabs.Panel value="SIGNAL" pt="xs">

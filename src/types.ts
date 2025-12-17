@@ -157,10 +157,27 @@ export interface OrderSignalConfig {
   orders: SignalOrderLine[];
 }
 
+// -- Конфиг для CUSTOM (Новый) --
+export interface CustomOrderLine {
+  id: string;
+  indent: string[]; // Отступ всегда от входа, массив строк для Grid Search
+  volume: number;
+}
+
+export interface OrderCustomConfig {
+  baseOrder: {
+    indent: string[];
+    volume: number;
+  };
+  // indentType не нужен, так как всегда 'ENTRY' (скрыто)
+  orders: CustomOrderLine[];
+}
+
 export interface OrderState {
   mode: GridMode;
   general: OrderGeneralConfig;
   simple: OrderSimpleConfig;
+  custom: OrderCustomConfig; // <-- Добавили
   signal: OrderSignalConfig;
 }
 
