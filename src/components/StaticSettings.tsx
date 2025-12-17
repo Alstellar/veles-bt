@@ -278,7 +278,7 @@ export function StaticSettings({ config, onChange }: Props) {
       <Divider my="sm" label="Дополнительно" labelPosition="center" />
 
       {/* Комиссии и Свитчи */}
-      <SimpleGrid cols={2} spacing="xl" mb="sm">
+      <SimpleGrid cols={2} spacing="xs" mb="sm">
          {/* Левая колонка */}
          <Stack gap="xs" align="center">
             <TextInput

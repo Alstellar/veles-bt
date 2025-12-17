@@ -57,7 +57,7 @@ function FullscreenMode() {
     makerFee: '0.02',
     takerFee: '0.055',
     isPublic: true,
-    useWicks: false
+    useWicks: true
   });
 
   // 2. Настройки Ордеров
