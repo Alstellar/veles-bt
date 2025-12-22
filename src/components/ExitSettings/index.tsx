@@ -2,6 +2,8 @@ import { Paper, Group, Text, ThemeIcon, SegmentedControl, Stack, Divider, Center
 import { IconCash, IconAbacus, IconAdjustments, IconAntenna } from '@tabler/icons-react';
 import { ProfitSingle } from './ProfitSingle';
 import { ProfitCustom } from './ProfitCustom';
+import { ProfitSignal } from './ProfitSignal';
+import { StopLoss } from './StopLoss'; // Импорт компонента StopLoss
 import type { ExitConfig, ProfitMode } from '../../types';
 
 interface Props {
@@ -25,9 +27,9 @@ export function ExitSettings({ config, onChange }: Props) {
       </Group>
 
       <Paper p="md" withBorder radius="md">
-        <Stack gap="md">
+        <Stack gap="xl"> 
             
-            {/* Блок Тейк-профит */}
+            {/* --- 1. ТЕЙК-ПРОФИТ --- */}
             <Stack gap="xs">
                 <Text fw={700} size="md">Тейк-профит</Text>
 
@@ -38,7 +40,6 @@ export function ExitSettings({ config, onChange }: Props) {
                         { 
                             label: (
                                 <Center style={{ gap: 8 }}>
-                                    {/* ИСПРАВЛЕНО: IconAbacus вместо IconFence */}
                                     <IconAbacus size={16} />
                                     <span>Простой</span>
                                 </Center>
@@ -61,33 +62,46 @@ export function ExitSettings({ config, onChange }: Props) {
                                     <span>Сигнал</span>
                                 </Center>
                             ), 
-                            value: 'SIGNAL', 
-                            disabled: true 
+                            value: 'SIGNAL' 
                         },
                     ]}
                     size="sm"
                     w="fit-content"
                 />
-            </Stack>
             
-            <Divider color="gray.2" />
+                <Divider color="gray.2" />
 
-            {/* Контент */}
-            <div>
-                {config.profitMode === 'SINGLE' && (
-                    <ProfitSingle 
-                        config={config.profitSingle} 
-                        onChange={(single) => onChange({ ...config, profitSingle: single })}
-                    />
-                )}
+                {/* Контент Тейк-профита */}
+                <div>
+                    {config.profitMode === 'SINGLE' && (
+                        <ProfitSingle 
+                            config={config.profitSingle} 
+                            onChange={(single) => onChange({ ...config, profitSingle: single })}
+                        />
+                    )}
 
-                {config.profitMode === 'MULTIPLE' && (
-                    <ProfitCustom 
-                        config={config.profitMultiple} 
-                        onChange={(multiple) => onChange({ ...config, profitMultiple: multiple })}
-                    />
-                )}
-            </div>
+                    {config.profitMode === 'MULTIPLE' && (
+                        <ProfitCustom 
+                            config={config.profitMultiple} 
+                            onChange={(multiple) => onChange({ ...config, profitMultiple: multiple })}
+                        />
+                    )}
+
+                    {config.profitMode === 'SIGNAL' && (
+                        <ProfitSignal 
+                            config={config.profitSignal} 
+                            onChange={(signal) => onChange({ ...config, profitSignal: signal })}
+                        />
+                    )}
+                </div>
+            </Stack>
+
+            {/* --- 2. СТОП-ЛОСС --- */}
+            {/* Добавляем компонент StopLoss в общий стек */}
+            <StopLoss 
+                config={config.stopLoss}
+                onChange={(sl) => onChange({ ...config, stopLoss: sl })}
+            />
 
         </Stack>
       </Paper>

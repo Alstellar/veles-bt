@@ -207,11 +207,36 @@ export interface ProfitMultipleConfig {
   breakeven: BreakevenType;
 }
 
+// -- Конфиг для SIGNAL (Тейк-профит) --
+export interface ProfitSignalConfig {
+  checkPnl: string[]; // Массив P&L для перебора (['null', '0.5', '1.0'])
+  filterSlots: FilterSlot[]; // Группы индикаторов (для Grid Search)
+}
+
+
+// -- Конфиг для STOP LOSS (Объединенный) --
+export interface StopLossConfig {
+  // 1. Обычный Стоп-лосс
+  enabledSimple: boolean;
+  indent: string[]; // Значения из UI (например '-0.5', '-1.0'). В JSON пойдут как 0.5, 1.0
+
+  // 2. Стоп-лосс по сигналу
+  enabledSignal: boolean;
+  conditionalIndent: string[]; // Значения из UI ('-0.5', '0.2'). В JSON знаки инвертируются.
+  conditionalIndentType: 'AVERAGE' | 'LAST_GRID';
+  
+  // Индикаторы для сигнала (одна группа/слот)
+  filterSlots: FilterSlot[];
+}
+
+
 // -- Общий стейт выхода --
 export interface ExitConfig {
   profitMode: ProfitMode;
   profitSingle: ProfitSingleConfig;
   profitMultiple: ProfitMultipleConfig;
+  profitSignal: ProfitSignalConfig;
+  stopLoss: StopLossConfig;
 }
 
 // --- 8. Helpers ---

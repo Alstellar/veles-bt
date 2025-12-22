@@ -6,9 +6,9 @@ import dayjs from 'dayjs';
 import { StaticSettings } from './components/StaticSettings';
 import { OrderSettings } from './components/OrderSettings';
 import { EntrySettings } from './components/EntrySettings';
-import { ExitSettings } from './components/ExitSettings'; // <--- Импорт настроек выхода
+import { ExitSettings } from './components/ExitSettings';
 
-import type { StaticConfig, OrderState, EntryConfig, ExitConfig } from './types'; // <--- Добавили ExitConfig
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig } from './types';
 
 // --- КОМПОНЕНТ: МАЛЕНЬКИЙ ПОПАП ---
 function PopupMode() {
@@ -100,17 +100,31 @@ function FullscreenMode() {
     }
   });
 
-  // 4. Настройки Выхода (Exit Settings) --- НОВОЕ
+  // 4. Настройки Выхода (Exit Settings)
   const [exitConfig, setExitConfig] = useState<ExitConfig>({
     profitMode: 'SINGLE',
     profitSingle: {
-        percents: ['1.0'] // Дефолтное значение
+        percents: ['1.0'] 
     },
     profitMultiple: {
         orders: [
             { id: 'init-exit-1', indent: ['1.0'], volume: 100 }
         ],
         breakeven: null
+    },
+    profitSignal: {
+        checkPnl: ['null'], 
+        filterSlots: [] 
+    },
+    // Инициализация Стоп-лоссов
+    stopLoss: {
+        enabledSimple: false,
+        indent: [], 
+        
+        enabledSignal: false,
+        conditionalIndent: [],
+        conditionalIndentType: 'AVERAGE',
+        filterSlots: []
     }
   });
 
@@ -167,14 +181,14 @@ function FullscreenMode() {
     }
 
     // --- 3. Подсчет комбинаций Выхода (Exit) ---
-    let exitCombinations = 1;
+    
+    // А) Profit Combinations
+    let profitCombinations = 1;
     
     if (exitConfig.profitMode === 'SINGLE') {
-        // Количество выбранных процентов (например 0.5, 1.0, 1.5 = 3 варианта)
-        exitCombinations = exitConfig.profitSingle.percents.length || 1;
+        profitCombinations = exitConfig.profitSingle.percents.length || 1;
     } 
     else if (exitConfig.profitMode === 'MULTIPLE') {
-        // Перебор по отступам в каждом ордере сетки выхода
         const orders = exitConfig.profitMultiple.orders;
         if (orders.length > 0) {
             let multipleComb = 1;
@@ -182,14 +196,54 @@ function FullscreenMode() {
                 const indentCount = o.indent.length || 1;
                 multipleComb *= indentCount;
             });
-            exitCombinations = multipleComb;
+            profitCombinations = multipleComb;
         }
     }
+    else if (exitConfig.profitMode === 'SIGNAL') {
+        const pnlVariants = exitConfig.profitSignal.checkPnl.length || 1;
+        
+        let indicatorCombinations = 1;
+        if (exitConfig.profitSignal.filterSlots.length > 0) {
+            indicatorCombinations = exitConfig.profitSignal.filterSlots.reduce((acc, slot) => {
+                return acc * (slot.variants.length || 1);
+            }, 1);
+        }
+
+        profitCombinations = pnlVariants * indicatorCombinations;
+    }
+
+    // Б) Stop Loss Combinations
+    let stopLossCombinations = 1;
+
+    // Обычный стоп
+    if (exitConfig.stopLoss.enabledSimple) {
+        const simpleCount = exitConfig.stopLoss.indent.length || 1;
+        stopLossCombinations *= simpleCount;
+    }
+
+    // Стоп по сигналу
+    if (exitConfig.stopLoss.enabledSignal) {
+        // Варианты отступов
+        const signalIndentCount = exitConfig.stopLoss.conditionalIndent.length || 1;
+        
+        // Варианты индикаторов (теперь перебираем ВСЕ слоты)
+        let indicatorComb = 1;
+        if (exitConfig.stopLoss.filterSlots.length > 0) {
+            indicatorComb = exitConfig.stopLoss.filterSlots.reduce((acc, slot) => {
+                return acc * (slot.variants.length || 1);
+            }, 1);
+        }
+        
+        stopLossCombinations *= (signalIndentCount * indicatorComb);
+    }
+
+    // Итоговые комбинации выхода
+    const exitCombinations = profitCombinations * stopLossCombinations;
 
     // --- ИТОГО ---
     const totalCount = orderCombinations * entryCombinations * exitCombinations;
       
-    alert(`Конфигурация валидна.\nРежим ордеров: ${orderState.mode}\nРежим профита: ${exitConfig.profitMode}\n\nКомбинаций входа: ${entryCombinations}\nКомбинаций сетки: ${orderCombinations}\nКомбинаций выхода: ${exitCombinations}\n\nИТОГО ТЕСТОВ: ${totalCount}`);
+    alert(`Конфигурация валидна.\nРежим ордеров: ${orderState.mode}\nРежим профита: ${exitConfig.profitMode}\n\nКомбинаций входа: ${entryCombinations}\nКомбинаций сетки: ${orderCombinations}\nКомбинаций выхода (Profit * SL): ${exitCombinations}\n\nИТОГО ТЕСТОВ: ${totalCount}`);
   };
 
   return (
@@ -208,7 +262,7 @@ function FullscreenMode() {
         {/* Настройки сетки */}
         <OrderSettings state={orderState} onChange={setOrderState} />
 
-        {/* Настройки выхода (Тейк-профит) */}
+        {/* Настройки выхода (Тейк-профит + Стоп-лосс) */}
         <ExitSettings config={exitConfig} onChange={setExitConfig} />
 
         <Button size="lg" color="green" onClick={handleLogConfig}>
