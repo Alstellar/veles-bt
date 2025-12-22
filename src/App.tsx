@@ -5,9 +5,10 @@ import dayjs from 'dayjs';
 
 import { StaticSettings } from './components/StaticSettings';
 import { OrderSettings } from './components/OrderSettings';
-import { EntrySettings } from './components/EntrySettings'; // <--- Импорт нового компонента
+import { EntrySettings } from './components/EntrySettings';
+import { ExitSettings } from './components/ExitSettings'; // <--- Импорт настроек выхода
 
-import type { StaticConfig, OrderState, EntryConfig } from './types'; // <--- Добавили EntryConfig
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig } from './types'; // <--- Добавили ExitConfig
 
 // --- КОМПОНЕНТ: МАЛЕНЬКИЙ ПОПАП ---
 function PopupMode() {
@@ -62,12 +63,12 @@ function FullscreenMode() {
     useWicks: true
   });
 
-  // 2. Условия входа (Entry Settings) --- НОВОЕ
+  // 2. Условия входа (Entry Settings)
   const [entryConfig, setEntryConfig] = useState<EntryConfig>({
     filterSlots: []
   });
 
-  // 3. Настройки Ордеров
+  // 3. Настройки Ордеров (Order Settings)
   const [orderState, setOrderState] = useState<OrderState>({
     mode: 'SIMPLE',
     general: {
@@ -99,20 +100,34 @@ function FullscreenMode() {
     }
   });
 
+  // 4. Настройки Выхода (Exit Settings) --- НОВОЕ
+  const [exitConfig, setExitConfig] = useState<ExitConfig>({
+    profitMode: 'SINGLE',
+    profitSingle: {
+        percents: ['1.0'] // Дефолтное значение
+    },
+    profitMultiple: {
+        orders: [
+            { id: 'init-exit-1', indent: ['1.0'], volume: 100 }
+        ],
+        breakeven: null
+    }
+  });
+
   const handleLogConfig = () => {
     console.log("=== CONFIG ===");
     console.log("Static:", staticConfig);
     console.log("Entry:", entryConfig);
     console.log("Order State:", orderState);
+    console.log("Exit State:", exitConfig);
     
-    // 1. Подсчет комбинаций Условий Входа (Entry)
+    // --- 1. Подсчет комбинаций Условий Входа (Entry) ---
     let entryCombinations = 1;
     if (entryConfig.filterSlots.length > 0) {
-        // Перемножаем количество вариантов в каждом слоте
         entryCombinations = entryConfig.filterSlots.reduce((acc, slot) => acc * (slot.variants.length || 1), 1);
     }
 
-    // 2. Подсчет комбинаций Сетки (Orders)
+    // --- 2. Подсчет комбинаций Сетки (Orders) ---
     let orderCombinations = 0;
     
     if (orderState.mode === 'SIMPLE') {
@@ -151,10 +166,30 @@ function FullscreenMode() {
       orderCombinations = signalCombinations;
     }
 
-    // 3. Итого (Умножаем сетку на входы)
-    const totalCount = orderCombinations * entryCombinations;
+    // --- 3. Подсчет комбинаций Выхода (Exit) ---
+    let exitCombinations = 1;
+    
+    if (exitConfig.profitMode === 'SINGLE') {
+        // Количество выбранных процентов (например 0.5, 1.0, 1.5 = 3 варианта)
+        exitCombinations = exitConfig.profitSingle.percents.length || 1;
+    } 
+    else if (exitConfig.profitMode === 'MULTIPLE') {
+        // Перебор по отступам в каждом ордере сетки выхода
+        const orders = exitConfig.profitMultiple.orders;
+        if (orders.length > 0) {
+            let multipleComb = 1;
+            orders.forEach(o => {
+                const indentCount = o.indent.length || 1;
+                multipleComb *= indentCount;
+            });
+            exitCombinations = multipleComb;
+        }
+    }
+
+    // --- ИТОГО ---
+    const totalCount = orderCombinations * entryCombinations * exitCombinations;
       
-    alert(`Конфигурация валидна.\nРежим: ${orderState.mode}\nКомбинаций входа: ${entryCombinations}\nКомбинаций сетки: ${orderCombinations}\nИТОГО ТЕСТОВ: ${totalCount}`);
+    alert(`Конфигурация валидна.\nРежим ордеров: ${orderState.mode}\nРежим профита: ${exitConfig.profitMode}\n\nКомбинаций входа: ${entryCombinations}\nКомбинаций сетки: ${orderCombinations}\nКомбинаций выхода: ${exitCombinations}\n\nИТОГО ТЕСТОВ: ${totalCount}`);
   };
 
   return (
@@ -167,10 +202,14 @@ function FullscreenMode() {
       <Stack gap="xl">
         <StaticSettings config={staticConfig} onChange={setStaticConfig} />
         
-        {/* Блок условий входа теперь здесь */}
+        {/* Условия входа */}
         <EntrySettings config={entryConfig} onChange={setEntryConfig} />
 
+        {/* Настройки сетки */}
         <OrderSettings state={orderState} onChange={setOrderState} />
+
+        {/* Настройки выхода (Тейк-профит) */}
+        <ExitSettings config={exitConfig} onChange={setExitConfig} />
 
         <Button size="lg" color="green" onClick={handleLogConfig}>
           Проверить конфигурацию

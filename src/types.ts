@@ -184,7 +184,37 @@ export interface EntryConfig {
   filterSlots: FilterSlot[];
 }
 
-// --- 7. Helpers ---
+// --- 7. Exit Settings (Настройки выхода) ---
+
+export type ProfitMode = 'SINGLE' | 'MULTIPLE' | 'SIGNAL';
+export type BreakevenType = 'AVERAGE' | 'PROFIT' | null;
+
+// -- Конфиг для SIMPLE (Простой) --
+export interface ProfitSingleConfig {
+  // Массив строк для Grid Search (например ['0.5', '1.0', '1.5'])
+  percents: string[]; 
+}
+
+// -- Конфиг для CUSTOM (Свой) --
+export interface ProfitCustomOrderLine {
+  id: string;
+  indent: string[]; // Массив строк для Grid Search (вариации отступа)
+  volume: number;   // Фиксированный объем (сумма должна быть 100%)
+}
+
+export interface ProfitMultipleConfig {
+  orders: ProfitCustomOrderLine[];
+  breakeven: BreakevenType;
+}
+
+// -- Общий стейт выхода --
+export interface ExitConfig {
+  profitMode: ProfitMode;
+  profitSingle: ProfitSingleConfig;
+  profitMultiple: ProfitMultipleConfig;
+}
+
+// --- 8. Helpers ---
 
 // Функция для определения, является ли биржа спотовой
 export const isSpot = (exchange: ExchangeType): boolean => {
