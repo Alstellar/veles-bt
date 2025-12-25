@@ -1,4 +1,4 @@
-// src/types.ts
+import type { VelesConfigPayload, BacktestStats } from './services/VelesService';
 
 // --- 1. Статические настройки (База) ---
 
@@ -229,8 +229,23 @@ export interface StopLossConfig {
   filterSlots: FilterSlot[];
 }
 
+// --- 8. Data Storage & History (Новое) ---
 
-import type { VelesConfigPayload, BacktestStats } from './services/VelesService';
+export interface BatchInfo {
+  id: string;          // e.g. "#AH274"
+  timestamp: number;   // Date.now()
+  namePrefix: string;  // "My Test"
+  symbol: string;      // "HYPE/USDT"
+  exchange: ExchangeType;
+  totalTests: number;
+  velesIds: number[];  // [3622791, 3622792...] - только ID успешных запусков
+}
+
+export interface StorageData {
+  batches: Record<string, BatchInfo>; // Key = Batch ID
+  templates?: Record<string, any>;    // Задел на будущее
+}
+
 
 // -- Результат выполнения теста --
 export interface TestResult {
@@ -243,6 +258,9 @@ export interface TestResult {
   error?: string;          // Текст ошибки
   duration?: string;       // Время выполнения (строка, например "45s")
   timestamp: number;       // Время запуска
+  
+  // Новое поле: принадлежность к группе
+  batchId?: string; 
 }
 
 
@@ -255,7 +273,7 @@ export interface ExitConfig {
   stopLoss: StopLossConfig;
 }
 
-// --- 8. Helpers ---
+// --- 9. Helpers ---
 
 // Функция для определения, является ли биржа спотовой
 export const isSpot = (exchange: ExchangeType): boolean => {

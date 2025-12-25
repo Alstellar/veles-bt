@@ -7,6 +7,18 @@ import type { VelesConfigPayload, VelesCondition, VelesOrder } from './VelesServ
 
 // --- HELPERS ---
 
+/**
+ * Генерация короткого ID группы (Batch ID), например "#A1B2"
+ */
+export function generateBatchId(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '#';
+  for (let i = 0; i < 5; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 function cartesian(args: Record<string, any[]>): Record<string, any>[] {
   const keys = Object.keys(args);
   const values = Object.values(args);
@@ -34,14 +46,22 @@ function convertCondition(c: Condition): VelesCondition {
 
 export class ConfigGenerator {
 
+  /**
+   * Генерация конфигураций
+   * @param existingBatchId - если передан, используем его (для догенерации), иначе создаем новый
+   */
   static generate(
     staticCfg: StaticConfig,
     entryCfg: EntryConfig,
     orderState: OrderState,
-    exitCfg: ExitConfig
-  ): VelesConfigPayload[] {
+    exitCfg: ExitConfig,
+    existingBatchId?: string
+  ): { configs: VelesConfigPayload[], batchId: string } {
     
-    // 1. Search Space
+    // 1. Создаем или используем ID группы
+    const batchId = existingBatchId || generateBatchId();
+
+    // 2. Сбор пространства поиска (Search Space)
     const space: Record<string, any[]> = {};
 
     // A. ENTRY
@@ -115,22 +135,38 @@ export class ConfigGenerator {
         });
     }
 
-    // 2. Combinations
+    // 3. Combinations
     const combinations = cartesian(space);
+    const total = combinations.length;
 
-    // 3. Payload
-    return combinations.map(comb => {
-        return this.buildPayload(staticCfg, orderState, exitCfg, comb);
+    // 4. Payload generation with correct Naming
+    const configs = combinations.map((comb, index) => {
+        return this.buildPayload(staticCfg, orderState, exitCfg, comb, index + 1, total, batchId);
     });
+
+    return { configs, batchId };
   }
 
   private static buildPayload(
     staticCfg: StaticConfig,
     orderState: OrderState,
     exitCfg: ExitConfig,
-    comb: Record<string, any>
+    comb: Record<string, any>,
+    index: number,
+    total: number,
+    batchId: string
   ): VelesConfigPayload {
       
+      // Symbol Logic
+      let pair = staticCfg.symbol.trim().toUpperCase();
+      if (!pair.includes('/')) pair = `${pair}/USDT`;
+      // Чистый тикер для имени (HYPE)
+      const ticker = pair.split('/')[0];
+
+      // --- NAME GENERATION ---
+      // Format: "{UserPrefix} {Ticker} | {i}/{N} | VelesBT {BatchID}"
+      const testName = `${staticCfg.namePrefix} ${ticker} | ${index}/${total} | VelesBT ${batchId}`;
+
       // 1. Conditions
       const conditions: VelesCondition[] = [];
       Object.keys(comb).forEach(k => {
@@ -235,7 +271,6 @@ export class ConfigGenerator {
       const simpleSLVal = exitCfg.stopLoss.enabledSimple ? comb['sl_simple_indent'] : null;
       const signalSLVal = exitCfg.stopLoss.enabledSignal ? comb['sl_sig_indent'] : null;
 
-      // Если включен ЛЮБОЙ из стоп-лоссов, создаем объект
       if (exitCfg.stopLoss.enabledSimple || exitCfg.stopLoss.enabledSignal) {
           stopLoss = {
               termination: false,
@@ -245,14 +280,11 @@ export class ConfigGenerator {
               conditions: null
           };
 
-          // 1. Простой SL
           if (exitCfg.stopLoss.enabledSimple && simpleSLVal) {
               stopLoss.indent = Math.abs(Number(simpleSLVal));
           }
 
-          // 2. Сигнальный SL
           if (exitCfg.stopLoss.enabledSignal) {
-              // Тип отступа и условия добавляем ВСЕГДА, если флаг enabledSignal = true
               stopLoss.conditionalIndentType = exitCfg.stopLoss.conditionalIndentType;
               
               const slConditions: VelesCondition[] = [];
@@ -261,7 +293,6 @@ export class ConfigGenerator {
               });
               stopLoss.conditions = slConditions;
 
-              // Отступ: если 'null' или пусто -> значит null (отключен контроль PnL), иначе число
               if (signalSLVal && signalSLVal !== 'null') {
                   stopLoss.conditionalIndent = -1 * Number(signalSLVal);
               } else {
@@ -270,12 +301,8 @@ export class ConfigGenerator {
           }
       }
 
-      // Symbol
-      let pair = staticCfg.symbol.trim().toUpperCase();
-      if (!pair.includes('/')) pair = `${pair}/USDT`;
-
       return {
-          name: `${staticCfg.namePrefix} ${new Date().toLocaleTimeString()}`,
+          name: testName,
           symbol: pair, 
           symbols: [pair],
           exchange: staticCfg.exchange,

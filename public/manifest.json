@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "VelesBT Pro",
+  "name": "Veles Helper",
   "version": "1.0.0",
+  "description": "Конфигуратор параметров для поиска эффективных стратегий на Veles.Finance",
   "action": {
     "default_popup": "index.html"
   },

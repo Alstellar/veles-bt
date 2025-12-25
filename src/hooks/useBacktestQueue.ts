@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { VelesService } from '../services/VelesService';
 import type { VelesConfigPayload } from '../services/VelesService';
 import type { TestResult } from '../types';
+import { StorageService } from '../services/StorageService'; // <-- Новое
 
 export function useBacktestQueue() {
   const [isRunning, setIsRunning] = useState(false);
@@ -13,7 +14,10 @@ export function useBacktestQueue() {
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-  const startQueue = useCallback(async (configs: VelesConfigPayload[]) => {
+  // Теперь принимаем не просто массив конфигов, а объект с ID группы
+  const startQueue = useCallback(async (data: { configs: VelesConfigPayload[], batchId: string }) => {
+    const { configs, batchId } = data;
+
     if (configs.length === 0) {
         alert("Список конфигураций пуст!");
         return;
@@ -42,9 +46,26 @@ export function useBacktestQueue() {
         return;
     }
 
+    // --- NEW: Сохраняем группу в историю ---
+    try {
+        const firstConfig = configs[0];
+        await StorageService.saveBatch({
+            id: batchId,
+            timestamp: Date.now(),
+            namePrefix: firstConfig.name.split('|')[0].trim(), // "My Test HYPE"
+            symbol: firstConfig.symbol,
+            exchange: firstConfig.exchange as any,
+            totalTests: configs.length,
+            velesIds: []
+        });
+        console.log(`📦 Batch ${batchId} created in storage`);
+    } catch (e) {
+        console.error("Failed to save batch history", e);
+    }
+    // ----------------------------------------
+
     // 3. Запуск цикла
     for (let i = 0; i < configs.length; i++) {
-        // Засекаем время начала итерации для контроля тайминга (31 сек)
         const iterationStartTime = Date.now();
 
         if (abortRef.current) {
@@ -57,16 +78,15 @@ export function useBacktestQueue() {
         const testNum = i + 1;
         const totalTests = configs.length;
 
-        // Группировка логов в консоли для удобства
         console.group(`🚀 Test ${testNum}/${totalTests} [ID: ${internalId}]`);
         console.log("Payload:", JSON.stringify(config, null, 2));
         
-        // Создаем "черновик" результата
         const newResultItem: TestResult = {
             id: internalId,
             config: config,
             status: 'RUNNING',
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            batchId: batchId // <-- Привязываем к группе
         };
         
         setResults(prev => [newResultItem, ...prev]); 
@@ -74,36 +94,36 @@ export function useBacktestQueue() {
         setCurrentStatus(`Тест ${testNum}/${totalTests}: Запуск...`);
 
         try {
-            // А. ОТПРАВКА ЗАПРОСА НА ЗАПУСК
+            // А. ЗАПУСК
+            // Обработка 429 ошибки (Rate Limit) внутри VelesService
             const runRes = await VelesService.runTest(tab.id!, token, config);
             console.log("Start Response:", JSON.stringify(runRes, null, 2));
             
             if (!runRes.success || !runRes.id) {
-                // Пытаемся достать текст ошибки из тела ответа
+                // Если получили 429, можно попробовать подождать и повторить (продвинутая логика)
+                // Но пока просто падаем с ошибкой
                 const errorDetails = runRes.error || JSON.stringify(runRes);
-                throw new Error(`Ошибка запуска: ${errorDetails}`);
+                throw new Error(`Ошибка запуска (Code ${runRes.status}): ${errorDetails}`);
             }
 
             updateResult(internalId, { backtestId: runRes.id });
             setCurrentStatus(`Тест ${testNum}/${totalTests}: Ожидание (ID: ${runRes.id})...`);
 
-            // Б. ОЖИДАНИЕ (POLLING)
+            // Б. ОЖИДАНИЕ
             const startTime = Date.now();
-            const MAX_TIME = 5 * 60 * 1000; // 5 минут макс
+            const MAX_TIME = 5 * 60 * 1000;
             let isFinished = false;
 
             while (!isFinished) {
                 if (abortRef.current) throw new Error("Остановлено");
                 if (Date.now() - startTime > MAX_TIME) {
-                     updateResult(internalId, { status: 'TIMEOUT' });
-                     throw new Error("Таймаут (5 мин)");
+                      updateResult(internalId, { status: 'TIMEOUT' });
+                      throw new Error("Таймаут (5 мин)");
                 }
 
-                await delay(5000); // Опрос каждые 5 сек
+                await delay(5000); 
 
                 const statusRes = await VelesService.checkStatus(tab.id!, token, runRes.id);
-                // Логируем статус, если он изменился или интересный (опционально можно убрать, чтобы не спамить)
-                // console.log("Status Poll:", statusRes);
                 
                 if (statusRes.success && statusRes.data) {
                     const s = statusRes.data.status;
@@ -115,20 +135,28 @@ export function useBacktestQueue() {
                 }
             }
 
-            // В. ПОЛУЧЕНИЕ РЕЗУЛЬТАТОВ (STATISTICS)
+            // В. СТАТИСТИКА
             setCurrentStatus(`Тест ${testNum}/${totalTests}: Загрузка статистики...`);
-            await delay(1000); // Даем базе Veles секунду на прогрузку
+            await delay(1000); 
 
             const statsRes = await VelesService.getStats(tab.id!, token, runRes.id);
             console.log("Stats Response:", JSON.stringify(statsRes, null, 2));
 
             if (statsRes.success && statsRes.stats) {
+                // 1. Обновляем UI
                 updateResult(internalId, { 
                     status: 'FINISHED', 
                     stats: statsRes.stats, 
                     shareToken: statsRes.shareToken,
                     duration: ((Date.now() - startTime) / 1000).toFixed(0) + 's'
                 });
+
+                // --- NEW: Сохраняем успешный ID в историю ---
+                if (runRes.id) {
+                    await StorageService.updateBatchIds(batchId, runRes.id);
+                }
+                // --------------------------------------------
+
             } else {
                 throw new Error(statsRes.error || "Нет данных статистики");
             }
@@ -144,7 +172,7 @@ export function useBacktestQueue() {
             
             // Г. УМНАЯ ПАУЗА (31 сек минимум)
             const elapsed = Date.now() - iterationStartTime;
-            const MIN_DELAY = 31000; // 31 секунда
+            const MIN_DELAY = 31000; 
             
             if (elapsed < MIN_DELAY && !abortRef.current && i < configs.length - 1) {
                 const waitTime = MIN_DELAY - elapsed;
@@ -152,14 +180,12 @@ export function useBacktestQueue() {
                 
                 console.log(`⏳ Cooldown: Waiting ${secondsLeft}s before next test...`);
                 
-                // Обратный отсчет в статусе для красоты
                 for (let s = secondsLeft; s > 0; s--) {
                     if (abortRef.current) break;
                     setCurrentStatus(`Остываем: ждем ${s} сек...`);
                     await delay(1000);
                 }
             } else {
-                // Если тест шел дольше 31 сек, просто небольшая пауза перед следующим
                 if (i < configs.length - 1) await delay(1000);
             }
         }

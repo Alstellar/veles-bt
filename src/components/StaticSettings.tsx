@@ -145,6 +145,13 @@ export function StaticSettings({ config, onChange }: Props) {
     );
   };
 
+  // Генерация превью имени
+  const namePreview = useMemo(() => {
+     const ticker = config.symbol ? config.symbol.toUpperCase() : 'COIN';
+     // Пример: HYPE | 1/N | #BATCH
+     return `${ticker} | 1/N | #BATCH`;
+  }, [config.symbol]);
+
   return (
     <Paper withBorder p="md" radius="md" bg="gray.0" pos="relative">
       <LoadingOverlay visible={loading} overlayProps={{ blur: 1 }} />
@@ -166,8 +173,13 @@ export function StaticSettings({ config, onChange }: Props) {
           placeholder="MyStrategy"
           value={config.namePrefix}
           onChange={(e) => update('namePrefix', e.currentTarget.value)}
-          rightSectionWidth={70}
-          rightSection={<Text size="xs" c="dimmed">| 1/X</Text>}
+          // Динамический суффикс
+          rightSectionWidth={160}
+          rightSection={
+             <Text size="xs" c="dimmed" fs="italic" mr={10} style={{ pointerEvents: 'none' }}>
+               {namePreview}
+             </Text>
+          }
         />
         <Select
           label="Биржа"
@@ -215,7 +227,6 @@ export function StaticSettings({ config, onChange }: Props) {
         {!currentIsSpot && (
            <NumberInput
              label="Плечо (x)"
-             // Плейсхолдер остается
              placeholder={`Макс: x${maxLeverage}`}
              value={config.leverage}
              onChange={(v) => update('leverage', v)}
@@ -223,7 +234,6 @@ export function StaticSettings({ config, onChange }: Props) {
              max={maxLeverage}
              allowNegative={false}
              error={config.leverage > maxLeverage ? 'Превышен лимит' : null}
-             // Текст внутри поля справа
              rightSectionWidth={85}
              rightSection={
                 <Text size="xs" c="dimmed" mr={10} style={{ whiteSpace: 'nowrap', cursor: 'default' }}>
@@ -251,10 +261,9 @@ export function StaticSettings({ config, onChange }: Props) {
           Весь период
         </Button>
         
-        {/* Инфо о дате доступности (справочно справа) */}
         {currentAvailability && (
             <Text size="xs" c="dimmed" ml={4}>
-               История доступна с {dayjs(currentAvailability.availableFrom).format('DD.MM.YYYY')}
+               История с {dayjs(currentAvailability.availableFrom).format('DD.MM.YYYY')}
             </Text>
         )}
       </Group>
@@ -277,36 +286,46 @@ export function StaticSettings({ config, onChange }: Props) {
 
       <Divider my="sm" label="Дополнительно" labelPosition="center" />
 
-      {/* Комиссии и Свитчи */}
+      {/* Комиссии и Свитчи (в стиле карточек) */}
       <SimpleGrid cols={2} spacing="xs" mb="sm">
-         {/* Левая колонка */}
-         <Stack gap="xs" align="center">
+         {/* Увеличил gap с 'xs' до 'lg' для визуального разделения */}
+         <Stack gap="lg">
             <TextInput
                label="Maker Fee (%)"
                value={config.makerFee}
                onChange={(e) => update('makerFee', e.currentTarget.value)}
-               w="100%"
             />
-            <Switch 
-               label="Публичный тест" 
-               checked={config.isPublic}
-               onChange={(e) => update('isPublic', e.currentTarget.checked)}
-            />
+            {/* Карточка переключателя */}
+            <Paper withBorder p="xs" bg="gray.1" radius="md">
+                 <Group justify="space-between" align="center">
+                    <Text size="sm" fw={500}>Публичный тест</Text>
+                    <Switch 
+                        size="md"
+                        checked={config.isPublic}
+                        onChange={(e) => update('isPublic', e.currentTarget.checked)}
+                    />
+                 </Group>
+            </Paper>
          </Stack>
 
-         {/* Правая колонка */}
-         <Stack gap="xs" align="center">
+         {/* Увеличил gap с 'xs' до 'lg' */}
+         <Stack gap="lg">
             <TextInput
                label="Taker Fee (%)"
                value={config.takerFee}
                onChange={(e) => update('takerFee', e.currentTarget.value)}
-               w="100%"
             />
-            <Switch 
-               label="Учитывать тени" 
-               checked={config.useWicks}
-               onChange={(e) => update('useWicks', e.currentTarget.checked)}
-            />
+             {/* Карточка переключателя */}
+             <Paper withBorder p="xs" bg="gray.1" radius="md">
+                 <Group justify="space-between" align="center">
+                    <Text size="sm" fw={500}>Учитывать тени</Text>
+                    <Switch 
+                        size="md"
+                        checked={config.useWicks}
+                        onChange={(e) => update('useWicks', e.currentTarget.checked)}
+                    />
+                 </Group>
+            </Paper>
          </Stack>
       </SimpleGrid>
 

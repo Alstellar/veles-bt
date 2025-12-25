@@ -46,7 +46,7 @@ export interface VelesConfigPayload {
   
   // Настройки сетки (Универсальный объект под разные режимы)
   settings: {
-    type: 'SIGNAL' | 'SIMPLE' | 'CUSTOM'; // HFT удален, CUSTOM добавлен
+    type: 'SIGNAL' | 'SIMPLE' | 'CUSTOM'; 
     
     // Общее
     includePosition: boolean;
@@ -66,13 +66,10 @@ export interface VelesConfigPayload {
     priceStrategy?: string;
 
     // --- Универсальное поле orders ---
-    // В SIMPLE: это число (количество ордеров)
-    // В SIGNAL/CUSTOM: это массив объектов ордеров
     orders?: any; 
     
     // --- Специфично для CUSTOM ---
-    // (обычно использует структуру SIGNAL, но type='CUSTOM' и все ордера в массиве orders)
-    volume?: number; // Иногда встречается как остаточный артефакт
+    volume?: number; 
   };
 
   // Выход: Тейк-профит
@@ -92,9 +89,9 @@ export interface VelesConfigPayload {
 
   // Выход: Стоп-лосс
   stopLoss?: {
-    indent: number | null; // Обычный стоп (положительное число в JSON!)
+    indent: number | null; 
     termination: boolean;
-    conditionalIndent: number | null; // Стоп по сигналу (инвертированный знак!)
+    conditionalIndent: number | null; 
     conditionalIndentType: 'AVERAGE' | 'LAST_GRID' | null;
     conditions?: VelesCondition[] | null;
   };
@@ -126,6 +123,13 @@ export interface BacktestStats {
   mfePercent: number;    // MPP
   maePercent: number;    // MPU (Просадка)
   avgDuration: number;   // Среднее время сделки (сек)
+}
+
+// Интерфейс профиля пользователя
+export interface UserProfile {
+  id: number;
+  email: string;
+  roles: string[];
 }
 
 // --- 2. ИНЪЕЦИРУЕМЫЕ ФУНКЦИИ (Pure Functions) ---
@@ -187,6 +191,21 @@ async function injectedGetStats(id: number, token: string) {
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
+// Новая инъекция для получения профиля
+async function injectedGetProfile() {
+  try {
+    const response = await fetch("https://veles.finance/api/me", {
+      method: "GET",
+      headers: { 
+        "Accept": "application/json", 
+        "X-Requested-With": "XMLHttpRequest" 
+      }
+    });
+    if (response.ok) return { success: true, data: await response.json() };
+    return { success: false, error: response.status };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
 // --- 3. КЛАСС СЕРВИСА (Bridge) ---
 
 export class VelesService {
@@ -241,6 +260,15 @@ export class VelesService {
       target: { tabId },
       func: injectedGetStats,
       args: [backtestId, token]
+    });
+    return result[0]?.result || { success: false, error: "Injection failed" };
+  }
+
+  // Новый метод для получения профиля
+  static async getProfile(tabId: number): Promise<{ success: boolean, data?: UserProfile, error?: string }> {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: injectedGetProfile,
     });
     return result[0]?.result || { success: false, error: "Injection failed" };
   }
