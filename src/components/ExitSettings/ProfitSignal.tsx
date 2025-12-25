@@ -112,6 +112,12 @@ export function ProfitSignal({ config, onChange }: Props) {
     { value: 'false', label: 'В моменте' },
   ];
 
+  // --- ПОДГОТОВКА ОПЦИЙ ДЛЯ P&L (Исправление null -> Отключено) ---
+  const pnlOptionsData = [
+    { value: 'null', label: 'Отключено' },
+    ...PNL_OPTIONS.map(opt => ({ value: opt, label: opt }))
+  ];
+
   const NUMBER_WIDTH = 24; 
   const GAP_WIDTH = 10; 
   const LEFT_OFFSET = NUMBER_WIDTH + GAP_WIDTH;
@@ -300,8 +306,8 @@ export function ProfitSignal({ config, onChange }: Props) {
              <MultiSelect
                 label="Минимальный P&L"
                 description="Выберите варианты для перебора"
-                placeholder="Выберите % или оставьте пустым (null)"
-                data={['null', ...PNL_OPTIONS]}
+                placeholder="Выберите % или 'Отключено'"
+                data={pnlOptionsData} // Используем обновленный массив опций
                 value={config.checkPnl}
                 onChange={(vals) => onChange({ ...config, checkPnl: vals })}
                 searchable
