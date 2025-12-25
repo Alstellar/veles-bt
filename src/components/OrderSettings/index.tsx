@@ -10,7 +10,7 @@ interface Props {
   onChange: (newState: OrderState) => void;
 }
 
-// Генератор пресетов (как и был)
+// Генератор пресетов
 const r = (start: number, end: number, step: number) => {
   const result = [];
   for (let i = start; i <= end + 0.00001; i += step) {
@@ -23,7 +23,7 @@ const PULL_UP_PRESETS = [
   ...r(0.1, 1.5, 0.05),
   ...r(2, 50, 1),
   ...r(60, 200, 10)
-].map(val => `${val}%`);
+].map(val => ({ value: val, label: `${val}%` })); // <--- ИСПРАВЛЕНО: Value чистое, Label с %
 
 
 export function OrderSettings({ state, onChange }: Props) {
@@ -40,6 +40,9 @@ export function OrderSettings({ state, onChange }: Props) {
     });
   };
 
+  // Валидация: Если поле пустое, считаем это ошибкой
+  const pullUpError = !state.general.pullUp ? "Обязательное поле" : null;
+
   return (
     <Paper p={0} bg="transparent">
       <Group mb="xs">
@@ -47,17 +50,18 @@ export function OrderSettings({ state, onChange }: Props) {
         <Text fw={700} size="lg">Ордера сделки</Text>
       </Group>
 
-      {/* PULL UP: Обычный Select */}
+      {/* PULL UP: Одиночное значение */}
       <Paper mb="md" p="md" withBorder radius="md" bg="white">
          <Select
             label="Подтяжка сетки (%)"
             description="Смещение сетки за ценой"
-            placeholder="Выберите значение"
+            placeholder="Выберите значение (0.2%)"
             data={PULL_UP_PRESETS}
             searchable
-            value={state.general.pullUp[0] || ''} 
-            onChange={(val) => updateGeneral('pullUp', val ? [val] : [])}
+            value={state.general.pullUp} 
+            onChange={(val) => updateGeneral('pullUp', val || '')}
             allowDeselect={false}
+            error={pullUpError} 
          />
       </Paper>
 
@@ -67,7 +71,6 @@ export function OrderSettings({ state, onChange }: Props) {
             Простой
           </Tabs.Tab>
           
-          {/* РЕЖИМ СВОЙ ТЕПЕРЬ АКТИВЕН */}
           <Tabs.Tab value="CUSTOM" leftSection={<IconAdjustments size={16}/>}>
             Свой
           </Tabs.Tab>
@@ -84,7 +87,6 @@ export function OrderSettings({ state, onChange }: Props) {
           />
         </Tabs.Panel>
 
-        {/* ПАНЕЛЬ CUSTOM */}
         <Tabs.Panel value="CUSTOM" pt="xs">
            <CustomMode
              config={state.custom}

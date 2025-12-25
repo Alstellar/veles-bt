@@ -126,7 +126,7 @@ export interface FilterSlot {
 export type GridMode = 'SIMPLE' | 'CUSTOM' | 'SIGNAL';
 
 export interface OrderGeneralConfig {
-  pullUp: string[];
+  pullUp: string;
 }
 
 export interface OrderSimpleConfig {
@@ -227,6 +227,22 @@ export interface StopLossConfig {
   
   // Индикаторы для сигнала (одна группа/слот)
   filterSlots: FilterSlot[];
+}
+
+
+import type { VelesConfigPayload, BacktestStats } from './services/VelesService';
+
+// -- Результат выполнения теста --
+export interface TestResult {
+  id: string;              // Внутренний ID для React key
+  backtestId?: number;     // ID теста в Veles
+  config: VelesConfigPayload; // Снапшот конфига, с которым запускали
+  status: 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'TIMEOUT';
+  stats?: BacktestStats;   // Результаты (Profit, ROI, Deals...)
+  shareToken?: string;     // Токен для публичной ссылки
+  error?: string;          // Текст ошибки
+  duration?: string;       // Время выполнения (строка, например "45s")
+  timestamp: number;       // Время запуска
 }
 
 
