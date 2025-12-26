@@ -1,4 +1,4 @@
-import type { StorageData, BatchInfo } from '../types';
+import type { StorageData, BatchInfo, Template } from '../types';
 
 const STORAGE_KEY = 'veles_bt_storage_v1';
 
@@ -15,7 +15,8 @@ export class StorageService {
           if (result[STORAGE_KEY]) {
             resolve(result[STORAGE_KEY] as StorageData);
           } else {
-            resolve({ batches: {} }); // Пустой инит
+            // Инициализируем и batches, и templates
+            resolve({ batches: {}, templates: {} }); 
           }
         });
       } 
@@ -26,10 +27,10 @@ export class StorageService {
           try {
             resolve(JSON.parse(raw));
           } catch {
-            resolve({ batches: {} });
+            resolve({ batches: {}, templates: {} });
           }
         } else {
-          resolve({ batches: {} });
+          resolve({ batches: {}, templates: {} });
         }
       }
     });
@@ -49,6 +50,8 @@ export class StorageService {
     });
   }
 
+  // --- BATCHES (История) ---
+
   /**
    * Сохранение новой группы тестов (Batch)
    */
@@ -65,12 +68,17 @@ export class StorageService {
   }
 
   /**
-   * Обновление списка ID тестов внутри группы (например, добавляем успешные)
+   * Добавление ID теста в группу (используется при запуске в реальном времени)
    */
-  static async updateBatchIds(batchId: string, velesId: number): Promise<void> {
+  static async addTestIdToBatch(batchId: string, velesId: number): Promise<void> {
     const data = await this.loadData();
     
     if (data.batches && data.batches[batchId]) {
+      // Инициализируем массив, если вдруг его нет
+      if (!data.batches[batchId].velesIds) {
+          data.batches[batchId].velesIds = [];
+      }
+
       // Добавляем ID, если его там еще нет
       if (!data.batches[batchId].velesIds.includes(velesId)) {
         data.batches[batchId].velesIds.push(velesId);
@@ -91,9 +99,82 @@ export class StorageService {
   }
 
   /**
-   * Очистка истории (удаляет всё)
+   * Очистка истории (удаляет всё, КРОМЕ шаблонов)
    */
   static async clearHistory(): Promise<void> {
-    await this.saveData({ batches: {} });
+    const data = await this.loadData();
+    data.batches = {}; // Затираем только историю
+    await this.saveData(data);
+  }
+  
+  /**
+   * НОВОЕ: Удаление конкретной группы тестов
+   */
+  static async removeBatch(batchId: string): Promise<void> {
+      const data = await this.loadData();
+      if (data.batches && data.batches[batchId]) {
+          delete data.batches[batchId];
+          await this.saveData(data);
+      }
+  }
+
+  /**
+   * Найти самый старый ID теста среди всех сохраненных групп.
+   * Нужно для ограничения синхронизации (чтобы не качать историю до сотворения мира).
+   */
+  static async getEarliestTestId(): Promise<number | null> {
+    const batches = await this.getBatches();
+    if (batches.length === 0) return null;
+
+    let minId: number | null = null;
+
+    batches.forEach(batch => {
+        if (batch.velesIds && batch.velesIds.length > 0) {
+            const batchMin = Math.min(...batch.velesIds);
+            if (minId === null || batchMin < minId) {
+                minId = batchMin;
+            }
+        }
+    });
+
+    return minId;
+  }
+
+  // --- TEMPLATES (Шаблоны) ---
+
+  /**
+   * Сохранение шаблона
+   */
+  static async saveTemplate(template: Template): Promise<void> {
+    const data = await this.loadData();
+    
+    // Инициализация, если вдруг нет
+    if (!data.templates) data.templates = {};
+
+    data.templates[template.id] = template;
+    await this.saveData(data);
+  }
+
+  /**
+   * Получение всех шаблонов
+   */
+  static async getTemplates(): Promise<Template[]> {
+    const data = await this.loadData();
+    if (!data.templates) return [];
+    
+    // Сортировка по дате (новые сверху)
+    return Object.values(data.templates).sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  /**
+   * Удаление шаблона по ID
+   */
+  static async deleteTemplate(id: string): Promise<void> {
+    const data = await this.loadData();
+    
+    if (data.templates && data.templates[id]) {
+        delete data.templates[id];
+        await this.saveData(data);
+    }
   }
 }

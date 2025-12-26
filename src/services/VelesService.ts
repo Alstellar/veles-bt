@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { BacktestResultItem } from '../types';
+
 // --- 1. ТИПЫ ДЛЯ VELES API (Payloads) ---
 
 export interface VelesCondition {
@@ -25,7 +27,7 @@ export interface VelesConfigPayload {
   exchange: string; // 'BINANCE_FUTURES'
   algorithm: 'LONG' | 'SHORT';
   
-  symbol: string;  // Основная пара (строка)
+  symbol: string;   // Основная пара (строка)
   symbols: string[]; // Массив пар (требование API)
 
   pullUp: number;
@@ -115,14 +117,28 @@ export interface BacktestStatusResponse {
 }
 
 // Интерфейс результата статистики
+// ОБНОВЛЕНО: Добавлены недостающие поля для парсинга
 export interface BacktestStats {
   netQuote: number;      // Чистый профит
   profitQuote: number;   // Грязный профит
   commissionQuote: number;
+  netQuotePerDay?: number; // <-- Добавили (Эфф. в день)
+
+  // Сделки
   totalDeals: number;
-  mfePercent: number;    // MPP
-  maePercent: number;    // MPU (Просадка)
+  profits?: number;       // <-- Добавили
+  losses?: number;        // <-- Добавили
+  breakevens?: number;    // <-- Добавили
+
+  // Просадки и пики
+  mfePercent: number;    // MPP (%)
+  maePercent: number;    // MPU (%)
+  mfeAbsolute?: number;   // <-- Добавили (USDT)
+  maeAbsolute?: number;   // <-- Добавили (USDT)
+
+  // Время
   avgDuration: number;   // Среднее время сделки (сек)
+  maxDuration?: number;   // <-- Добавили
 }
 
 // Интерфейс профиля пользователя
@@ -167,31 +183,25 @@ async function injectedCheckStatus(id: number, token: string) {
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
-async function injectedGetStats(id: number, token: string) {
+// ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ ПОЛУЧЕНИЯ СТАТИСТИКИ (Убран token из аргументов)
+async function injectedGetStats(id: number) {
   try {
-    // 1. Share
-    const shareRes = await fetch(`https://veles.finance/api/backtests/${id}/share`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "x-csrf-token": token, "X-Requested-With": "XMLHttpRequest" }
-    });
-    const shareData = await shareRes.json();
-    if (!shareRes.ok) return { success: false, error: "Share Error", debug: shareData };
-
-    const shareToken = shareData.token || shareData.slug || shareData.code || shareData.id;
-    if (!shareToken) return { success: false, error: "No Share Token", debug: shareData };
-
-    // 2. Stats
-    const statsRes = await fetch(`https://veles.finance/api/backtests/statistics/${shareToken}`, {
+    // Делаем прямой запрос к статистике по ID теста
+    const statsRes = await fetch(`https://veles.finance/api/backtests/statistics/${id}`, {
       method: "GET",
       headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" }
     });
-    if (!statsRes.ok) return { success: false, error: "Stats Error" };
 
-    return { success: true, stats: await statsRes.json(), shareToken };
+    if (!statsRes.ok) return { success: false, error: "Stats Error " + statsRes.status };
+
+    const statsData = await statsRes.json();
+    
+    const shareToken = statsData.slug || statsData.code || null;
+
+    return { success: true, stats: statsData, shareToken };
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
-// Новая инъекция для получения профиля
 async function injectedGetProfile() {
   try {
     const response = await fetch("https://veles.finance/api/me", {
@@ -200,6 +210,19 @@ async function injectedGetProfile() {
         "Accept": "application/json", 
         "X-Requested-With": "XMLHttpRequest" 
       }
+    });
+    if (response.ok) return { success: true, data: await response.json() };
+    return { success: false, error: response.status };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+// Инъекция для получения страницы статистики (BULK LOAD)
+async function injectedGetStatisticsPage(page: number, size: number) {
+  try {
+    const url = `https://veles.finance/api/backtests/statistics?page=${page}&size=${size}&sort=date,desc`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" }
     });
     if (response.ok) return { success: true, data: await response.json() };
     return { success: false, error: response.status };
@@ -255,21 +278,38 @@ export class VelesService {
     return result[0]?.result || { success: false, error: "Injection failed" };
   }
 
-  static async getStats(tabId: number, token: string, backtestId: number): Promise<{ success: boolean, stats?: BacktestStats, shareToken?: string, error?: string }> {
+  // !!! ИСПРАВЛЕНИЕ ЗДЕСЬ !!!
+  // Убрали token из аргументов метода
+  static async getStats(tabId: number, backtestId: number): Promise<{ success: boolean, stats?: BacktestStats, shareToken?: string, error?: string }> {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: injectedGetStats,
-      args: [backtestId, token]
+      // Убрали token из args
+      args: [backtestId] 
     });
     return result[0]?.result || { success: false, error: "Injection failed" };
   }
 
-  // Новый метод для получения профиля
   static async getProfile(tabId: number): Promise<{ success: boolean, data?: UserProfile, error?: string }> {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: injectedGetProfile,
     });
     return result[0]?.result || { success: false, error: "Injection failed" };
+  }
+
+  // Обертка для получения страницы статистики (BULK)
+  static async fetchStatisticsPageWrapper(tabId: number, page: number, size: number): Promise<BacktestResultItem[]> {
+      const result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: injectedGetStatisticsPage,
+        args: [page, size]
+      });
+
+      const res = result[0]?.result;
+      if (res && res.success && res.data && res.data.content) {
+          return res.data.content as BacktestResultItem[];
+      }
+      return [];
   }
 }

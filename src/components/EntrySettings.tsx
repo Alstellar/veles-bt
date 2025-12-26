@@ -128,13 +128,13 @@ export function EntrySettings({ config, onChange }: Props) {
       {/* Если пусто */}
       {config.filterSlots.length === 0 && (
           <Paper p="lg" withBorder bg="white" ta="center">
-              <Text c="dimmed" mb="sm">Условия входа не заданы. Сделка будет открываться сразу.</Text>
+              <Text c="dimmed" mb="sm">Условия входа не заданы. Добавьте хотя бы один фильтр.</Text>
               <Button 
                   variant="light" color="cyan" size="sm" 
                   leftSection={<IconPlus size={16}/>}
                   onClick={addSlot}
               >
-                  Добавить условие
+                  Добавить фильтр
               </Button>
           </Paper>
       )}
@@ -152,9 +152,9 @@ export function EntrySettings({ config, onChange }: Props) {
                 {/* Шапка группы */}
                 <Group justify="space-between" bg="cyan.0" px="md" py={8} style={{ borderBottom: '1px solid #e9ecef' }}>
                     <Group gap="xs">
-                        <Badge size="sm" radius="sm" variant="filled" color="cyan">ГРУППА {slotIndex + 1}</Badge>
+                        <Badge size="sm" radius="sm" variant="filled" color="cyan">ФИЛЬТР {slotIndex + 1}</Badge>
                         <Text size="xs" c="dimmed" lh={1.2}>
-                          Перебор вариантов (ИЛИ)
+                          Перебор вариантов для этого слота
                         </Text>
                     </Group>
                     <ActionIcon color="red" variant="subtle" size="sm" onClick={() => removeSlot(slot.id)}>
@@ -313,7 +313,7 @@ export function EntrySettings({ config, onChange }: Props) {
                         onClick={() => addVariant(slot.id)}
                         style={{ alignSelf: 'flex-start' }}
                     >
-                        Добавить вариант
+                        Добавить индикатор
                     </Button>
                 </Stack>
             </Paper>
@@ -328,7 +328,7 @@ export function EntrySettings({ config, onChange }: Props) {
                 style={{ borderStyle: 'dashed' }}
                 color="cyan"
             >
-                Добавить группу (AND)
+                Добавить фильтр
             </Button>
         )}
 

@@ -1,83 +1,71 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  Container, Title, Button, Stack, Paper, Text, ThemeIcon, Group, 
-  Progress, Badge, Modal, Code, ScrollArea, CopyButton 
+  Container, Title, Button, Stack, ThemeIcon, Group
 } from '@mantine/core';
 import { 
-  IconSettings, IconPlayerPlay, IconPlayerStop, IconCode, IconCopy, IconCheck 
+  IconSettings, IconPlayerPlay, IconDeviceFloppy, IconList, IconCalculator, IconPlayerStop
 } from '@tabler/icons-react';
-import { useDisclosure } from '@mantine/hooks';
-import dayjs from 'dayjs';
 
+// --- Импорты компонентов настроек ---
 import { StaticSettings } from '../StaticSettings';
 import { OrderSettings } from '../OrderSettings';
 import { EntrySettings } from '../EntrySettings';
 import { ExitSettings } from '../ExitSettings';
-import { ResultsTable } from '../ResultsTable';
 
+// --- Импорт новой модалки ---
+import { ResultsModal } from '../ResultsModal';
+
+// --- Сервисы и Хуки ---
 import { ConfigGenerator } from '../../services/ConfigGenerator';
-import { ValidatorService } from '../../services/ValidatorService'; // <-- ИМПОРТ ВАЛИДАТОРА
-import { useBacktestQueue } from '../../hooks/useBacktestQueue';
+import { ValidatorService } from '../../services/ValidatorService';
+import { StorageService } from '../../services/StorageService';
+import { useBacktestQueue, type QueueItem } from '../../hooks/useBacktestQueue';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig } from '../../types';
 
-export function BacktesterView() {
+// --- Интерфейс пропсов ---
+export interface BacktesterProps {
+  staticConfig: StaticConfig;
+  setStaticConfig: (v: StaticConfig) => void;
   
-  // --- STATE ---
-  const [staticConfig, setStaticConfig] = useState<StaticConfig>({
-    namePrefix: 'Test',
-    exchange: 'BINANCE_FUTURES',
-    algo: 'LONG',
-    symbol: 'HYPE',
-    deposit: 50,
-    leverage: 10,
-    marginType: 'CROSS',
-    portion: 7,
-    dateFrom: dayjs().subtract(7, 'day').toDate(),
-    dateTo: new Date(),
-    makerFee: '0.02',
-    takerFee: '0.055',
-    isPublic: true,
-    useWicks: true
-  });
+  entryConfig: EntryConfig;
+  setEntryConfig: (v: EntryConfig) => void;
+  
+  orderState: OrderState;
+  setOrderState: (v: OrderState) => void;
+  
+  exitConfig: ExitConfig;
+  setExitConfig: (v: ExitConfig) => void;
 
-  const [entryConfig, setEntryConfig] = useState<EntryConfig>({
-    filterSlots: []
-  });
+  onSaveTemplate: () => void;
+}
 
-  const [orderState, setOrderState] = useState<OrderState>({
-    mode: 'SIMPLE',
-    general: { pullUp: '0.2' },
-    simple: {
-      orders: ['10'], martingale: ['5'], indent: ['0.2'], overlap: ['15'],
-      logarithmicEnabled: true, logarithmicFactor: ['2.1'], includePosition: true
-    },
-    custom: { baseOrder: { indent: [], volume: 100 }, orders: [] },
-    signal: {
-      baseOrder: { indent: ['0'], volume: 10 },
-      indentType: 'ORDER', 
-      orders: [
-        { id: 'init-1', indent: ['0.5'], volume: 10, filterSlots: [] }, 
-        { id: 'init-2', indent: ['1.0'], volume: 20, filterSlots: [] }, 
-      ]
+export function BacktesterView({
+  staticConfig, setStaticConfig,
+  entryConfig, setEntryConfig,
+  orderState, setOrderState,
+  exitConfig, setExitConfig,
+  onSaveTemplate
+}: BacktesterProps) {
+  
+  // Подключаем хук очереди
+  const { 
+    run, stop, 
+    isRunning, progress, statusMessage, currentBatchIds,
+    logs // <-- Достаем логи из хука
+  } = useBacktestQueue();
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentBatchName, setCurrentBatchName] = useState('');
+
+  // Автоматически открываем модалку при начале тестов
+  useEffect(() => {
+    if (isRunning) {
+        setIsModalOpen(true);
     }
-  });
+  }, [isRunning]);
 
-  const [exitConfig, setExitConfig] = useState<ExitConfig>({
-    profitMode: 'SINGLE',
-    profitSingle: { percents: ['1.0'] },
-    profitMultiple: { orders: [{ id: 'init-exit-1', indent: ['1.0'], volume: 100 }], breakeven: null },
-    profitSignal: { checkPnl: ['null'], filterSlots: [] },
-    stopLoss: {
-        enabledSimple: false, indent: [], 
-        enabledSignal: false, conditionalIndent: [], conditionalIndentType: 'AVERAGE', filterSlots: []
-    }
-  });
-
-  const { isRunning, progress, results, currentStatus, startQueue, stopQueue } = useBacktestQueue();
-  const [previewOpened, { open: openPreview, close: closePreview }] = useDisclosure(false);
-  const [previewJson, setPreviewJson] = useState('');
-
-  const handleLogConfig = () => {
+  // --- ЛОГИКА ПОДСЧЕТА КОМБИНАЦИЙ И ВРЕМЕНИ ---
+  const handleCheckCount = () => {
     // 1. Entry
     let entryCombinations = 1;
     if (entryConfig.filterSlots.length > 0) {
@@ -97,9 +85,9 @@ export function BacktesterView() {
     } else {
       let sigComb = orderState.signal.baseOrder.indent.length || 1;
       orderState.signal.orders.forEach(o => {
-         let filterComb = 1;
-         if (o.filterSlots?.length > 0) filterComb = o.filterSlots.reduce((acc, slot) => acc * (slot.variants.length || 1), 1);
-         sigComb *= ((o.indent.length || 1) * filterComb);
+          let filterComb = 1;
+          if (o.filterSlots?.length > 0) filterComb = o.filterSlots.reduce((acc, slot) => acc * (slot.variants.length || 1), 1);
+          sigComb *= ((o.indent.length || 1) * filterComb);
       });
       orderCombinations = sigComb;
     }
@@ -128,122 +116,174 @@ export function BacktesterView() {
     }
 
     const totalCount = orderCombinations * entryCombinations * (profitCombinations * slCombinations);
-    alert(`Комбинаций входа: ${entryCombinations}\nКомбинаций сетки: ${orderCombinations}\nКомбинаций выхода: ${profitCombinations * slCombinations}\n\nИТОГО ТЕСТОВ: ${totalCount}`);
+    
+    // --- Подсчет времени (30 сек на тест) ---
+    const totalSeconds = totalCount * 30;
+    
+    // Форматирование времени
+    const d = Math.floor(totalSeconds / (3600 * 24));
+    const h = Math.floor((totalSeconds % (3600 * 24)) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+
+    let timeString = '';
+    if (d > 0) timeString += `${d} д `;
+    if (h > 0) timeString += `${h} ч `;
+    if (m > 0) timeString += `${m} мин`;
+    if (timeString === '') timeString = '~ 30 сек'; // Если меньше минуты
+
+    alert(
+        `📊 Анализ конфигурации:\n\n` +
+        `• Комбинаций входа: ${entryCombinations}\n` +
+        `• Комбинаций сетки: ${orderCombinations}\n` +
+        `• Комбинаций выхода: ${profitCombinations * slCombinations}\n\n` +
+        `🔢 ИТОГО ТЕСТОВ: ${totalCount}\n` +
+        `⏳ Примерное время: ${timeString}`
+    );
   };
 
-  const handlePreview = () => {
-    // 1. ВАЛИДАЦИЯ
-    const validation = ValidatorService.validate(staticConfig, entryConfig, orderState, exitConfig);
-    if (!validation.valid) {
-        alert(`❌ Ошибка валидации:\n${validation.error}`);
-        return;
-    }
-
-    // 2. ГЕНЕРАЦИЯ
-    const { configs } = ConfigGenerator.generate(staticConfig, entryConfig, orderState, exitConfig, "#DEMO");
-    if (configs.length === 0) {
-        alert("Ошибка: Конфигурации не сгенерированы.");
-        return;
-    }
-    setPreviewJson(JSON.stringify(configs[0], null, 2));
-    openPreview();
-  };
-
-  const handleRunTests = () => {
-      // 1. ВАЛИДАЦИЯ
+  const handleRunTests = async () => {
+      // 1. Валидация
       const validation = ValidatorService.validate(staticConfig, entryConfig, orderState, exitConfig);
       if (!validation.valid) {
           alert(`❌ Ошибка валидации:\n${validation.error}`);
           return;
       }
 
-      // 2. ГЕНЕРАЦИЯ
-      const { configs, batchId } = ConfigGenerator.generate(staticConfig, entryConfig, orderState, exitConfig);
+      // 2. Генерация ID группы (ПЕРЕНЕСЕНО В НАЧАЛО)
+      const batchId = `#${Math.floor(Date.now() % 1000000).toString(16).toUpperCase()}`;
+      const namePrefix = staticConfig.namePrefix || "Backtest";
+
+      // 3. Генерация конфигураций
+      // Используем #TEMP как плейсхолдер при генерации
+      const { configs } = ConfigGenerator.generate(staticConfig, entryConfig, orderState, exitConfig, "#TEMP");
+
       if (configs.length === 0) {
           alert("Ошибка: Не сгенерировано ни одной конфигурации.");
           return;
       }
 
-      // 3. ПОДТВЕРЖДЕНИЕ
-      const confirmed = window.confirm(`Сгенерирована группа ${batchId}\nКоличество тестов: ${configs.length}.\n\nЗапустить процесс?`);
+      const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\n\nЗапустить выполнение?`);
       if (!confirmed) return;
-      
-      // 4. СТАРТ
-      startQueue({ configs, batchId });
+
+      // 4. Подготовка очереди с ЗАМЕНОЙ ИМЕНИ
+      const queueItems: QueueItem[] = configs.map(cfg => {
+          // !!! ВОТ ЗДЕСЬ ИСПРАВЛЕНИЕ ИМЕНИ !!!
+          // Заменяем #TEMP на реальный batchId перед добавлением в очередь
+          const realName = cfg.name.replace('#TEMP', batchId);
+          return {
+            id: crypto.randomUUID(),
+            config: { ...cfg, name: realName }, // Подставляем обновленный конфиг
+            status: 'PENDING'
+          };
+      });
+
+      // 5. Создаем запись в истории (StorageService)
+      setCurrentBatchName(`${namePrefix} (${batchId})`);
+
+      await StorageService.saveBatch({
+          id: batchId,
+          timestamp: Date.now(),
+          namePrefix: namePrefix,
+          symbol: staticConfig.symbol,
+          exchange: staticConfig.exchange,
+          totalTests: configs.length,
+          velesIds: [] 
+      });
+
+      // 6. ЗАПУСК
+      // Передаем queueItems напрямую, чтобы избежать Race Condition
+      run(batchId, queueItems);
   };
 
   return (
     <Container size="md" py="xl" pb={100}>
-      <Group mb="lg" justify="center">
-        <ThemeIcon size="lg" variant="light" color="blue"><IconSettings size={20} /></ThemeIcon>
-        <Title order={2}>Конфигуратор Бектестов</Title>
+      
+      {/* HEADER */}
+      <Group mb="lg" justify="space-between">
+        <Group>
+            <ThemeIcon size="lg" variant="light" color="blue"><IconSettings size={20} /></ThemeIcon>
+            <Title order={2}>Конфигуратор</Title>
+        </Group>
+        <Button 
+            variant="default" 
+            leftSection={<IconDeviceFloppy size={18} />}
+            onClick={onSaveTemplate}
+            disabled={isRunning}
+        >
+            Сохранить шаблон
+        </Button>
       </Group>
 
+      {/* SETTINGS BLOCKS */}
       <Stack gap="xl">
         <StaticSettings config={staticConfig} onChange={setStaticConfig} />
         <EntrySettings config={entryConfig} onChange={setEntryConfig} />
         <OrderSettings state={orderState} onChange={setOrderState} />
         <ExitSettings config={exitConfig} onChange={setExitConfig} />
 
-        <Paper p="md" withBorder radius="md" bg="gray.0">
-             <Stack gap="md">
-                <Group grow>
-                    <Button size="md" variant="default" color="gray" onClick={handleLogConfig} disabled={isRunning}>
-                        Проверить количество
-                    </Button>
-                    <Button size="md" variant="default" color="gray" leftSection={<IconCode size={20} />} onClick={handlePreview} disabled={isRunning}>
-                        JSON (Debug)
-                    </Button>
-                    {!isRunning ? (
-                        <Button size="md" color="blue" leftSection={<IconPlayerPlay size={20} />} onClick={handleRunTests}>
-                            Запустить бектесты
-                        </Button>
-                    ) : (
-                        <Button size="md" color="red" variant="outline" leftSection={<IconPlayerStop size={20} />} onClick={stopQueue}>
-                            Остановить ({progress.current}/{progress.total})
-                        </Button>
-                    )}
-                </Group>
+        {/* ACTION BAR */}
+        <Group grow mt="md">
+            <Button 
+                size="md" 
+                color="blue" 
+                variant="light"
+                leftSection={<IconCalculator size={20} />} 
+                onClick={handleCheckCount}
+                disabled={isRunning}
+            >
+                Проверить количество
+            </Button>
 
-                {(isRunning || results.length > 0) && (
-                    <Stack gap="xs">
-                        <Group justify="space-between">
-                            <Text size="sm" fw={500}>{currentStatus}</Text>
-                            <Badge size="lg" variant="light">{progress.current} / {progress.total}</Badge>
-                        </Group>
-                        <Progress value={(progress.current / (progress.total || 1)) * 100} animated={isRunning} color={isRunning ? 'blue' : 'green'} size="md" radius="xl" />
-                    </Stack>
-                )}
-             </Stack>
-        </Paper>
+            {!isRunning ? (
+                <Button 
+                    size="md" 
+                    color="green" 
+                    leftSection={<IconPlayerPlay size={20} />} 
+                    onClick={handleRunTests}
+                >
+                    Запустить бектесты
+                </Button>
+            ) : (
+                <Button 
+                    size="md" 
+                    color="blue" 
+                    leftSection={<IconList size={20} />} 
+                    onClick={() => setIsModalOpen(true)}
+                >
+                    Открыть таблицу (Запущено...)
+                </Button>
+            )}
+        </Group>
 
-        {results.length > 0 && (
-            <Stack gap="xs">
-                <Text fw={700} size="lg">Результаты тестирования</Text>
-                <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
-                    <ResultsTable results={results} />
-                </Paper>
-            </Stack>
+        {isRunning && (
+             <Button 
+                color="red" 
+                variant="outline" 
+                fullWidth 
+                leftSection={<IconPlayerStop size={18}/>}
+                onClick={stop}
+            >
+                Остановить выполнение ({progress.current}/{progress.total})
+            </Button>
         )}
+
       </Stack>
 
-      <Modal opened={previewOpened} onClose={closePreview} title="Предпросмотр Payload (1-й вариант)" size="lg">
-         <Stack>
-             <Text size="sm" c="dimmed">Это то, что будет отправлено на сервер Veles. ID группы будет сгенерирован при реальном запуске.</Text>
-             <ScrollArea h={400} type="auto" offsetScrollbars>
-                <Code block style={{ whiteSpace: 'pre-wrap', fontSize: 11 }}>{previewJson}</Code>
-             </ScrollArea>
-             <Group justify="flex-end">
-                <CopyButton value={previewJson} timeout={2000}>
-                  {({ copied, copy }) => (
-                    <Button color={copied ? 'teal' : 'blue'} onClick={copy} leftSection={copied ? <IconCheck size={16} /> : <IconCopy size={16} />}>
-                      {copied ? 'Скопировано' : 'Копировать JSON'}
-                    </Button>
-                  )}
-                </CopyButton>
-             </Group>
-         </Stack>
-      </Modal>
+      {/* RESULTS MODAL (LIVE MODE) */}
+      <ResultsModal 
+         opened={isModalOpen} 
+         onClose={() => setIsModalOpen(false)} 
+         title={currentBatchName || 'Результаты'}
+         targetIds={currentBatchIds}
+         
+         // Props для Live режима
+         isLive={isRunning}
+         status={statusMessage}
+         progress={progress}
+         onStop={stop}
+         logs={logs} // <-- Передаем логи в модалку
+      />
+      
     </Container>
   );
 }

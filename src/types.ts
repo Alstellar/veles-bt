@@ -43,7 +43,7 @@ export interface StaticConfig {
   namePrefix: string;
   exchange: ExchangeType;
   algo: AlgoType;
-  symbol: string;      
+  symbol: string;       
   deposit: number;
   leverage: number;
   marginType: MarginType;
@@ -130,10 +130,10 @@ export interface OrderGeneralConfig {
 }
 
 export interface OrderSimpleConfig {
-  orders: string[];      
-  martingale: string[];  
-  indent: string[];      
-  overlap: string[];     
+  orders: string[];       
+  martingale: string[];   
+  indent: string[];       
+  overlap: string[];      
   logarithmicEnabled: boolean; 
   logarithmicFactor: string[]; 
   includePosition: boolean;
@@ -243,7 +243,7 @@ export interface BatchInfo {
 
 export interface StorageData {
   batches: Record<string, BatchInfo>; // Key = Batch ID
-  templates?: Record<string, any>;    // Задел на будущее
+  templates?: Record<string, Template>;
 }
 
 
@@ -279,3 +279,58 @@ export interface ExitConfig {
 export const isSpot = (exchange: ExchangeType): boolean => {
   return exchange === 'BINANCE' || exchange.includes('_SPOT');
 };
+
+
+// --- ШАБЛОНЫ (TEMPLATES) ---
+export interface Template {
+  id: string;        // Уникальный ID (uuid)
+  name: string;      // Название шаблона (вводит юзер)
+  timestamp: number; // Дата создания
+  description?: string; // Опциональное описание
+  
+  // Полный слепок конфигурации
+  config: {
+    staticConfig: StaticConfig;
+    entryConfig: EntryConfig;
+    orderState: OrderState;
+    exitConfig: ExitConfig;
+  };
+}
+
+// --- БАЗА ДАННЫХ И СИНХРОНИЗАЦИЯ (IndexedDB) ---
+
+// Результат одиночного теста (как он приходит от Veles API /statistics)
+// Содержит все поля, необходимые для построения таблицы как у конкурента
+export interface BacktestResultItem {
+  id: number;
+  name: string;
+  date: string;       // ISO String "2025-12-25T..." (дата создания)
+  from: string;       // ISO String (дата начала периода теста)
+  to: string;         // ISO String (дата конца периода теста)
+  symbol: string;
+  algorithm: 'LONG' | 'SHORT';
+  exchange: string;
+
+  // Прибыль
+  profitQuote: number | null; // Total Profit USDT
+  profitBase: number | null;  // Profit in coin (для спота)
+  netQuote: number | null;    // Чистый профит (Net)
+  netQuotePerDay: number | null; // Net / день
+  
+  // Просадки и Пики (MAE / MFE)
+  maePercent: number | null;  // МПУ %
+  maeAbsolute: number | null; // МПУ $
+  mfePercent: number | null;  // МПП %
+  mfeAbsolute: number | null; // МПП $
+
+  // Сделки
+  totalDeals: number | null;
+  profits: number | null;
+  losses: number | null;
+  breakevens: number | null;
+  
+  // Время
+  duration: number | null;    // Диапазон теста в секундах (не время выполнения!)
+  maxDuration: number | null; // Макс время в сделке (сек)
+  avgDuration: number | null; // Среднее время в сделке (сек)
+}

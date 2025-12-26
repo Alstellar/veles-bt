@@ -137,7 +137,7 @@ export function ProfitSignal({ config, onChange }: Props) {
                     leftSection={<IconPlus size={16}/>}
                     onClick={addSlot}
                 >
-                    Добавить фильтр (Группу)
+                    Добавить фильтр
                 </Button>
             </Paper>
         )}
@@ -167,7 +167,7 @@ export function ProfitSignal({ config, onChange }: Props) {
                     
                     {slot.variants.length === 0 && (
                         <Text size="xs" c="dimmed" fs="italic" ta="center" py="xs">
-                            Нет вариантов в группе.
+                            Нет индикаторов в группе.
                         </Text>
                     )}
 
@@ -278,7 +278,7 @@ export function ProfitSignal({ config, onChange }: Props) {
                         onClick={() => addVariant(slot.id)}
                         style={{ alignSelf: 'flex-start' }}
                     >
-                        Добавить вариант
+                        Добавить индикатор
                     </Button>
                 </Stack>
             </Paper>
@@ -293,7 +293,7 @@ export function ProfitSignal({ config, onChange }: Props) {
                 style={{ borderStyle: 'dashed' }}
                 color="cyan"
             >
-                Добавить фильтр (AND)
+                Добавить фильтр
             </Button>
         )}
       </Stack>
