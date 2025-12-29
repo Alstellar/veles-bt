@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { 
-    AppShell, Stack, Group, ThemeIcon, Text, NavLink, Modal, TextInput, Button 
+    AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image 
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
-    IconRocket, IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, IconCheck 
+    IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, IconCheck 
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -101,7 +101,6 @@ export function MainLayout() {
   // --- LOAD TEMPLATE LOGIC ---
   const handleLoadTemplate = (template: Template) => {
       // 1. Восстанавливаем стейт
-      // Важно: даты нужно восстановить из строк (JSON) обратно в объекты Date
       const restoredStatic = {
           ...template.config.staticConfig,
           dateFrom: new Date(template.config.staticConfig.dateFrom),
@@ -125,7 +124,13 @@ export function MainLayout() {
       <AppShell.Navbar p="xs">
          <Stack gap="xs">
             <Group px="md" py="xs" mb="sm">
-                <ThemeIcon variant="light" color="blue" size="lg"><IconRocket/></ThemeIcon>
+                {/* ЗАМЕНА ЛОГОТИПА */}
+                <Image 
+                    src="/icons/icon-128.png" 
+                    w={32} 
+                    h={32} 
+                    radius="sm" 
+                />
                 <Text fw={700} size="lg">Veles Helper</Text>
             </Group>
 

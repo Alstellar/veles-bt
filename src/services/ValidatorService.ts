@@ -1,3 +1,4 @@
+// src/services/ValidatorService.ts
 import type { 
   StaticConfig, OrderState, EntryConfig, ExitConfig 
 } from '../types';
@@ -60,27 +61,61 @@ export class ValidatorService {
     }
     else if (orderState.mode === 'CUSTOM') {
         const c = orderState.custom;
-        if (c.baseOrder.volume <= 0) return { valid: false, error: 'Сетка (Custom): Объем базового ордера должен быть > 0.' };
         
-        if (c.orders.length === 0) return { valid: false, error: 'Сетка (Custom): Не добавлено ни одного страховочного ордера.' };
+        let totalVol = 0;
+
+        if (c.orders.length === 0) {
+             return { valid: false, error: 'Сетка (Custom): Не добавлено ни одного ордера.' };
+        }
 
         for (let i = 0; i < c.orders.length; i++) {
             const o = c.orders[i];
+            
             if (o.volume <= 0) return { valid: false, error: `Сетка (Custom): Ордер #${i+1} имеет некорректный объем.` };
             if (!hasValues(o.indent)) return { valid: false, error: `Сетка (Custom): Ордер #${i+1} не имеет отступа.` };
+            
+            totalVol += o.volume;
+        }
+
+        // Проверка суммы (с допуском для float)
+        if (Math.abs(totalVol - 100) > 0.1) {
+            return { valid: false, error: `Сетка (Custom): Сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(2)}%).` };
         }
     }
     else if (orderState.mode === 'SIGNAL') {
         const s = orderState.signal;
+
+        // 1. Базовый ордер обязателен
         if (s.baseOrder.volume <= 0) return { valid: false, error: 'Сетка (Signal): Объем базового ордера должен быть > 0.' };
         
+        // 2. Страховочные ордера обязательны (хотя бы один)
         if (s.orders.length === 0) return { valid: false, error: 'Сетка (Signal): Не добавлено ни одного страховочного ордера.' };
+
+        // 3. Считаем общую сумму и ПРОВЕРЯЕМ ФИЛЬТРЫ
+        let totalVol = s.baseOrder.volume;
 
         for (let i = 0; i < s.orders.length; i++) {
             const o = s.orders[i];
+            
+            // Проверка объема и отступа
             if (o.volume <= 0) return { valid: false, error: `Сетка (Signal): Ордер #${i+1} имеет некорректный объем.` };
             if (!hasValues(o.indent)) return { valid: false, error: `Сетка (Signal): Ордер #${i+1} не имеет отступа.` };
-            // Индикаторы для сеток по сигналу не обязательны (может быть просто лимитка), поэтому не проверяем filterSlots
+            
+            // --- ПРОВЕРКА ФИЛЬТРОВ (НОВОЕ) ---
+            const hasFilters = o.filterSlots && 
+                               o.filterSlots.length > 0 && 
+                               o.filterSlots.some(slot => slot.variants.length > 0);
+
+            if (!hasFilters) {
+                return { valid: false, error: `Сетка (Signal): Ордер #${i+1} не имеет настроенных фильтров (индикаторов).` };
+            }
+            
+            totalVol += o.volume;
+        }
+
+        // Проверка суммы
+        if (Math.abs(totalVol - 100) > 0.1) {
+             return { valid: false, error: `Сетка (Signal): Сумма объемов (Базовый + Страховочные) должна быть 100% (сейчас ${totalVol.toFixed(2)}%).` };
         }
     }
 
@@ -104,18 +139,15 @@ export class ValidatorService {
            if (o.volume <= 0) return { valid: false, error: `Тейк-профит (Свой): Ордер #${i+1} имеет некорректный объем.` };
            totalVol += o.volume;
        }
-       // Проверка суммы объемов (допускаем погрешность float)
        if (Math.abs(totalVol - 100) > 0.1) {
            return { valid: false, error: `Тейк-профит (Свой): Сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(1)}%).` };
        }
     }
     else if (exitCfg.profitMode === 'SIGNAL') {
        const s = exitCfg.profitSignal;
-       // PnL массив не должен быть пустым (значения 'null' допустимы, но сам массив должен быть заполнен)
        if (s.checkPnl.length === 0) return { valid: false, error: 'Тейк-профит (Сигнал): Не выбраны варианты PnL.' };
        
        const hasInd = s.filterSlots.length > 0 && s.filterSlots.some(slot => slot.variants.length > 0);
-       // Veles требует индикаторы, если выбран режим по сигналу (даже если PnL=null)
        if (!hasInd) return { valid: false, error: 'Тейк-профит (Сигнал): Не добавлены индикаторы.' };
     }
 
@@ -127,7 +159,6 @@ export class ValidatorService {
     }
 
     if (exitCfg.stopLoss.enabledSignal) {
-        // Проверка PnL (conditionalIndent)
         if (exitCfg.stopLoss.conditionalIndent.length === 0) {
             return { valid: false, error: 'Стоп-лосс (Сигнал): Не выбраны варианты мин. отступа (или "Отключено").' };
         }

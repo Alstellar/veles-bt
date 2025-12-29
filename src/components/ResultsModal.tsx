@@ -1,7 +1,8 @@
+// src/components/ResultsModal.tsx
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { 
   Modal, Table, Badge, Group, Text, ScrollArea, Loader, Stack, 
-  ActionIcon, Menu, Checkbox, UnstyledButton, Center, Progress, Button
+  ActionIcon, Menu, Checkbox, UnstyledButton, Center, Progress, Button, Anchor
 } from '@mantine/core';
 import { 
   IconSelector, IconChevronDown, IconChevronUp, IconColumns, IconPlayerStop, IconTerminal2
@@ -28,7 +29,7 @@ interface Props {
   status?: string;
   progress?: { current: number; total: number };
   onStop?: () => void;
-  logs?: string[]; // <-- НОВЫЙ ПРОП: Массив логов
+  logs?: string[]; 
 }
 
 // --- Русские названия столбцов ---
@@ -74,9 +75,13 @@ const formatDate = (iso: string) => dayjs(iso).format('DD.MM.YYYY');
 type SortKey = keyof BacktestResultItem | 'winRate' | 'netPerDay';
 interface SortState { key: SortKey; reversed: boolean; }
 
+/**
+ * Компонент модального окна с результатами тестов.
+ * Отображает таблицу, прогресс выполнения (в Live режиме) и логи.
+ */
 export function ResultsModal({ 
   opened, onClose, title, targetIds, 
-  isLive, status, progress, onStop, logs = [] // <-- Дефолтное значение
+  isLive, status, progress, onStop, logs = [] 
 }: Props) {
   
   const [loading, setLoading] = useState(false);
@@ -99,7 +104,6 @@ export function ResultsModal({
   // Эффект автоскролла
   useEffect(() => {
     if (opened && logs.length > 0 && viewport.current) {
-        // Скроллим вниз при добавлении новых логов
         viewport.current.scrollTo({ top: viewport.current.scrollHeight, behavior: 'smooth' });
     }
   }, [logs, opened]);
@@ -164,7 +168,7 @@ export function ResultsModal({
     );
   };
 
-  // Условие отображения блока: если идет тест ИЛИ если есть логи (чтобы блок не пропадал после финиша)
+  // Условие отображения блока: если идет тест ИЛИ если есть логи
   const showStatusBlock = (isLive || (logs && logs.length > 0)) && progress;
 
   return (
@@ -213,7 +217,6 @@ export function ResultsModal({
                       {logs.length === 0 ? (
                           <Text size="xs" c="dimmed" fs="italic">Ожидание событий...</Text>
                       ) : (
-                          // Текст темный (dark.3), фон светлый
                           logs.map((log, idx) => (
                               <Text key={idx} size="xs" c="dark.3" style={{ fontFamily: 'monospace', lineHeight: 1.3 }}>
                                  <span style={{ opacity: 0.5, marginRight: 8, userSelect: 'none' }}>{dayjs().format('HH:mm:ss')}</span> 
@@ -287,8 +290,26 @@ export function ResultsModal({
                   {visibleColumns.name && (
                       <Table.Td>
                         <Stack gap={2}>
-                            <Text fw={600} size="sm" lineClamp={1} title={row.name} style={{maxWidth: 200}}>{row.name}</Text>
-                            <Text size="xs" c="dimmed">ID: {row.id}</Text>
+                            {/* truncate="end" -> text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+                                maxWidth: '25vw' -> динамическая ширина 25% от экрана
+                            */}
+                            <Text 
+                                fw={600} 
+                                size="sm" 
+                                title={row.name} 
+                                truncate="end" 
+                                style={{ maxWidth: '25vw' }}
+                            >
+                                {row.name}
+                            </Text>
+                            <Anchor 
+                                href={`https://veles.finance/cabinet/backtests/${row.id}`} 
+                                target="_blank" 
+                                size="xs" 
+                                underline="hover"
+                            >
+                                ID: {row.id}
+                            </Anchor>
                         </Stack>
                       </Table.Td>
                   )}
@@ -316,7 +337,7 @@ export function ResultsModal({
                   )}
                   {visibleColumns.effDay && (
                       <Table.Td>
-                         <Text size="sm" c={(row.netQuotePerDay||0)>=0 ? 'teal' : 'red'}>{formatMoney(row.netQuotePerDay)}</Text>
+                          <Text size="sm" c={(row.netQuotePerDay||0)>=0 ? 'teal' : 'red'}>{formatMoney(row.netQuotePerDay)}</Text>
                       </Table.Td>
                   )}
                   {visibleColumns.deals && (

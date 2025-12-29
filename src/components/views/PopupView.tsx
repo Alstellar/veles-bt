@@ -1,5 +1,5 @@
-import { Paper, Center, ThemeIcon, Title, Text, Button } from '@mantine/core';
-import { IconRocket, IconExternalLink } from '@tabler/icons-react';
+import { Paper, Center, Title, Text, Button, Image } from '@mantine/core';
+import { IconExternalLink } from '@tabler/icons-react';
 
 export function PopupView() {
   const openFullTab = () => {
@@ -13,9 +13,16 @@ export function PopupView() {
   return (
     <Center h={600} bg="gray.1" p="md">
       <Paper shadow="md" p="xl" radius="md" w="100%" withBorder ta="center">
-        <ThemeIcon size={60} radius="xl" color="blue" variant="light" mb="md">
-          <IconRocket size={34} />
-        </ThemeIcon>
+        
+        <Image 
+            src="/icons/icon-128.png" 
+            w={80} 
+            h={80} 
+            mx="auto" 
+            mb="md" 
+            radius="md" 
+        />
+        
         <Title order={3} mb="sm">Veles Helper</Title>
         <Text size="sm" c="dimmed" mb="xl">
           Конфигуратор параметров для поиска эффективных стратегий.
