@@ -1,10 +1,12 @@
+// src/components/MainLayout.tsx
 import { useState } from 'react';
 import { 
-    AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image 
+    AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image, Divider, Anchor
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
-    IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, IconCheck 
+    IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, IconCheck, 
+    IconBrandGithub, IconBrandTelegram
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -19,7 +21,7 @@ import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template } from
 export function MainLayout() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
-  // --- GLOBAL STATE (Lifted from BacktesterView) ---
+  // --- GLOBAL STATE ---
   const [staticConfig, setStaticConfig] = useState<StaticConfig>({
     namePrefix: 'Test',
     exchange: 'BINANCE_FUTURES',
@@ -100,7 +102,6 @@ export function MainLayout() {
 
   // --- LOAD TEMPLATE LOGIC ---
   const handleLoadTemplate = (template: Template) => {
-      // 1. Восстанавливаем стейт
       const restoredStatic = {
           ...template.config.staticConfig,
           dateFrom: new Date(template.config.staticConfig.dateFrom),
@@ -112,7 +113,6 @@ export function MainLayout() {
       setOrderState(template.config.orderState);
       setExitConfig(template.config.exitConfig);
 
-      // 2. Переключаем вкладку
       setActiveTab('backtester');
   };
 
@@ -121,10 +121,11 @@ export function MainLayout() {
       navbar={{ width: 250, breakpoint: 'sm' }}
       padding="md"
     >
-      <AppShell.Navbar p="xs">
-         <Stack gap="xs">
+      <AppShell.Navbar p="xs" style={{ display: 'flex', flexDirection: 'column' }}>
+          
+          {/* ВЕРХНЯЯ ЧАСТЬ (Меню) */}
+          <Stack gap="xs" style={{ flex: 1 }}>
             <Group px="md" py="xs" mb="sm">
-                {/* ЗАМЕНА ЛОГОТИПА */}
                 <Image 
                     src="/icons/icon-128.png" 
                     w={32} 
@@ -162,7 +163,42 @@ export function MainLayout() {
                 onClick={() => setActiveTab('history')}
                 variant="light"
             />
-         </Stack>
+          </Stack>
+
+          {/* НИЖНЯЯ ЧАСТЬ (Контакты) */}
+          <Stack gap={0} mt="md">
+             <Divider mb="sm" />
+             
+             {/* Блок контактов */}
+             <Stack gap={6} px="xs" mb="xs">
+                 
+                 {/* Telegram */}
+                 <Group gap={8} wrap="nowrap">
+                    <IconBrandTelegram size={16} style={{ opacity: 0.7 }} />
+                    <Group gap={4} gap-xs={0}>
+                        <Text size="xs">Разработчик:</Text>
+                        <Anchor href="https://t.me/alstellar" target="_blank" size="xs" fw={600}>
+                            @Alstellar
+                        </Anchor>
+                    </Group>
+                 </Group>
+
+                 {/* GitHub */}
+                 <Group gap={8} wrap="nowrap">
+                    <IconBrandGithub size={16} style={{ opacity: 0.7 }} />
+                    <Group gap={4}>
+                        <Text size="xs">GitHub:</Text>
+                        <Anchor href="https://github.com/Alstellar/veles-bt" target="_blank" size="xs" fw={600}>
+                            Veles-Helper
+                        </Anchor>
+                    </Group>
+                 </Group>
+
+             </Stack>
+
+             <Text size="10px" c="dimmed" ta="center">v1.0.0 Open Source</Text>
+          </Stack>
+
       </AppShell.Navbar>
 
       <AppShell.Main bg="gray.0">

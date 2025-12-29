@@ -164,8 +164,8 @@ export class ConfigGenerator {
       const ticker = pair.split('/')[0];
 
       // --- NAME GENERATION ---
-      // Format: "{UserPrefix} {Ticker} | {i}/{N} | VelesBT {BatchID}"
-      const testName = `${staticCfg.namePrefix} ${ticker} | ${index}/${total} | VelesBT ${batchId}`;
+      // Format: "{UserPrefix} {Ticker} | {i}/{N} | Veles Helper {BatchID}"
+      const testName = `${staticCfg.namePrefix} ${ticker} | ${index}/${total} | Veles Helper ${batchId}`;
 
       // 1. Conditions
       const conditions: VelesCondition[] = [];
