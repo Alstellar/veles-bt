@@ -48,7 +48,6 @@
 Есть идеи по улучшению или нашли ошибку? Пишите!
 
 [![Telegram](https://img.shields.io/badge/Telegram-@Alstellar-blue?style=for-the-badge&logo=telegram)](https://t.me/alstellar)
-[![GitHub](https://img.shields.io/badge/GitHub-Veles_Helper-black?style=for-the-badge&logo=github)](https://github.com/Alstellar/veles-bt)
 
 **Developed with ❤️ by Alstellar**
 
