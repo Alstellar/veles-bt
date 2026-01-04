@@ -34,6 +34,19 @@ export class ValidatorService {
     if (isNaN(maker) || maker < 0) return { valid: false, error: 'Базовые: Некорректная комиссия Maker.' };
     if (isNaN(taker) || taker < 0) return { valid: false, error: 'Базовые: Некорректная комиссия Taker.' };
 
+    // --- ДАТЫ (ПРОВЕРКА) ---
+    // Проверяем, что даты существуют и являются валидными объектами Date
+    if (!staticCfg.dateFrom || isNaN(staticCfg.dateFrom.getTime())) {
+        return { valid: false, error: 'Базовые: Некорректная Дата начала. Пожалуйста, выберите дату заново.' };
+    }
+    if (!staticCfg.dateTo || isNaN(staticCfg.dateTo.getTime())) {
+        return { valid: false, error: 'Базовые: Некорректная Дата конца. Пожалуйста, выберите дату заново.' };
+    }
+    // Проверка логики дат
+    if (staticCfg.dateFrom >= staticCfg.dateTo) {
+        return { valid: false, error: 'Базовые: Дата начала должна быть раньше Даты конца.' };
+    }
+
 
     // --- 2. ENTRY CONFIG (Вход) ---
     const hasEntryConditions = entryCfg.filterSlots.length > 0 && 

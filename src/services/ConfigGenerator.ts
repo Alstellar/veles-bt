@@ -1,9 +1,12 @@
+// src/services/ConfigGenerator.ts
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { 
   StaticConfig, OrderState, EntryConfig, ExitConfig, 
   Condition 
 } from '../types';
 import type { VelesConfigPayload, VelesCondition, VelesOrder } from './VelesService';
+import { FILTERS_LIBRARY } from '../filtersLibrary';
 
 // --- HELPERS ---
 
@@ -31,14 +34,46 @@ function cartesian(args: Record<string, any[]>): Record<string, any>[] {
   });
 }
 
+/**
+ * Преобразование внутреннего условия (Condition) в формат API Veles.
+ * Выполняет очистку неиспользуемых полей на основе FILTERS_LIBRARY.
+ */
 function convertCondition(c: Condition): VelesCondition {
+  const code = c.indicator || 'RSI';
+
+  // --- СПЕЦИАЛЬНЫЙ КЕЙС: PRICE ---
+  // У Veles это отдельный тип условия, отличающийся от индикаторов
+  if (code === 'PRICE') {
+      return {
+          type: 'PRICE', // Важно: тип именно PRICE, а не INDICATOR
+          value: c.value ? Number(c.value) : 0,
+          operation: c.operation || 'GREATER'
+      } as any;
+  }
+
+  // --- СТАНДАРТНАЯ ЛОГИКА (INDICATOR) ---
+  const def = FILTERS_LIBRARY[code];
+
+  // Проверяем настройки из библиотеки. 
+  // Если определения нет (fallback), считаем что поля разрешены.
+  const allowValue = def ? def.settings.hasValue : true;
+  const allowOp = def ? def.settings.hasOperation : true;
+
+  const isBasic = c.basic || false;
+
   return {
     type: 'INDICATOR',
-    indicator: c.indicator || 'RSI', 
+    indicator: code, 
     interval: c.interval || 'FIVE_MINUTES',
-    basic: c.basic || false,
-    value: (c.basic) ? null : (c.value ? Number(c.value) : null),
-    operation: (c.basic) ? null : (c.operation || null),
+    basic: isBasic,
+    
+    // ЛОГИКА ОЧИСТКИ:
+    // Если включен Basic (карандашик) ИЛИ индикатор не поддерживает ввод числа -> null
+    value: (isBasic || !allowValue) ? null : (c.value ? Number(c.value) : null),
+    
+    // Если включен Basic ИЛИ индикатор не поддерживает операции (</>) -> null
+    operation: (isBasic || !allowOp) ? null : (c.operation || null),
+    
     closed: c.closed !== undefined ? c.closed : true,
     reverse: c.reverse || false
   };
@@ -47,8 +82,7 @@ function convertCondition(c: Condition): VelesCondition {
 export class ConfigGenerator {
 
   /**
-   * Генерация конфигураций
-   * @param existingBatchId - если передан, используем его (для догенерации), иначе создаем новый
+   * Генерация списка конфигураций (Payloads) на основе перебора параметров.
    */
   static generate(
     staticCfg: StaticConfig,
@@ -83,13 +117,12 @@ export class ConfigGenerator {
         }
     } 
     else if (orderState.mode === 'CUSTOM') {
-        if (orderState.custom.baseOrder.indent.length) {
-             space['o_cust_base_indent'] = orderState.custom.baseOrder.indent;
-        }
+        // Логика для CUSTOM: перебираем все ордера в едином массиве.
+        // Если у ордера задано несколько вариантов отступа - добавляем в перебор.
         orderState.custom.orders.forEach((o) => {
-            if (o.indent.length) {
-                space[`o_cust_ord_${o.id}_indent`] = o.indent;
-            }
+             if (o.indent.length > 0) {
+                 space[`o_cust_ord_${o.id}_indent`] = o.indent;
+             }
         });
     }
     else if (orderState.mode === 'SIGNAL') {
@@ -135,11 +168,11 @@ export class ConfigGenerator {
         });
     }
 
-    // 3. Combinations
+    // 3. Комбинации (Декартово произведение)
     const combinations = cartesian(space);
     const total = combinations.length;
 
-    // 4. Payload generation with correct Naming
+    // 4. Сборка итоговых конфигов
     const configs = combinations.map((comb, index) => {
         return this.buildPayload(staticCfg, orderState, exitCfg, comb, index + 1, total, batchId);
     });
@@ -147,6 +180,9 @@ export class ConfigGenerator {
     return { configs, batchId };
   }
 
+  /**
+   * Сборка одного конкретного конфига из комбинации параметров.
+   */
   private static buildPayload(
     staticCfg: StaticConfig,
     orderState: OrderState,
@@ -157,17 +193,15 @@ export class ConfigGenerator {
     batchId: string
   ): VelesConfigPayload {
       
-      // Symbol Logic
+      // Логика тикера
       let pair = staticCfg.symbol.trim().toUpperCase();
       if (!pair.includes('/')) pair = `${pair}/USDT`;
-      // Чистый тикер для имени (HYPE)
       const ticker = pair.split('/')[0];
 
-      // --- NAME GENERATION ---
-      // Format: "{UserPrefix} {Ticker} | {i}/{N} | Veles Helper {BatchID}"
+      // Формирование имени
       const testName = `${staticCfg.namePrefix} ${ticker} | ${index}/${total} | Veles Helper ${batchId}`;
 
-      // 1. Conditions
+      // 1. Условия входа
       const conditions: VelesCondition[] = [];
       Object.keys(comb).forEach(k => {
           if (k.startsWith('entry_slot_')) {
@@ -175,7 +209,7 @@ export class ConfigGenerator {
           }
       });
 
-      // 2. Settings
+      // 2. Настройки сетки (Settings)
       let settings: any = { includePosition: true };
       let pullUpVal = parseFloat(orderState.general.pullUp);
       if (isNaN(pullUpVal)) pullUpVal = 0.2; 
@@ -203,14 +237,22 @@ export class ConfigGenerator {
               includePosition: true,
               orders: [] as any[]
           };
-          const baseIndent = Number(comb['o_cust_base_indent'] || 0);
-          settings.orders.push({
-              indent: baseIndent,
-              volume: orderState.custom.baseOrder.volume
-          });
+          
+          // Проходим по единому списку ордеров
           orderState.custom.orders.forEach(o => {
+              // Пытаемся найти значение в комбинации (если был Grid Search)
+              const combKey = `o_cust_ord_${o.id}_indent`;
+              let indentVal = 0;
+
+              if (comb[combKey] !== undefined) {
+                  indentVal = Number(comb[combKey]);
+              } else if (o.indent.length > 0) {
+                  // Фолбек: если вариаций нет, берем первое значение
+                  indentVal = Number(o.indent[0]);
+              }
+
               settings.orders.push({
-                  indent: Number(comb[`o_cust_ord_${o.id}_indent`]),
+                  indent: indentVal,
                   volume: o.volume
               });
           });
@@ -240,7 +282,7 @@ export class ConfigGenerator {
           });
       }
 
-      // 3. Profit
+      // 3. Тейк-профит (Profit)
       const profit: any = { currency: 'QUOTE' };
       if (exitCfg.profitMode === 'SINGLE') {
           profit.type = 'SINGLE';
@@ -266,7 +308,7 @@ export class ConfigGenerator {
           profit.conditions = pConditions;
       }
 
-      // 4. Stop Loss
+      // 4. Стоп-лосс (Stop Loss)
       let stopLoss: any = undefined;
       const simpleSLVal = exitCfg.stopLoss.enabledSimple ? comb['sl_simple_indent'] : null;
       const signalSLVal = exitCfg.stopLoss.enabledSignal ? comb['sl_sig_indent'] : null;

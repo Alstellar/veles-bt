@@ -1,3 +1,4 @@
+// src/components/views/BacktesterView.tsx
 import { useState, useEffect } from 'react';
 import { 
   Container, Title, Button, Stack, ThemeIcon, Group
@@ -11,9 +12,10 @@ import { StaticSettings } from '../StaticSettings';
 import { OrderSettings } from '../OrderSettings';
 import { EntrySettings } from '../EntrySettings';
 import { ExitSettings } from '../ExitSettings';
-
-// --- Импорт новой модалки ---
 import { ResultsModal } from '../ResultsModal';
+
+// --- КОМПОНЕНТ ДЕБАГА ---
+// import { DebugTools } from '../DebugTools';
 
 // --- Сервисы и Хуки ---
 import { ConfigGenerator } from '../../services/ConfigGenerator';
@@ -22,20 +24,15 @@ import { StorageService } from '../../services/StorageService';
 import { useBacktestQueue, type QueueItem } from '../../hooks/useBacktestQueue';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig } from '../../types';
 
-// --- Интерфейс пропсов ---
 export interface BacktesterProps {
   staticConfig: StaticConfig;
   setStaticConfig: (v: StaticConfig) => void;
-  
   entryConfig: EntryConfig;
   setEntryConfig: (v: EntryConfig) => void;
-  
   orderState: OrderState;
   setOrderState: (v: OrderState) => void;
-  
   exitConfig: ExitConfig;
   setExitConfig: (v: ExitConfig) => void;
-
   onSaveTemplate: () => void;
 }
 
@@ -47,17 +44,15 @@ export function BacktesterView({
   onSaveTemplate
 }: BacktesterProps) {
   
-  // Подключаем хук очереди
   const { 
     run, stop, 
     isRunning, progress, statusMessage, currentBatchIds,
-    logs // <-- Достаем логи из хука
+    logs 
   } = useBacktestQueue();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentBatchName, setCurrentBatchName] = useState('');
 
-  // Автоматически открываем модалку при начале тестов
   useEffect(() => {
     if (isRunning) {
         setIsModalOpen(true);
@@ -77,12 +72,22 @@ export function BacktesterView({
     if (orderState.mode === 'SIMPLE') {
        const s = orderState.simple;
        orderCombinations = s.orders.length * s.martingale.length * s.indent.length * s.overlap.length * (s.logarithmicEnabled && s.logarithmicFactor.length ? s.logarithmicFactor.length : 1);
-    } else if (orderState.mode === 'CUSTOM') {
+    } 
+    else if (orderState.mode === 'CUSTOM') {
       const c = orderState.custom;
-      let customComb = c.baseOrder.indent.length || 1;
-      c.orders.forEach(o => { customComb *= (o.indent.length || 1); });
+      let customComb = 1;
+      if (c.orders.length > 0) {
+          c.orders.forEach(o => {
+              const variants = o.indent.length || 1;
+              customComb *= variants;
+          });
+      } else {
+          customComb = 0;
+      }
       orderCombinations = customComb;
-    } else {
+    } 
+    else {
+      // SIGNAL Mode
       let sigComb = orderState.signal.baseOrder.indent.length || 1;
       orderState.signal.orders.forEach(o => {
           let filterComb = 1;
@@ -117,10 +122,7 @@ export function BacktesterView({
 
     const totalCount = orderCombinations * entryCombinations * (profitCombinations * slCombinations);
     
-    // --- Подсчет времени (30 сек на тест) ---
     const totalSeconds = totalCount * 30;
-    
-    // Форматирование времени
     const d = Math.floor(totalSeconds / (3600 * 24));
     const h = Math.floor((totalSeconds % (3600 * 24)) / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
@@ -129,7 +131,7 @@ export function BacktesterView({
     if (d > 0) timeString += `${d} д `;
     if (h > 0) timeString += `${h} ч `;
     if (m > 0) timeString += `${m} мин`;
-    if (timeString === '') timeString = '~ 30 сек'; // Если меньше минуты
+    if (timeString === '') timeString = '~ 30 сек';
 
     alert(
         `📊 Анализ конфигурации:\n\n` +
@@ -142,19 +144,15 @@ export function BacktesterView({
   };
 
   const handleRunTests = async () => {
-      // 1. Валидация
       const validation = ValidatorService.validate(staticConfig, entryConfig, orderState, exitConfig);
       if (!validation.valid) {
           alert(`❌ Ошибка валидации:\n${validation.error}`);
           return;
       }
 
-      // 2. Генерация ID группы (ПЕРЕНЕСЕНО В НАЧАЛО)
       const batchId = `#${Math.floor(Date.now() % 1000000).toString(16).toUpperCase()}`;
       const namePrefix = staticConfig.namePrefix || "Backtest";
 
-      // 3. Генерация конфигураций
-      // Используем #TEMP как плейсхолдер при генерации
       const { configs } = ConfigGenerator.generate(staticConfig, entryConfig, orderState, exitConfig, "#TEMP");
 
       if (configs.length === 0) {
@@ -165,19 +163,15 @@ export function BacktesterView({
       const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\n\nЗапустить выполнение?`);
       if (!confirmed) return;
 
-      // 4. Подготовка очереди с ЗАМЕНОЙ ИМЕНИ
       const queueItems: QueueItem[] = configs.map(cfg => {
-          // !!! ВОТ ЗДЕСЬ ИСПРАВЛЕНИЕ ИМЕНИ !!!
-          // Заменяем #TEMP на реальный batchId перед добавлением в очередь
           const realName = cfg.name.replace('#TEMP', batchId);
           return {
             id: crypto.randomUUID(),
-            config: { ...cfg, name: realName }, // Подставляем обновленный конфиг
+            config: { ...cfg, name: realName },
             status: 'PENDING'
           };
       });
 
-      // 5. Создаем запись в истории (StorageService)
       setCurrentBatchName(`${namePrefix} (${batchId})`);
 
       await StorageService.saveBatch({
@@ -190,38 +184,43 @@ export function BacktesterView({
           velesIds: [] 
       });
 
-      // 6. ЗАПУСК
-      // Передаем queueItems напрямую, чтобы избежать Race Condition
       run(batchId, queueItems);
   };
 
   return (
     <Container size="md" py="xl" pb={100}>
-      
-      {/* HEADER */}
       <Group mb="lg" justify="space-between">
         <Group>
             <ThemeIcon size="lg" variant="light" color="blue"><IconSettings size={20} /></ThemeIcon>
             <Title order={2}>Конфигуратор</Title>
         </Group>
-        <Button 
-            variant="default" 
-            leftSection={<IconDeviceFloppy size={18} />}
-            onClick={onSaveTemplate}
-            disabled={isRunning}
-        >
-            Сохранить шаблон
-        </Button>
+        <Group gap="xs">
+            
+            {/* Кнопка отладки теперь живет здесь */}
+            {/* <DebugTools 
+                staticConfig={staticConfig}
+                entryConfig={entryConfig}
+                orderState={orderState}
+                exitConfig={exitConfig}
+            /> */}
+
+            <Button 
+                variant="default" 
+                leftSection={<IconDeviceFloppy size={18} />}
+                onClick={onSaveTemplate}
+                disabled={isRunning}
+            >
+                Сохранить шаблон
+            </Button>
+        </Group>
       </Group>
 
-      {/* SETTINGS BLOCKS */}
       <Stack gap="xl">
         <StaticSettings config={staticConfig} onChange={setStaticConfig} />
         <EntrySettings config={entryConfig} onChange={setEntryConfig} />
         <OrderSettings state={orderState} onChange={setOrderState} />
         <ExitSettings config={exitConfig} onChange={setExitConfig} />
 
-        {/* ACTION BAR */}
         <Group grow mt="md">
             <Button 
                 size="md" 
@@ -269,21 +268,17 @@ export function BacktesterView({
 
       </Stack>
 
-      {/* RESULTS MODAL (LIVE MODE) */}
       <ResultsModal 
          opened={isModalOpen} 
          onClose={() => setIsModalOpen(false)} 
          title={currentBatchName || 'Результаты'}
          targetIds={currentBatchIds}
-         
-         // Props для Live режима
          isLive={isRunning}
          status={statusMessage}
          progress={progress}
          onStop={stop}
-         logs={logs} // <-- Передаем логи в модалку
+         logs={logs}
       />
-      
     </Container>
   );
 }
