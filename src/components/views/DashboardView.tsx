@@ -1,9 +1,12 @@
+// src/components/views/DashboardView.tsx
+
 import { useEffect, useState } from 'react';
 import { 
-    Container, Stack, Group, Title, Text, Paper, Loader, ThemeIcon, Button, Alert, SimpleGrid, Card, Badge, Accordion 
+    Container, Stack, Group, Title, Text, Paper, Loader, ThemeIcon, Button, Alert, SimpleGrid, Card, Badge, Accordion, List 
 } from '@mantine/core';
 import { 
-    IconAlertCircle, IconRefresh, IconPlugConnected, IconTestPipe, IconHistory 
+    IconAlertCircle, IconRefresh, IconPlugConnected, IconTestPipe, IconHistory, 
+    IconRocket, IconBrandTelegram, IconTool, IconSettings 
 } from '@tabler/icons-react';
 import { VelesService, type UserProfile } from '../../services/VelesService';
 
@@ -119,6 +122,60 @@ export function DashboardView({ onNavigate }: Props) {
                         </Button>
                     </Card>
                 </SimpleGrid>
+
+                {/* БЛОК ОБНОВЛЕНИЙ (НОВОЕ) */}
+                <Paper withBorder p="lg" radius="md" shadow="xs" style={{ borderLeft: '4px solid var(--mantine-color-blue-5)' }}>
+                    <Group justify="space-between" mb="md">
+                        <Group gap="xs">
+                            <Title order={4}>Что нового</Title>
+                            <Badge variant="filled" color="blue" size="sm">v1.2.0</Badge>
+                        </Group>
+                        <Badge variant="gradient" gradient={{ from: 'orange', to: 'red' }}>HOT</Badge>
+                    </Group>
+                    
+                    <List
+                        spacing="sm"
+                        size="sm"
+                        center
+                    >
+                        <List.Item
+                            icon={
+                                <ThemeIcon color="blue" size={20} radius="xl" variant="light">
+                                    <IconRocket size={12} />
+                                </ThemeIcon>
+                            }
+                        >
+                            <b>Поддержка проекта:</b> Добавлена возможность поддержать проект и получить дополнительные бонусы от разработчика =).
+                        </List.Item>
+                        <List.Item
+                            icon={
+                                <ThemeIcon color="blue" size={20} radius="xl" variant="light">
+                                    <IconBrandTelegram size={12} />
+                                </ThemeIcon>
+                            }
+                        >
+                            <b>Сообщество:</b> Прямая ссылка на Telegram-канал разработчика.
+                        </List.Item>
+                        <List.Item
+                            icon={
+                                <ThemeIcon color="orange" size={20} radius="xl" variant="light">
+                                    <IconTool size={12} />
+                                </ThemeIcon>
+                            }
+                        >
+                            <b>Бектестер:</b> Исправлена ошибка валидации дат при ручном выборе.
+                        </List.Item>
+                        <List.Item
+                            icon={
+                                <ThemeIcon color="gray" size={20} radius="xl" variant="light">
+                                    <IconSettings size={12} />
+                                </ThemeIcon>
+                            }
+                        >
+                            <b>Система:</b> Автоматическое определение версии приложения.
+                        </List.Item>
+                    </List>
+                </Paper>
 
                 <Paper withBorder p="xl" radius="md" bg="gray.0">
                     <Title order={4} mb="md">Часто задаваемые вопросы</Title>
