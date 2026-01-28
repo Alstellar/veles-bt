@@ -357,8 +357,9 @@ export class ConfigGenerator {
               leverage: staticCfg.leverage,
               marginType: staticCfg.marginType
           },
-          from: staticCfg.dateFrom.toISOString(),
-          to: staticCfg.dateTo.toISOString(),
+          // Оборачиваем в new Date(), чтобы гарантировать, что это объект даты
+          from: new Date(staticCfg.dateFrom).toISOString(),
+          to: new Date(staticCfg.dateTo).toISOString(),
           useWicks: staticCfg.useWicks,
           public: staticCfg.isPublic,
           conditions: conditions,

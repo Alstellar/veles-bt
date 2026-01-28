@@ -13,6 +13,14 @@ function hasValues(arr: string[]): boolean {
   return arr.length > 0 && arr.some(v => v && v.trim() !== '');
 }
 
+// Хелпер: безопасно преобразует входное значение в Date или возвращает null
+// Решает проблему, когда дата приходит в виде строки из JSON/Storage
+function getValidDate(value: any): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date;
+}
+
 export class ValidatorService {
   
   static validate(
@@ -34,16 +42,20 @@ export class ValidatorService {
     if (isNaN(maker) || maker < 0) return { valid: false, error: 'Базовые: Некорректная комиссия Maker.' };
     if (isNaN(taker) || taker < 0) return { valid: false, error: 'Базовые: Некорректная комиссия Taker.' };
 
-    // --- ДАТЫ (ПРОВЕРКА) ---
-    // Проверяем, что даты существуют и являются валидными объектами Date
-    if (!staticCfg.dateFrom || isNaN(staticCfg.dateFrom.getTime())) {
+    // --- ДАТЫ (ИСПРАВЛЕННАЯ ПРОВЕРКА) ---
+    // Преобразуем входные данные в объекты Date (даже если пришли строки)
+    const dFrom = getValidDate(staticCfg.dateFrom);
+    const dTo = getValidDate(staticCfg.dateTo);
+
+    if (!dFrom) {
         return { valid: false, error: 'Базовые: Некорректная Дата начала. Пожалуйста, выберите дату заново.' };
     }
-    if (!staticCfg.dateTo || isNaN(staticCfg.dateTo.getTime())) {
+    if (!dTo) {
         return { valid: false, error: 'Базовые: Некорректная Дата конца. Пожалуйста, выберите дату заново.' };
     }
+    
     // Проверка логики дат
-    if (staticCfg.dateFrom >= staticCfg.dateTo) {
+    if (dFrom.getTime() >= dTo.getTime()) {
         return { valid: false, error: 'Базовые: Дата начала должна быть раньше Даты конца.' };
     }
 
@@ -114,7 +126,7 @@ export class ValidatorService {
             if (o.volume <= 0) return { valid: false, error: `Сетка (Signal): Ордер #${i+1} имеет некорректный объем.` };
             if (!hasValues(o.indent)) return { valid: false, error: `Сетка (Signal): Ордер #${i+1} не имеет отступа.` };
             
-            // --- ПРОВЕРКА ФИЛЬТРОВ (НОВОЕ) ---
+            // --- ПРОВЕРКА ФИЛЬТРОВ ---
             const hasFilters = o.filterSlots && 
                                o.filterSlots.length > 0 && 
                                o.filterSlots.some(slot => slot.variants.length > 0);

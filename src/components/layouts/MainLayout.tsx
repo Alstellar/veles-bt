@@ -1,12 +1,13 @@
-// src/components/MainLayout.tsx
+// src/components/layouts/MainLayout.tsx
 import { useState } from 'react';
 import { 
-    AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image, Divider, Anchor
+  AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image, Divider, Anchor, 
+  List, ThemeIcon, Title, Code, CopyButton, ActionIcon, Tooltip
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
-    IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, IconCheck, 
-    IconBrandGithub, IconBrandTelegram
+  IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, IconCheck, 
+  IconBrandGithub, IconBrandTelegram, IconHeart, IconGift, IconCopy
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -19,6 +20,11 @@ import { StorageService } from '../../services/StorageService';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template } from '../../types';
 
 export function MainLayout() {
+  // Получаем версию из манифеста, если мы в расширении
+  const appVersion = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
+    ? chrome.runtime.getManifest().version
+    : '1.0.0'; // Фолбэк для локальной разработки
+
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
   // --- GLOBAL STATE ---
@@ -116,6 +122,12 @@ export function MainLayout() {
       setActiveTab('backtester');
   };
 
+  // --- GRATITUDE MODAL LOGIC ---
+  const [gratitudeOpened, { open: openGratitude, close: closeGratitude }] = useDisclosure(false);
+  
+  // Шаблон письма
+  const emailTemplate = `Здравствуйте! Прошу закрепить мой аккаунт за партнером ID 2502 (код invite: algo_bots). Мой ID на платформе: [ВСТАВЬТЕ СЮДА ВАШ ID]`;
+
   return (
     <AppShell
       navbar={{ width: 250, breakpoint: 'sm' }}
@@ -165,8 +177,35 @@ export function MainLayout() {
             />
           </Stack>
 
+          {/* СРЕДНЯЯ ЧАСТЬ: КНОПКИ ДЕЙСТВИЯ */}
+          <Stack gap="xs" px="md" mt="auto" mb="sm">
+             {/* Кнопка Канала */}
+             <Button 
+                component="a" 
+                href="https://t.me/algo_bots" 
+                target="_blank"
+                variant="light" 
+                color="blue" 
+                fullWidth
+                leftSection={<IconBrandTelegram size={18} />}
+             >
+                Канал Algo Bots
+             </Button>
+
+             {/* Кнопка Благодарности */}
+             <Button 
+                onClick={openGratitude}
+                variant="light" 
+                color="pink" 
+                fullWidth
+                leftSection={<IconHeart size={18} />}
+             >
+                Сказать спасибо
+             </Button>
+          </Stack>
+
           {/* НИЖНЯЯ ЧАСТЬ (Контакты) */}
-          <Stack gap={0} mt="md">
+          <Stack gap={0}>
              <Divider mb="sm" />
              
              {/* Блок контактов */}
@@ -196,7 +235,7 @@ export function MainLayout() {
 
              </Stack>
 
-             <Text size="10px" c="dimmed" ta="center">v1.0.0 Open Source</Text>
+             <Text size="10px" c="dimmed" ta="center">v{appVersion} Open Source</Text>
           </Stack>
 
       </AppShell.Navbar>
@@ -206,18 +245,18 @@ export function MainLayout() {
          
          {activeTab === 'backtester' && (
             <BacktesterView 
-                staticConfig={staticConfig} setStaticConfig={setStaticConfig}
-                entryConfig={entryConfig} setEntryConfig={setEntryConfig}
-                orderState={orderState} setOrderState={setOrderState}
-                exitConfig={exitConfig} setExitConfig={setExitConfig}
-                onSaveTemplate={openSaveModal}
+               staticConfig={staticConfig} setStaticConfig={setStaticConfig}
+               entryConfig={entryConfig} setEntryConfig={setEntryConfig}
+               orderState={orderState} setOrderState={setOrderState}
+               exitConfig={exitConfig} setExitConfig={setExitConfig}
+               onSaveTemplate={openSaveModal}
             />
          )}
 
          {activeTab === 'templates' && (
              <TemplatesView 
-                onLoadTemplate={handleLoadTemplate}
-                onNavigate={setActiveTab}
+               onLoadTemplate={handleLoadTemplate}
+               onNavigate={setActiveTab}
              />
          )}
 
@@ -228,16 +267,86 @@ export function MainLayout() {
       <Modal opened={saveModalOpened} onClose={closeSaveModal} title="Сохранить шаблон">
          <Stack>
              <TextInput 
-                label="Название шаблона" 
-                placeholder="Например: HYPE Long Aggressive"
-                data-autofocus
-                value={templateName}
-                onChange={(e) => setTemplateName(e.currentTarget.value)}
+               label="Название шаблона" 
+               placeholder="Например: HYPE Long Aggressive"
+               data-autofocus
+               value={templateName}
+               onChange={(e) => setTemplateName(e.currentTarget.value)}
              />
              <Group justify="flex-end">
                  <Button variant="default" onClick={closeSaveModal}>Отмена</Button>
                  <Button onClick={handleSaveTemplate} leftSection={<IconCheck size={16}/>}>Сохранить</Button>
              </Group>
+         </Stack>
+      </Modal>
+
+      {/* МОДАЛКА БЛАГОДАРНОСТИ */}
+      <Modal 
+        opened={gratitudeOpened} 
+        onClose={closeGratitude} 
+        title={<Group><IconGift color="var(--mantine-color-pink-6)"/><Title order={4}>Поддержать автора</Title></Group>}
+        size="lg"
+      >
+         <Stack gap="md">
+            <Text size="sm">
+               Проект <b>Veles Helper</b> полностью бесплатен. Лучшая награда для меня — если вы станете моим партнером на платформе Veles. Это абсолютно бесплатно для вас!
+            </Text>
+
+            <Divider label="Что вы получите" labelPosition="center" />
+
+            <List
+               spacing="xs"
+               size="sm"
+               center
+               icon={
+                  <ThemeIcon color="teal" size={20} radius="xl">
+                     <IconCheck size={12} />
+                  </ThemeIcon>
+               }
+            >
+               <List.Item>Ранний доступ к новым инструментам и функциям</List.Item>
+               <List.Item>Доступ в закрытый канал с моими личными стратегиями</List.Item>
+               <List.Item>Помощь в освоении бектестера и настройки ботов</List.Item>
+            </List>
+
+            <Divider label="Способ 1: Регистрация (для новичков)" labelPosition="center" />
+            
+            <Button 
+               component="a" 
+               href="https://veles.finance/invite/algo_bots" 
+               target="_blank"
+               size="md" 
+               variant="gradient" 
+               gradient={{ from: 'blue', to: 'cyan', deg: 90 }}
+            >
+               Зарегистрироваться на Veles
+            </Button>
+
+            <Divider label="Способ 2: Если аккаунт уже есть" labelPosition="center" />
+
+            <Text size="sm" c="dimmed">
+               Напишите письмо на <Code>support@veles.finance</Code> <br/>
+               <b>Важно:</b> пишите с почты, на которую зарегистрирован ваш аккаунт Veles. <br/>
+               Укажите ваш ID платформы, мой партнерский ID <b>2502</b> и код <b>algo_bots</b>.
+            </Text>
+
+            <Stack gap={5}>
+               <Text size="xs" fw={700}>Шаблон письма (не забудьте вписать ваш ID):</Text>
+               <Group gap={0}>
+                  <Code block style={{ flex: 1, overflow: 'hidden', whiteSpace: 'pre-wrap' }}>
+                     {emailTemplate}
+                  </Code>
+                  <CopyButton value={emailTemplate} timeout={2000}>
+                     {({ copied, copy }) => (
+                        <Tooltip label={copied ? 'Скопировано' : 'Копировать'} withArrow position="right">
+                           <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy} size="lg">
+                              {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                           </ActionIcon>
+                        </Tooltip>
+                     )}
+                  </CopyButton>
+               </Group>
+            </Stack>
          </Stack>
       </Modal>
 
