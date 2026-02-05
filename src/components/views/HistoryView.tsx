@@ -1,7 +1,8 @@
+// src/components/views/HistoryView.tsx
 import { useEffect, useState } from 'react';
 import { 
   Container, Title, Text, Card, Group, Badge, Button, 
-  SimpleGrid, Stack, ThemeIcon, ScrollArea, Loader, ActionIcon, Tooltip
+  SimpleGrid, Stack, ThemeIcon, Loader, ActionIcon, Tooltip
 } from '@mantine/core';
 import { 
   IconTrash, IconHistory, IconCalendar, IconDatabase, IconRefresh, IconTable 
@@ -67,12 +68,11 @@ export function HistoryView() {
     }
   };
 
-  // --- НОВАЯ ФУНКЦИЯ: УДАЛЕНИЕ ОДНОЙ ГРУППЫ ---
+  // --- УДАЛЕНИЕ ОДНОЙ ГРУППЫ ---
   const handleDeleteBatch = async (batchId: string) => {
       if (!confirm('Удалить эту группу тестов из истории?')) return;
       
       await StorageService.removeBatch(batchId);
-      // Обновляем список локально, чтобы не делать лишний запрос
       setBatches(prev => prev.filter(b => b.id !== batchId));
   };
 
@@ -87,12 +87,10 @@ export function HistoryView() {
         return;
       }
 
-      // Запуск синхронизации
       await SyncService.sync(tab.id, (progress) => {
         setSyncCount(progress);
       });
 
-      // Обновляем статистику после завершения
       await loadDbStats();
     } catch (e: any) {
       console.error(e);
@@ -164,7 +162,6 @@ export function HistoryView() {
                     </Group>
                 </Group>
                 
-                {/* КНОПКА УДАЛЕНИЯ КОНКРЕТНОЙ ГРУППЫ */}
                 <Tooltip label="Удалить группу">
                     <ActionIcon 
                         variant="subtle" 
@@ -205,11 +202,7 @@ export function HistoryView() {
                  </Group>
               </Card.Section>
 
-              <ScrollArea h={40} mt="xs" type="auto" scrollbarSize={4}>
-                 <Text size="xs" c="dimmed" style={{fontSize: 10}}>
-                    IDs: {batch.velesIds.join(', ')}
-                 </Text>
-              </ScrollArea>
+              {/* УДАЛЕНО: ScrollArea с IDs */}
 
             </Card>
           ))}

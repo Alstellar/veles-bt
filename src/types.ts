@@ -1,4 +1,4 @@
-import type { VelesConfigPayload, BacktestStats } from './services/VelesService';
+import type { VelesConfigPayload, BacktestStats } from './types/veles';
 
 // --- 1. Статические настройки (База) ---
 
@@ -333,4 +333,37 @@ export interface BacktestResultItem {
   duration: number | null;    // Диапазон теста в секундах (не время выполнения!)
   maxDuration: number | null; // Макс время в сделке (сек)
   avgDuration: number | null; // Среднее время в сделке (сек)
+}
+
+
+// --- 10. AI ANALYTICS (Новый модуль) ---
+
+export interface MarketIndicator {
+  price: number;
+  trend: 'UP' | 'DOWN' | 'FLAT';
+  adx: number;
+  rsi: number;
+  atr_pct: number;
+  rvol: number;
+  dist_ema200: number;
+  bbw: number;
+}
+
+export interface AnalysisResult {
+  [timeframe: string]: MarketIndicator; // "15m", "1h", "4h"
+}
+
+export interface AnalyzerResponse {
+  count: number;
+  results: {
+    [symbol: string]: AnalysisResult;
+  };
+}
+
+// Интерфейс данных, которые мы парсим со страницы Veles
+export interface VelesPageContext {
+  symbol: string;      // "BTC/USDT"
+  exchange: string;    // "Binance Futures"
+  algo: AlgoType;      // "LONG" | "SHORT"
+  isBotPage: boolean;  // true, если мы внутри настроек бота
 }

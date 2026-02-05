@@ -1,376 +1,152 @@
 // src/components/ResultsModal.tsx
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { 
-  Modal, Table, Badge, Group, Text, ScrollArea, Loader, Stack, 
-  ActionIcon, Menu, Checkbox, UnstyledButton, Center, Progress, Button, Anchor
-} from '@mantine/core';
-import { 
-  IconSelector, IconChevronDown, IconChevronUp, IconColumns, IconPlayerStop, IconTerminal2
-} from '@tabler/icons-react';
-import dayjs from 'dayjs';
-import duration from 'dayjs/plugin/duration';
-import relativeTime from 'dayjs/plugin/relativeTime';
+import { Modal, Group, Text, Badge, Button, Switch, Menu, ActionIcon, Checkbox } from '@mantine/core';
+import { IconDownload, IconColumns } from '@tabler/icons-react';
 
-import { DatabaseService } from '../services/DatabaseService';
-import type { BacktestResultItem } from '../types';
+// Импортируем наши модули
+import { ResultsStatusBlock } from './results/ResultsStatusBlock';
+import { ResultsTable } from './results/ResultsTable';
+import { useResultsData } from '../hooks/useResultsData';
+import { downloadAsCsv } from '../utils/exportUtils';
 
-dayjs.extend(duration);
-dayjs.extend(relativeTime);
+// Обновленные названия колонок
+const COLUMN_NAMES: Record<string, string> = {
+  name: 'Название', 
+  exchange: 'Биржа', 
+  pair: 'Пара',
+  period: 'Период', 
+  days: 'История (дни)', 
+  net: 'Net (USDT)', 
+  recovery: 'Net / МПУ', 
+  effDay: 'Эфф. в день', 
+  deals: 'Сделки', 
+  dealsPerDay: 'Сделок/день', 
+  mfeAbs: 'МПП (USDT)', mfePct: 'МПП (%)', 
+  maeAbs: 'МПУ (USDT)', maePct: 'МПУ (%)',
+  avgTime: 'Ср. время', 
+  maxTime: 'Макс время'
+};
 
-// --- Интерфейс пропсов ---
 interface Props {
   opened: boolean;
   onClose: () => void;
   title: string;
   targetIds: number[]; 
   
-  // Пропсы для режима Live
   isLive?: boolean;
   status?: string;
   progress?: { current: number; total: number };
   onStop?: () => void;
   logs?: string[]; 
+
+  notificationsEnabled?: boolean;
+  onToggleNotifications?: (val: boolean) => void;
 }
 
-// --- Русские названия столбцов ---
-const COLUMN_NAMES: Record<string, string> = {
-  name: 'Название',
-  period: 'Период',
-  exchange: 'Биржа',
-  pair: 'Пара',
-  net: 'Net (USDT)',
-  effDay: 'Эфф. в день',
-  deals: 'Сделки',
-  winRate: 'Win rate',
-  mfeAbs: 'МПП (USDT)', 
-  mfePct: 'МПП (%)',
-  maeAbs: 'МПУ (USDT)',
-  maePct: 'МПУ (%)',
-  maxTime: 'Макс время',
-  avgTime: 'Ср. время'
-};
-
-// --- Хелперы ---
-const formatMoney = (val: number | null, currency = 'USDT') => {
-  if (val === null || val === undefined) return '—';
-  return `${val.toFixed(2)} ${currency}`;
-};
-
-const formatPercent = (val: number | null) => {
-  if (val === null || val === undefined) return '—';
-  return `${val.toFixed(2)}%`;
-};
-
-const formatDurationHuman = (seconds: number | null) => {
-  if (!seconds) return '—';
-  const d = dayjs.duration(seconds, 'seconds');
-  if (d.asDays() >= 1) return `${Math.floor(d.asDays())} д ${d.hours()} ч`;
-  if (d.asHours() >= 1) return `${Math.floor(d.asHours())} ч ${d.minutes()} мин`;
-  return `${Math.floor(d.asMinutes())} мин`;
-};
-
-const formatDate = (iso: string) => dayjs(iso).format('DD.MM.YYYY');
-
-// --- Типы сортировки ---
-type SortKey = keyof BacktestResultItem | 'winRate' | 'netPerDay';
-interface SortState { key: SortKey; reversed: boolean; }
-
-/**
- * Компонент модального окна с результатами тестов.
- * Отображает таблицу, прогресс выполнения (в Live режиме) и логи.
- */
 export function ResultsModal({ 
   opened, onClose, title, targetIds, 
-  isLive, status, progress, onStop, logs = [] 
+  isLive, status, progress, onStop, logs = [],
+  notificationsEnabled, onToggleNotifications
 }: Props) {
   
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<BacktestResultItem[]>([]);
-  
-  // Сортировка по умолчанию: Net Profit убывание
-  const [sort, setSort] = useState<SortState>({ key: 'netQuote', reversed: true });
-  
-  // Видимость колонок
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
-    name: true, period: true, exchange: true, pair: true,
-    net: true, effDay: true, deals: true, winRate: true,
-    mfeAbs: true, mfePct: true, maeAbs: true, maePct: true,
-    maxTime: true, avgTime: true
-  });
-  
-  // Реф для автоскролла логов
-  const viewport = useRef<HTMLDivElement>(null);
-  
-  // Эффект автоскролла
-  useEffect(() => {
-    if (opened && logs.length > 0 && viewport.current) {
-        viewport.current.scrollTo({ top: viewport.current.scrollHeight, behavior: 'smooth' });
-    }
-  }, [logs, opened]);
+  const { 
+    data, rawData, loading, 
+    sort, toggleSort, 
+    visibleColumns, setVisibleColumns 
+  } = useResultsData(targetIds, opened, isLive);
 
-  // Загрузка данных
-  useEffect(() => {
-    if (opened && targetIds.length > 0) {
-      loadData();
-    } else {
-        if (!isLive) setData([]); 
-    }
-  }, [opened, targetIds, isLive]);
-
-  const loadData = async () => {
-    if (!isLive) setLoading(true);
-    const items = await DatabaseService.getTestsByIds(targetIds);
-    setData(items);
-    if (!isLive) setLoading(false);
+  const handleExport = () => {
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `veles_results_${dateStr}.csv`;
+    downloadAsCsv(rawData, filename);
   };
-
-  // --- Логика Сортировки ---
-  const sortedData = useMemo(() => {
-    return [...data].sort((a, b) => {
-      let valA: any = a[sort.key as keyof BacktestResultItem];
-      let valB: any = b[sort.key as keyof BacktestResultItem];
-
-      if (sort.key === 'winRate') {
-        valA = a.profits && (a.profits + (a.losses || 0)) > 0 
-               ? (a.profits / (a.profits + (a.losses || 0))) * 100 : -1;
-        valB = b.profits && (b.profits + (b.losses || 0)) > 0 
-               ? (b.profits / (b.profits + (b.losses || 0))) * 100 : -1;
-      }
-
-      if (valA === valB) return 0;
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
-      
-      const cmp = valA > valB ? 1 : -1;
-      return sort.reversed ? -cmp : cmp;
-    });
-  }, [data, sort]);
-
-  const toggleSort = (key: SortKey) => {
-    setSort(prev => ({ key, reversed: prev.key === key ? !prev.reversed : true }));
-  };
-
-  // --- Компонент заголовка столбца ---
-  const Th = ({ children, sortKey, id }: { children: React.ReactNode, sortKey?: SortKey, id: string }) => {
-    if (!visibleColumns[id]) return null;
-    return (
-      <Table.Th style={{ whiteSpace: 'nowrap' }}>
-        <UnstyledButton onClick={() => sortKey && toggleSort(sortKey)} style={{ fontWeight: 700, fontSize: 12 }}>
-          <Group gap={4}>
-            {children}
-            {sortKey && sort.key === sortKey && (
-               sort.reversed ? <IconChevronDown size={14}/> : <IconChevronUp size={14}/>
-            )}
-            {sortKey && sort.key !== sortKey && <IconSelector size={14} style={{ opacity: 0.3 }} />}
-          </Group>
-        </UnstyledButton>
-      </Table.Th>
-    );
-  };
-
-  // Условие отображения блока: если идет тест ИЛИ если есть логи
-  const showStatusBlock = (isLive || (logs && logs.length > 0)) && progress;
 
   return (
     <Modal 
       opened={opened} 
       onClose={onClose} 
+      fullScreen // 1. Делаем модалку полноэкранной
       title={
         <Group>
           <Text fw={700} size="lg">{title}</Text>
           {isLive && <Badge color="green" variant="light" size="sm">LIVE</Badge>}
         </Group>
       }
-      size="100%" 
-      padding="md"
       closeOnClickOutside={false}
+      // 2. Настраиваем Flex-лейаут для модалки, чтобы она занимала 100% высоты без скролла тела
+      styles={{
+        content: { display: 'flex', flexDirection: 'column', height: '100vh', maxHeight: '100vh' },
+        body: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 0 }
+      }}
     >
-      <Stack gap="sm">
-        
-        {/* БЛОК LIVE: Прогресс + Логи */}
-        {showStatusBlock && progress && (
-           <Stack gap={0} bg="gray.0" style={{borderRadius: 8, border: '1px solid #dee2e6', overflow: 'hidden'}}>
-              
-              {/* Верхняя часть: Статус и Прогресс */}
-              <Stack gap={4} p="xs">
-                  <Group justify="space-between">
-                     <Text size="sm" fw={500}>{status}</Text>
-                     <Group gap="xs">
-                        <Badge size="lg" variant="light">{progress.current} / {progress.total}</Badge>
-                        {isLive && onStop && progress.current < progress.total && (
-                            <Button color="red" size="xs" variant="subtle" leftSection={<IconPlayerStop size={14}/>} onClick={onStop}>
-                                Стоп
-                            </Button>
-                        )}
-                     </Group>
-                  </Group>
-                  <Progress value={(progress.current / (progress.total || 1)) * 100} animated={isLive} size="sm" radius="xl" />
-              </Stack>
+      {/* Обертка для верхней части (чтобы она не сжималась) */}
+      <div style={{ flexShrink: 0 }}>
+        <ResultsStatusBlock 
+            status={status}
+            progress={progress}
+            isLive={isLive}
+            onStop={onStop}
+            logs={logs}
+        />
 
-              {/* Нижняя часть: Логи (Мини-консоль) */}
-              <Stack gap={0} bg="gray.0" p="xs" pt={0} style={{ borderTop: '1px solid #dee2e6' }}>
-                  <Group gap={6} mb={4} mt={6}>
-                      <IconTerminal2 size={12} style={{ opacity: 0.5 }} />
-                      <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Лог выполнения</Text>
-                  </Group>
-                  <ScrollArea h={80} viewportRef={viewport} type="auto" scrollbarSize={6}>
-                      {logs.length === 0 ? (
-                          <Text size="xs" c="dimmed" fs="italic">Ожидание событий...</Text>
-                      ) : (
-                          logs.map((log, idx) => (
-                              <Text key={idx} size="xs" c="dark.3" style={{ fontFamily: 'monospace', lineHeight: 1.3 }}>
-                                 <span style={{ opacity: 0.5, marginRight: 8, userSelect: 'none' }}>{dayjs().format('HH:mm:ss')}</span> 
-                                 {log}
-                              </Text>
-                          ))
-                      )}
-                      <div /> 
-                  </ScrollArea>
-              </Stack>
-           </Stack>
-        )}
+        <Group justify="space-between" mt="md" mb="xs" align="center">
+            <div>
+            {isLive && onToggleNotifications && (
+                <Switch 
+                label="Уведомлять о завершении" 
+                size="xs"
+                checked={notificationsEnabled}
+                onChange={(e) => onToggleNotifications(e.currentTarget.checked)}
+                />
+            )}
+            </div>
 
-        {/* Панель инструментов (Меню столбцов) */}
-        <Group justify="flex-end">
-          <Menu shadow="md" width={220} closeOnItemClick={false}>
-            <Menu.Target>
-              <ActionIcon variant="default" size="lg" title="Настройка столбцов"><IconColumns size={20} /></ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Label>Столбцы таблицы</Menu.Label>
-              {Object.keys(visibleColumns).map(col => (
-                <Menu.Item key={col} 
-                   leftSection={<Checkbox checked={visibleColumns[col]} readOnly size="xs" />}
-                   onClick={() => setVisibleColumns(p => ({...p, [col]: !p[col]}))}
-                >
-                  {COLUMN_NAMES[col] || col}
-                </Menu.Item>
-              ))}
-            </Menu.Dropdown>
-          </Menu>
+            <Group gap="xs">
+            <Button 
+                variant="default" 
+                size="xs" 
+                leftSection={<IconDownload size={16}/>}
+                onClick={handleExport}
+                disabled={data.length === 0 || loading}
+            >
+                Скачать CSV
+            </Button>
+
+            <Menu shadow="md" width={220} closeOnItemClick={false} position="bottom-end">
+                <Menu.Target>
+                <ActionIcon variant="default" size={30} title="Настройка столбцов">
+                    <IconColumns size={18} />
+                </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                <Menu.Label>Столбцы таблицы</Menu.Label>
+                {Object.keys(visibleColumns).map(col => (
+                    <Menu.Item key={col} 
+                    leftSection={<Checkbox checked={visibleColumns[col]} readOnly size="xs" />}
+                    onClick={() => setVisibleColumns(p => ({...p, [col]: !p[col]}))}
+                    >
+                    {COLUMN_NAMES[col] || col}
+                    </Menu.Item>
+                ))}
+                </Menu.Dropdown>
+            </Menu>
+            </Group>
         </Group>
+      </div>
 
-        {loading ? (
-            <Center h={200}><Loader type="dots" /></Center>
-        ) : (
-        <ScrollArea h={showStatusBlock ? "55vh" : "75vh"} type="auto" offsetScrollbars>
-          <Table stickyHeader highlightOnHover verticalSpacing="xs" withTableBorder>
-            <Table.Thead bg="gray.1">
-              <Table.Tr>
-                <Th id="name" sortKey="name">Название</Th>
-                <Th id="period" sortKey="from">Период</Th>
-                <Th id="exchange" sortKey="exchange">Биржа</Th>
-                <Th id="pair" sortKey="symbol">Пара</Th>
-                
-                <Th id="net" sortKey="netQuote">Net (USDT)</Th>
-                <Th id="effDay" sortKey="netQuotePerDay">Эфф. в день</Th>
-                
-                <Th id="deals" sortKey="totalDeals">Сделки</Th>
-                <Th id="winRate" sortKey="winRate">Win rate</Th>
-                
-                <Th id="mfeAbs" sortKey="mfeAbsolute">МПП (USDT)</Th>
-                <Th id="mfePct" sortKey="mfePercent">МПП (%)</Th>
-                
-                <Th id="maeAbs" sortKey="maeAbsolute">МПУ (USDT)</Th>
-                <Th id="maePct" sortKey="maePercent">МПУ (%)</Th>
-                
-                <Th id="maxTime" sortKey="maxDuration">Макс время</Th>
-                <Th id="avgTime" sortKey="avgDuration">Ср. время</Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {sortedData.map((row) => {
-                const winRate = row.profits && row.totalDeals 
-                    ? ((row.profits / (row.profits + (row.losses||0))) * 100).toFixed(2) 
-                    : '—';
-                const isProfit = (row.netQuote || 0) >= 0;
+      {/* 3. Контейнер для таблицы: занимает всё оставшееся место */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <ResultsTable 
+            data={data} 
+            loading={loading}
+            // 4. Передаем 100%, чтобы таблица заполнила этот контейнер
+            height="100%"
+            
+            sort={sort}
+            onToggleSort={toggleSort}
+            visibleColumns={visibleColumns}
+        />
+      </div>
 
-                return (
-                <Table.Tr key={row.id}>
-                  {visibleColumns.name && (
-                      <Table.Td>
-                        <Stack gap={2}>
-                            {/* truncate="end" -> text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
-                                maxWidth: '25vw' -> динамическая ширина 25% от экрана
-                            */}
-                            <Text 
-                                fw={600} 
-                                size="sm" 
-                                title={row.name} 
-                                truncate="end" 
-                                style={{ maxWidth: '25vw' }}
-                            >
-                                {row.name}
-                            </Text>
-                            <Anchor 
-                                href={`https://veles.finance/cabinet/backtests/${row.id}`} 
-                                target="_blank" 
-                                size="xs" 
-                                underline="hover"
-                            >
-                                ID: {row.id}
-                            </Anchor>
-                        </Stack>
-                      </Table.Td>
-                  )}
-                  {visibleColumns.period && (
-                      <Table.Td>
-                        <Stack gap={0}>
-                            <Text size="xs">{formatDate(row.from)}</Text>
-                            <Text size="xs" c="dimmed">до {formatDate(row.to)}</Text>
-                        </Stack>
-                      </Table.Td>
-                  )}
-                  {visibleColumns.exchange && <Table.Td><Text size="xs">{row.exchange}</Text></Table.Td>}
-                  {visibleColumns.pair && (
-                      <Table.Td>
-                        <Stack gap={2}>
-                            <Text fw={600} size="sm">{row.symbol}</Text>
-                            <Badge size="xs" variant="light" color={row.algorithm === 'LONG' ? 'green' : 'red'}>{row.algorithm}</Badge>
-                        </Stack>
-                      </Table.Td>
-                  )}
-                  {visibleColumns.net && (
-                      <Table.Td>
-                        <Text fw={700} size="sm" c={isProfit ? 'teal' : 'red'}>{formatMoney(row.netQuote)}</Text>
-                      </Table.Td>
-                  )}
-                  {visibleColumns.effDay && (
-                      <Table.Td>
-                          <Text size="sm" c={(row.netQuotePerDay||0)>=0 ? 'teal' : 'red'}>{formatMoney(row.netQuotePerDay)}</Text>
-                      </Table.Td>
-                  )}
-                  {visibleColumns.deals && (
-                      <Table.Td>
-                        <Stack gap={0}>
-                            <Text fw={600}>{row.totalDeals}</Text>
-                            <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                                P/L/B: <span style={{color:'var(--mantine-color-teal-6)'}}>{row.profits}</span>
-                                / <span style={{color:'var(--mantine-color-red-6)'}}>{row.losses}</span>
-                                / {row.breakevens}
-                            </Text>
-                        </Stack>
-                      </Table.Td>
-                  )}
-                  {visibleColumns.winRate && (
-                      <Table.Td>
-                        <Stack gap={0}><Text fw={600}>{winRate !== '—' ? `${winRate}%` : '—'}</Text></Stack>
-                      </Table.Td>
-                  )}
-                  {visibleColumns.mfeAbs && <Table.Td><Text size="sm" c="teal">{formatMoney(row.mfeAbsolute)}</Text></Table.Td>}
-                  {visibleColumns.mfePct && <Table.Td><Text size="sm" c="teal">{formatPercent(row.mfePercent)}</Text></Table.Td>}
-                  {visibleColumns.maeAbs && <Table.Td><Text size="sm" c="red">{formatMoney(row.maeAbsolute)}</Text></Table.Td>}
-                  {visibleColumns.maePct && <Table.Td><Text size="sm" c="red">{formatPercent(row.maePercent)}</Text></Table.Td>}
-                  {visibleColumns.maxTime && <Table.Td><Text size="sm">{formatDurationHuman(row.maxDuration)}</Text></Table.Td>}
-                  {visibleColumns.avgTime && <Table.Td><Text size="sm">{formatDurationHuman(row.avgDuration)}</Text></Table.Td>}
-                </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
-        )}
-      </Stack>
     </Modal>
   );
 }

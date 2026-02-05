@@ -14,9 +14,6 @@ import { EntrySettings } from '../EntrySettings';
 import { ExitSettings } from '../ExitSettings';
 import { ResultsModal } from '../ResultsModal';
 
-// --- КОМПОНЕНТ ДЕБАГА ---
-// import { DebugTools } from '../DebugTools';
-
 // --- Сервисы и Хуки ---
 import { ConfigGenerator } from '../../services/ConfigGenerator';
 import { ValidatorService } from '../../services/ValidatorService';
@@ -47,7 +44,10 @@ export function BacktesterView({
   const { 
     run, stop, 
     isRunning, progress, statusMessage, currentBatchIds,
-    logs 
+    logs,
+    // 👇 НОВОЕ: Достаем управление уведомлениями
+    notificationsEnabled,
+    setNotificationsEnabled
   } = useBacktestQueue();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -195,15 +195,6 @@ export function BacktesterView({
             <Title order={2}>Конфигуратор</Title>
         </Group>
         <Group gap="xs">
-            
-            {/* Кнопка отладки теперь живет здесь */}
-            {/* <DebugTools 
-                staticConfig={staticConfig}
-                entryConfig={entryConfig}
-                orderState={orderState}
-                exitConfig={exitConfig}
-            /> */}
-
             <Button 
                 variant="default" 
                 leftSection={<IconDeviceFloppy size={18} />}
@@ -268,6 +259,7 @@ export function BacktesterView({
 
       </Stack>
 
+      {/* 👇 НОВОЕ: Передаем пропсы для уведомлений */}
       <ResultsModal 
          opened={isModalOpen} 
          onClose={() => setIsModalOpen(false)} 
@@ -278,6 +270,8 @@ export function BacktesterView({
          progress={progress}
          onStop={stop}
          logs={logs}
+         notificationsEnabled={notificationsEnabled}
+         onToggleNotifications={setNotificationsEnabled}
       />
     </Container>
   );

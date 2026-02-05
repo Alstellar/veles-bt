@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Veles Helper",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Конфигуратор параметров для поиска эффективных стратегий на Veles.Finance",
   "action": {
     "default_popup": "index.html"
@@ -10,7 +10,9 @@
     "activeTab",
     "scripting",
     "storage",
-    "tabs"
+    "tabs",
+    "webRequest",
+    "notifications" 
   ],
   "icons": {
       "16": "icons/icon-16.png",
@@ -20,5 +22,9 @@
     },
   "host_permissions": [
     "https://veles.finance/*"
-  ]
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  }
 }

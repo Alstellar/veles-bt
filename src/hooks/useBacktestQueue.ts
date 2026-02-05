@@ -1,5 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
-import { VelesService, type VelesConfigPayload } from '../services/VelesService';
+// src/hooks/useBacktestQueue.ts
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { VelesService } from '../services/VelesService';
+import type { VelesConfigPayload } from '../types/veles';
 import { StorageService } from '../services/StorageService';
 import { DatabaseService } from '../services/DatabaseService'; 
 import type { BacktestResultItem } from '../types';
@@ -23,12 +25,22 @@ export function useBacktestQueue() {
   const [logs, setLogs] = useState<string[]>([]);
   
   const [currentBatchIds, setCurrentBatchIds] = useState<number[]>([]);
+  
+  // Состояние для уведомлений
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   const stopRef = useRef(false);
+  // Храним оригинальный заголовок страницы
+  const originalTitleRef = useRef(document.title);
 
-  // Хелпер для добавления лога и обновления статуса
+  // Восстанавливаем заголовок при размонтировании компонента
+  useEffect(() => {
+      return () => {
+          document.title = originalTitleRef.current;
+      };
+  }, []);
+
   const addLog = useCallback((msg: string) => {
-    // console.log(msg); // Можно включить для отладки в DevTools
     setLogs(prev => [...prev, msg]);
     setStatusMessage(msg);
   }, []);
@@ -43,41 +55,52 @@ export function useBacktestQueue() {
     setCurrentBatchIds([]); 
     setStatusMessage('');
     setLogs([]);
+    document.title = originalTitleRef.current; // Сброс заголовка
   }, []);
 
   const stop = useCallback(() => {
     stopRef.current = true;
     setIsRunning(false);
     addLog('🛑 Остановлено пользователем');
+    document.title = originalTitleRef.current; // Сброс заголовка
   }, [addLog]);
 
-  // Хелпер для вытаскивания текста ошибки из JSON (если он есть)
   const extractErrorMessage = (e: any): string => {
     let raw = e?.message || String(e);
-    // Убираем префикс "Error: ", если он есть
     raw = raw.replace(/^Error:\s*/, '');
-    
     try {
-        // Пытаемся найти JSON-подобную структуру в строке
-        // Например: '{"error":"Too Many Requests","message":"Лимит"}'
         const match = raw.match(/(\{.*\})/);
         if (match) {
             const json = JSON.parse(match[1]);
-            // Приоритет: message -> error -> raw
             if (json.message) return json.message;
             if (json.error) return json.error;
         }
-    } catch {
-        // Если не удалось распарсить, возвращаем как есть
-    }
+    } catch { }
     return raw;
+  };
+
+  // Функция отправки уведомления
+  const sendNotification = (title: string, body: string) => {
+      if (!notificationsEnabled || !('Notification' in window)) return;
+      
+      if (Notification.permission === 'granted') {
+          new Notification(title, { body, icon: '/icons/icon128.png' });
+      }
   };
 
   const run = useCallback(async (batchId: string, initialItems?: QueueItem[]) => {
     setIsRunning(true);
     stopRef.current = false;
     setCurrentBatchIds([]); 
-    setLogs([]); // Очищаем логи перед новым запуском
+    setLogs([]); 
+
+    // Запоминаем оригинальный заголовок перед стартом
+    originalTitleRef.current = document.title;
+
+    // Запрашиваем права на уведомления, если еще не даны
+    if (notificationsEnabled && 'Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+    }
 
     let itemsToRun = initialItems || queue;
     if (itemsToRun.length === 0) {
@@ -87,7 +110,6 @@ export function useBacktestQueue() {
     }
     if (initialItems) setQueue(initialItems);
     
-    // Получаем доступ к API
     const tab = await VelesService.findTab();
     if (!tab || !tab.id) {
         addLog('❌ Ошибка: Вкладка Veles не найдена');
@@ -101,6 +123,7 @@ export function useBacktestQueue() {
     }
 
     const total = itemsToRun.length;
+    // Инициализируем 0, но в цикле сразу обновим на 1
     setProgress({ current: 0, total });
     addLog(`🚀 Запуск очереди из ${total} тестов...`);
 
@@ -108,16 +131,23 @@ export function useBacktestQueue() {
     for (let i = 0; i < total; i++) {
         if (stopRef.current) break;
 
-        // 1. ЗАСЕКАЕМ ВРЕМЯ СТАРТА ИТЕРАЦИИ
+        // 🔄 СИНХРОНИЗАЦИЯ:
+        // Обновляем UI в начале итерации, чтобы "Тест 1/6" отображался сразу везде
+        const currentTestNum = i + 1;
+        const percent = Math.round((currentTestNum / total) * 100);
+        
+        document.title = `[${percent}%] Тест ${currentTestNum}/${total}`;
+        setProgress({ current: currentTestNum, total }); // Бадж теперь показывает "4/6", когда идет 4-й тест
+
         const loopStartTime = Date.now();
         const item = itemsToRun[i];
         
         if (item.status === 'FINISHED') {
-            setProgress(p => ({ ...p, current: p.current + 1 }));
+            // Прогресс уже обновлен выше, просто пропускаем
             continue;
         }
 
-        const testName = `Тест ${i + 1}/${total}`;
+        const testName = `Тест ${currentTestNum}/${total}`;
         addLog(`${testName}: Запуск...`);
 
         setQueue(prev => {
@@ -127,7 +157,6 @@ export function useBacktestQueue() {
         });
 
         try {
-            // 2. ЗАПУСК ТЕСТА
             const runRes = await VelesService.runTest(tabId, token, item.config);
 
             if (!runRes.success || !runRes.id) {
@@ -136,7 +165,6 @@ export function useBacktestQueue() {
 
             const velesId = runRes.id;
             
-            // 3. ОЖИДАНИЕ (POLLING) С ТАЙМАУТОМ 5 МИНУТ
             addLog(`${testName}: Выполнение (ID: ${velesId})...`);
             
             let isFinished = false;
@@ -160,19 +188,15 @@ export function useBacktestQueue() {
                 }
             }
 
-            // 4. ПОЛУЧЕНИЕ СТАТИСТИКИ (С ПАУЗАМИ И RETRY)
             addLog(`${testName}: Обработка результатов (ждем 5 сек)...`);
             await new Promise(r => setTimeout(r, 5000));
 
             let statsRes = await VelesService.getStats(tabId, velesId);
 
-            // Если неудача (404), пробуем еще раз
             if (!statsRes.success || !statsRes.stats) {
                 console.warn(`Attempt 1 failed for ID ${velesId}: ${statsRes.error}`);
-                
                 addLog(`${testName}: Сервер занят, ждем еще 10 сек...`);
                 await new Promise(r => setTimeout(r, 10000));
-
                 statsRes = await VelesService.getStats(tabId, velesId);
             }
 
@@ -180,10 +204,8 @@ export function useBacktestQueue() {
                 throw new Error(statsRes.error || 'Не удалось получить статистику после повторной попытки');
             }
 
-            // 5. СОХРАНЕНИЕ
             const stats = statsRes.stats;
             
-            // МАППИНГ РЕЗУЛЬТАТОВ
             const resultItem: BacktestResultItem = {
                 id: velesId,
                 name: item.config.name,
@@ -227,7 +249,7 @@ export function useBacktestQueue() {
             addLog(`${testName}: ✅ Успешно`);
 
         } catch (e: any) {
-             const rawMsg = extractErrorMessage(e); // Парсим сообщение об ошибке
+             const rawMsg = extractErrorMessage(e);
              const status = rawMsg.includes('TIMEOUT') ? 'TIMEOUT' : 'ERROR';
 
              setQueue(prev => {
@@ -239,9 +261,8 @@ export function useBacktestQueue() {
             console.error(`Ошибка в тесте ${i+1}:`, e);
             addLog(`❌ Ошибка: ${rawMsg}`);
         } finally {
-            // 6. УМНАЯ ЗАДЕРЖКА (Smart Delay)
             const elapsedTime = Date.now() - loopStartTime;
-            const MIN_DELAY = 31000; // 31 секунда
+            const MIN_DELAY = 31000;
             
             const remainingDelay = MIN_DELAY - elapsedTime;
 
@@ -251,13 +272,23 @@ export function useBacktestQueue() {
                 await new Promise(r => setTimeout(r, remainingDelay));
             }
         }
-
-        setProgress(p => ({ ...p, current: i + 1 }));
+        
+        // Удален setProgress из конца цикла, так как он теперь обновляется в начале
     }
 
     setIsRunning(false);
-    addLog(stopRef.current ? '🛑 Выполнение остановлено.' : '✅ Выполнение завершено.');
-  }, [queue, addLog]);
+    
+    // Восстанавливаем заголовок
+    document.title = originalTitleRef.current;
+    
+    const finalMsg = stopRef.current ? '🛑 Выполнение остановлено.' : '✅ Выполнение завершено.';
+    addLog(finalMsg);
+
+    if (!stopRef.current) {
+        sendNotification('Veles Helper', `Очередь завершена! Проверено ${total} конфигураций.`);
+    }
+
+  }, [queue, addLog, notificationsEnabled]);
 
   return {
     queue,
@@ -269,6 +300,8 @@ export function useBacktestQueue() {
     progress,
     statusMessage,
     currentBatchIds,
-    logs // <-- Экспортируем логи
+    logs,
+    notificationsEnabled,
+    setNotificationsEnabled 
   };
 }

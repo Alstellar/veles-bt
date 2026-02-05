@@ -5,7 +5,7 @@ import type {
   StaticConfig, OrderState, EntryConfig, ExitConfig, 
   Condition 
 } from '../types';
-import type { VelesConfigPayload, VelesCondition, VelesOrder } from './VelesService';
+import type { VelesConfigPayload, VelesCondition, VelesOrder } from '../types/veles';
 import { FILTERS_LIBRARY } from '../filtersLibrary';
 
 // --- HELPERS ---

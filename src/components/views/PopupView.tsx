@@ -1,40 +1,76 @@
-import { Paper, Center, Title, Text, Button, Image } from '@mantine/core';
-import { IconExternalLink } from '@tabler/icons-react';
+// src/components/views/PopupView.tsx
+import { useState, useEffect } from 'react';
+import { Box, Center, Loader } from '@mantine/core';
+import { getPageContext } from '../../utils/pageParser'; 
+import { PopupHome } from '../popup/PopupHome';
+import { AnalyzerWidget } from '../AnalyzerWidget';
+import type { VelesPageContext } from '../../types';
 
 export function PopupView() {
-  const openFullTab = () => {
-    if (chrome.tabs) {
-      chrome.tabs.create({ url: 'index.html?mode=fullscreen' });
-    } else {
-      window.open('?mode=fullscreen', '_blank');
-    }
-  };
+    const [loading, setLoading] = useState(true);
+    const [isVeles, setIsVeles] = useState(false);
+    const [context, setContext] = useState<VelesPageContext | null>(null);
+    const [view, setView] = useState<'home' | 'analysis'>('home');
 
-  return (
-    <Center h={600} bg="gray.1" p="md">
-      <Paper shadow="md" p="xl" radius="md" w="100%" withBorder ta="center">
-        
-        <Image 
-            src="/icons/icon-128.png" 
-            w={80} 
-            h={80} 
-            mx="auto" 
-            mb="md" 
-            radius="md" 
-        />
-        
-        <Title order={3} mb="sm">Veles Helper</Title>
-        <Text size="sm" c="dimmed" mb="xl">
-          Конфигуратор параметров для поиска эффективных стратегий.
-        </Text>
-        <Button 
-          fullWidth size="md" 
-          rightSection={<IconExternalLink size={20} />}
-          onClick={openFullTab}
-        >
-          Открыть панель управления
-        </Button>
-      </Paper>
-    </Center>
-  );
+    useEffect(() => {
+        checkCurrentContext();
+    }, []);
+
+    const checkCurrentContext = async () => {
+        setLoading(true);
+        try {
+            const data = await getPageContext();
+            setContext(data);
+            setIsVeles(data.isBotPage);
+        } catch (e) {
+            console.error('Ошибка получения контекста:', e);
+            setIsVeles(false);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const openFullTab = () => {
+        const url = 'index.html?mode=fullscreen';
+        if (chrome.tabs) {
+            chrome.tabs.create({ url });
+        } else {
+            window.open(`?mode=fullscreen`, '_blank');
+        }
+    };
+
+    const handleAnalyze = () => {
+        setView('analysis');
+    };
+
+    if (loading) {
+        return (
+            <Center h={300} w={500} bg="white">
+                <Loader type="dots" />
+            </Center>
+        );
+    }
+
+    return (
+        // 👇👇👇 ВОТ ЗДЕСЬ НАСТРАИВАЕТСЯ ОТСТУП 👇👇👇
+        // Добавили p={10} — это 10 пикселей отступа со всех сторон внутри попапа.
+        <Box w={500} bg="white" style={{ minHeight: 'auto' }} p={10}>
+            {view === 'home' ? (
+                <PopupHome 
+                    isVelesPage={isVeles}
+                    onOpenDashboard={openFullTab}
+                    onAnalyze={handleAnalyze}
+                />
+            ) : (
+                context && (
+                    <AnalyzerWidget 
+                        symbol={context.symbol}
+                        exchange={context.exchange}
+                        algo={context.algo}
+                        onBack={() => setView('home')}
+                    />
+                )
+            )}
+        </Box>
+    );
 }

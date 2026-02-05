@@ -6,9 +6,11 @@ import {
 } from '@mantine/core';
 import { 
     IconAlertCircle, IconRefresh, IconPlugConnected, IconTestPipe, IconHistory, 
-    IconRocket, IconBrandTelegram, IconTool, IconSettings 
+    IconRocket, IconBrain, IconChartBar, 
+    IconAdjustments, IconTable, IconLock 
 } from '@tabler/icons-react';
-import { VelesService, type UserProfile } from '../../services/VelesService';
+import { VelesService } from '../../services/VelesService';
+import type { UserProfile } from '../../types/veles';
 
 interface Props {
     onNavigate: (view: string) => void;
@@ -123,61 +125,75 @@ export function DashboardView({ onNavigate }: Props) {
                     </Card>
                 </SimpleGrid>
 
-                {/* БЛОК ОБНОВЛЕНИЙ (НОВОЕ) */}
+                {/* БЛОК ОБНОВЛЕНИЙ v1.3.0 */}
                 <Paper withBorder p="lg" radius="md" shadow="xs" style={{ borderLeft: '4px solid var(--mantine-color-blue-5)' }}>
                     <Group justify="space-between" mb="md">
                         <Group gap="xs">
                             <Title order={4}>Что нового</Title>
-                            <Badge variant="filled" color="blue" size="sm">v1.2.0</Badge>
+                            <Badge variant="filled" color="blue" size="sm">v1.3.0</Badge>
                         </Group>
                         <Badge variant="gradient" gradient={{ from: 'orange', to: 'red' }}>HOT</Badge>
                     </Group>
                     
-                    <List
-                        spacing="sm"
-                        size="sm"
-                        center
-                    >
-                        <List.Item
-                            icon={
-                                <ThemeIcon color="blue" size={20} radius="xl" variant="light">
-                                    <IconRocket size={12} />
-                                </ThemeIcon>
-                            }
-                        >
-                            <b>Поддержка проекта:</b> Добавлена возможность поддержать проект и получить дополнительные бонусы от разработчика =).
+                    <List spacing="sm" size="sm" center>
+                        <List.Item icon={<ThemeIcon color="grape" size={24} radius="xl" variant="light"><IconBrain size={16} /></ThemeIcon>}>
+                            <Text span fw={700}>AI Анализатор:</Text> Новый инструмент на странице бота. Рассчитывает <Text span fw={700} c="blue">TP</Text> и <Text span fw={700} c="blue">GRID</Text> на основе ATR (Smart Analysis).
                         </List.Item>
-                        <List.Item
-                            icon={
-                                <ThemeIcon color="blue" size={20} radius="xl" variant="light">
-                                    <IconBrandTelegram size={12} />
-                                </ThemeIcon>
-                            }
-                        >
-                            <b>Сообщество:</b> Прямая ссылка на Telegram-канал разработчика.
+                        <List.Item icon={<ThemeIcon color="blue" size={24} radius="xl" variant="light"><IconChartBar size={16} /></ThemeIcon>}>
+                            <Text span fw={700}>Таблица 2.0:</Text> Полный редизайн. Пагинация, сортировка, скачивание CSV, Full Screen режим и новые метрики.
                         </List.Item>
-                        <List.Item
-                            icon={
-                                <ThemeIcon color="orange" size={20} radius="xl" variant="light">
-                                    <IconTool size={12} />
-                                </ThemeIcon>
-                            }
-                        >
-                            <b>Бектестер:</b> Исправлена ошибка валидации дат при ручном выборе.
+                        <List.Item icon={<ThemeIcon color="teal" size={24} radius="xl" variant="light"><IconRocket size={16} /></ThemeIcon>}>
+                            <Text span fw={700}>Процесс:</Text> Прогресс в названии вкладки, синхронизация счетчиков и уведомления о завершении.
                         </List.Item>
-                        <List.Item
-                            icon={
-                                <ThemeIcon color="gray" size={20} radius="xl" variant="light">
-                                    <IconSettings size={12} />
-                                </ThemeIcon>
-                            }
-                        >
-                            <b>Система:</b> Автоматическое определение версии приложения.
+                        <List.Item icon={<ThemeIcon color="orange" size={24} radius="xl" variant="light"><IconHistory size={16} /></ThemeIcon>}>
+                            <Text span fw={700}>История:</Text> Компактные карточки, удаление групп, авто-очистка пустых запусков.
                         </List.Item>
                     </List>
                 </Paper>
 
-                <Paper withBorder p="xl" radius="md" bg="gray.0">
+                {/* 🔥 ВОЗМОЖНОСТИ (ТЕПЕРЬ БЕЛЫЙ ФОН) 🔥 */}
+                <Paper withBorder p="xl" radius="md" bg="white" shadow="sm">
+                    <Title order={4} mb="sm">Возможности Veles Helper</Title>
+                    <Text size="sm" c="dimmed" mb="md">
+                        Veles Helper — это профессиональный ассистент для автоматизации поиска прибыльных стратегий. Мы превращаем рутинный подбор параметров в системный процесс.
+                    </Text>
+
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                        <Group align="flex-start" wrap="nowrap">
+                             <ThemeIcon color="blue" variant="light" size="lg"><IconAdjustments size={20}/></ThemeIcon>
+                             <div>
+                                 <Text size="sm" fw={700}>Автоматический Grid Search</Text>
+                                 <Text size="xs" c="dimmed">Задайте диапазоны (например, сетка 10-20%, шаг 1%), и расширение проведет сотни тестов для поиска идеала.</Text>
+                             </div>
+                        </Group>
+
+                        <Group align="flex-start" wrap="nowrap">
+                             <ThemeIcon color="grape" variant="light" size="lg"><IconBrain size={20}/></ThemeIcon>
+                             <div>
+                                 <Text size="sm" fw={700}>AI Анализ конфигурации</Text>
+                                 <Text size="xs" c="dimmed">Независимый инструмент на странице редактирования бота. Подсказывает настройки TP и Сетки (на основе ATR) еще до запуска тестов.</Text>
+                             </div>
+                        </Group>
+
+                        <Group align="flex-start" wrap="nowrap">
+                             <ThemeIcon color="teal" variant="light" size="lg"><IconTable size={20}/></ThemeIcon>
+                             <div>
+                                 <Text size="sm" fw={700}>Продвинутая Аналитика</Text>
+                                 <Text size="xs" c="dimmed">Сортируйте результаты по профиту и просадке. Выявляйте самые стабильные настройки и выгружайте отчеты в CSV.</Text>
+                             </div>
+                        </Group>
+
+                        <Group align="flex-start" wrap="nowrap">
+                             <ThemeIcon color="gray" variant="light" size="lg"><IconLock size={20}/></ThemeIcon>
+                             <div>
+                                 <Text size="sm" fw={700}>Безопасность</Text>
+                                 <Text size="xs" c="dimmed">Работает поверх интерфейса Veles без доступа к API ключам. История тестов хранится локально.</Text>
+                             </div>
+                        </Group>
+                    </SimpleGrid>
+                </Paper>
+
+                <Paper withBorder p="xl" radius="md" bg="white">
                     <Title order={4} mb="md">Часто задаваемые вопросы</Title>
                     <Accordion variant="separated" radius="md">
                         <Accordion.Item value="grid">

@@ -1,9 +1,10 @@
+// src/components/OrderSettings/SignalMode.tsx
 import { useState } from 'react';
 import { 
   Paper, Group, Text, Button, ActionIcon, Table, SegmentedControl, Center, 
   NumberInput, Badge, Tooltip, ThemeIcon, SimpleGrid, Stack 
 } from '@mantine/core';
-import { IconPlus, IconTrash, IconFilter, IconCalculator } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconFilter, IconCalculator, IconCopy } from '@tabler/icons-react';
 
 // Используем MultiInput вместо SmartMultiSelect
 import { MultiInput } from '../MultiInput';
@@ -50,6 +51,24 @@ export function SignalMode({ config, onChange }: Props) {
       filterSlots: [] 
     };
     update('orders', [...config.orders, newOrder]);
+  };
+
+  // 👯‍♂️ НОВОЕ: Функция дублирования ордера
+  const duplicateOrder = (id: string) => {
+    const index = config.orders.findIndex(o => o.id === id);
+    if (index === -1) return;
+
+    const source = config.orders[index];
+    
+    // Делаем глубокую копию, чтобы отвязать ссылки на массивы (особенно фильтры)
+    const newOrder: SignalOrderLine = JSON.parse(JSON.stringify(source));
+    newOrder.id = randomId(); // Обязательно новый ID
+
+    const newOrders = [...config.orders];
+    // Вставляем копию сразу после оригинала (index + 1)
+    newOrders.splice(index + 1, 0, newOrder);
+    
+    update('orders', newOrders);
   };
 
   const removeOrder = (id: string) => {
@@ -126,11 +145,10 @@ export function SignalMode({ config, onChange }: Props) {
       <SimpleGrid cols={2} spacing="md" mb="md">
         <Paper withBorder p="sm" bg="blue.0" radius="md" h="100%">
           <Stack gap="xs" justify="center" h="100%">
-             <Group align="flex-end" wrap="nowrap">
+              <Group align="flex-end" wrap="nowrap">
                 <NumberInput 
                     label="Мартингейл (%)" 
                     size="xs" 
-                    // Удалили description="Прирост лота"
                     w="100%"
                     value={calcMartingale} 
                     onChange={(v) => setCalcMartingale(Number(v))} 
@@ -176,7 +194,7 @@ export function SignalMode({ config, onChange }: Props) {
             <Table.Th ta="center">Отступ (%)</Table.Th>
             <Table.Th ta="center">Объем (%)</Table.Th>
             <Table.Th ta="center">Фильтры</Table.Th>
-            <Table.Th w={50} />
+            <Table.Th w={90} /> {/* Чуть расширили колонку действий */}
           </Table.Tr>
         </Table.Thead>
         
@@ -187,7 +205,6 @@ export function SignalMode({ config, onChange }: Props) {
                 <Text size="8px" c="dimmed" style={{ lineHeight: 1 }}>BASE</Text>
             </Table.Td>
             <Table.Td>
-              {/* Заменили SmartMultiSelect на MultiInput */}
               <MultiInput
                 label="" placeholder="0"
                 value={config.baseOrder.indent}
@@ -221,7 +238,6 @@ export function SignalMode({ config, onChange }: Props) {
                   <Text fw={500} size="sm">{index + 2}</Text>
                 </Table.Td>
                 <Table.Td>
-                  {/* Заменили SmartMultiSelect на MultiInput */}
                   <MultiInput
                     label="" placeholder="Отступ"
                     value={order.indent}
@@ -252,9 +268,25 @@ export function SignalMode({ config, onChange }: Props) {
                   </Button>
                 </Table.Td>
                 <Table.Td>
-                  <ActionIcon color="red" variant="subtle" onClick={() => removeOrder(order.id)}>
-                    <IconTrash size={16} />
-                  </ActionIcon>
+                  {/* Группа кнопок: Копировать и Удалить */}
+                  <Group gap={4} wrap="nowrap" justify="center">
+                    <ActionIcon 
+                        color="blue" 
+                        variant="subtle" 
+                        onClick={() => duplicateOrder(order.id)}
+                        title="Дублировать ордер"
+                    >
+                        <IconCopy size={16} />
+                    </ActionIcon>
+                    <ActionIcon 
+                        color="red" 
+                        variant="subtle" 
+                        onClick={() => removeOrder(order.id)}
+                        title="Удалить ордер"
+                    >
+                        <IconTrash size={16} />
+                    </ActionIcon>
+                  </Group>
                 </Table.Td>
               </Table.Tr>
             );
