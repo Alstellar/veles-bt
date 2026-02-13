@@ -6,57 +6,115 @@ export function downloadAsCsv(data: BacktestResultItem[], filename = 'veles-resu
     if (!data || data.length === 0) return;
 
     // 1. Заголовки (CSV Header)
-    // Порядок важен
     const headers = [
         'ID',
+        'Ссылка',
         'Название',
         'Символ',
         'Биржа',
         'Направление',
         'Дата (От)',
         'Дата (До)',
-        'Чистый Профит (USDT)',
+        'Дней (Всего)',
+        'Net (USDT)',
+        'Net / МПУ',
         'Эфф. в день (USDT)',
         'Сделки (Всего)',
-        'Профит',
-        'Убыток',
-        'БУ',
+        'Сделок в день',
         'Win Rate (%)',
+        'МПП (USDT)',
         'МПП (%)',
+        'МПУ (USDT)',
         'МПУ (%)',
-        'Ср. время сделки'
+        'Ср. время сделки',
+        'Макс. время сделки'
     ];
 
     // 2. Преобразование данных в строки
-    const rows = data.map(item => {
-        // Расчет Win Rate
-        const totalClosed = (item.profits || 0) + (item.losses || 0);
+    const rows = data.map((rawItem) => {
+        // Приводим к any, чтобы TS не ругался на нестандартные поля
+        const item = rawItem as any;
+        const stats = item.stats || {};
+
+        const start = new Date(item.from).getTime();
+        const end = new Date(item.to).getTime();
+        
+        // Длительность теста
+        const daysCount = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
+        
+        // Сделки
+        const totalDeals = item.totalDeals ?? stats.totalDeals ?? 0;
+        const dealsPerDay = totalDeals / daysCount;
+
+        // Финансы
+        const netQuote = item.netQuote ?? stats.netQuote ?? 0;
+        const netQuotePerDay = item.netQuotePerDay ?? stats.netQuotePerDay ?? 0;
+
+        // Win Rate
+        const profits = item.profits ?? stats.profits ?? 0;
+        const losses = item.losses ?? stats.losses ?? 0;
+        const totalClosed = profits + losses;
         const winRate = totalClosed > 0 
-            ? ((item.profits || 0) / totalClosed * 100).toFixed(2) 
+            ? (profits / totalClosed * 100).toFixed(2) 
             : '0.00';
+
+        // === ИСПРАВЛЕНИЕ: ИСПОЛЬЗУЕМ ВЕРНЫЕ КЛЮЧИ ===
+        // Данные лежат в maeAbsolute / mfeAbsolute
+        const mfeVal = item.mfeAbsolute ?? stats.mfeAbsolute ?? item.mfe ?? 0;
+        const maeVal = item.maeAbsolute ?? stats.maeAbsolute ?? item.mae ?? 0;
+
+        // Проценты
+        const mfeProc = item.mfePercent ?? stats.mfePercent ?? 0;
+        const maeProc = item.maePercent ?? stats.maePercent ?? 0;
+
+        // Время
+        const avgDur = item.avgDuration ?? stats.avgDuration ?? 0;
+        const maxDur = item.maxDuration ?? stats.maxDuration ?? 0;
+
+        // Расчет Net / МПУ (Recovery Factor)
+        const absMae = Math.abs(maeVal); 
+        const recoveryFactor = absMae > 0.0001 
+            ? (netQuote / absMae).toFixed(2) 
+            : '0.00';
+
+        const backtestUrl = `https://veles.finance/backtests/${item.id}`;
 
         return [
             item.id,
-            `"${item.name.replace(/"/g, '""')}"`, // Экранирование кавычек в названии
+            backtestUrl,
+            `"${item.name.replace(/"/g, '""')}"`,
             item.symbol,
             item.exchange,
             item.algorithm,
             new Date(item.from).toLocaleDateString(),
             new Date(item.to).toLocaleDateString(),
-            (item.netQuote || 0).toFixed(2),
-            (item.netQuotePerDay || 0).toFixed(2),
-            item.totalDeals,
-            item.profits || 0,
-            item.losses || 0,
-            item.breakevens || 0,
+            daysCount.toFixed(1),
+            
+            // Финансы
+            netQuote.toFixed(2),
+            recoveryFactor,
+            netQuotePerDay.toFixed(2),
+            
+            // Сделки
+            totalDeals,
+            dealsPerDay.toFixed(1),
             winRate,
-            (item.mfePercent || 0).toFixed(2),
-            (item.maePercent || 0).toFixed(2),
-            `"${formatDurationHuman(item.avgDuration)}"`
-        ].join(';'); // Используем точку с запятой для лучшей совместимости с Excel
+            
+            // МПП (MFE) - Макс. прибыль в моменте
+            mfeVal.toFixed(2),
+            mfeProc.toFixed(2),
+            
+            // МПУ (MAE) - Макс. просадка
+            maeVal.toFixed(2),
+            maeProc.toFixed(2),
+            
+            // Время
+            `"${formatDurationHuman(avgDur)}"`,
+            `"${formatDurationHuman(maxDur)}"`
+        ].join(';');
     });
 
-    // 3. Сборка контента с BOM (для UTF-8 в Excel)
+    // 3. Сборка (UTF-8 BOM)
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
 
     // 4. Скачивание

@@ -16,18 +16,22 @@ export async function getPageContext(): Promise<VelesPageContext> {
         throw new Error('No active tab');
     }
 
-    // --- 🛑 НОВАЯ ПРОВЕРКА: Фильтр по URL ---
-    // Если в адресе нет "/bot/", значит мы вышли из редактора.
-    // Возвращаем пустой контекст, чтобы попап показал "Меню" или "Не найдено".
-    const isBotUrl = tab.url && tab.url.includes('/bot/');
+    const currentUrl = tab.url || '';
 
-    if (!isBotUrl) {
-        console.log('🚫 Current URL is not a bot page:', tab.url);
+    // --- 🛑 ИСПРАВЛЕННАЯ ПРОВЕРКА URL ---
+    // Мы считаем страницей бота:
+    // 1. .../cabinet/bot/12345 (Редактирование существующего)
+    // 2. .../cabinet/bot (Создание нового)
+    // 3. .../cabinet/create-bot (Иногда встречается такой путь, добавим на всякий случай)
+    const isBotPageUrl = currentUrl.includes('/cabinet/bot') || currentUrl.includes('/bot/');
+
+    if (!isBotPageUrl) {
+        console.log('🚫 Current URL is not a bot page:', currentUrl);
         return {
             symbol: '',
             exchange: '',
             algo: 'LONG',
-            isBotPage: false // ГЛАВНОЕ ИЗМЕНЕНИЕ
+            isBotPage: false 
         };
     }
 
@@ -35,6 +39,7 @@ export async function getPageContext(): Promise<VelesPageContext> {
     const storageKey = `veles_state_${tab.id}`;
     
     // 3. Читаем данные из local storage
+    // Это критически важно для НОВЫХ ботов, так как их конфиг существует только здесь (перехваченный background.ts)
     const result = await new Promise<any>((resolve) => {
         chrome.storage.local.get(storageKey, (items: any) => {
             resolve(items);
@@ -45,7 +50,7 @@ export async function getPageContext(): Promise<VelesPageContext> {
 
     console.log('📖 Popup read state from Storage:', state);
 
-    // 4. Если данные найдены — возвращаем их
+    // 4. Если данные найдены (Background перехватил выбор пользователя) — возвращаем их
     if (state && state.symbol && state.exchange) {
         return {
             symbol: state.symbol,
@@ -57,12 +62,14 @@ export async function getPageContext(): Promise<VelesPageContext> {
     }
 
     // 5. FALLBACK (Запасной вариант)
-    // Если мы на странице бота (прошли проверку URL), но данных в памяти еще нет
-    console.warn('⚠️ Bot page detected, but no state in storage yet. Using defaults.');
+    // Если мы на странице бота, но пользователь еще ничего не нажимал и background пуст.
+    // Возвращаем пустые значения, но isBotPage: true, чтобы PopupView мог показать
+    // сообщение "Выберите пару для анализа" вместо "Меню".
+    console.warn('⚠️ Bot page detected, but no state in storage yet.');
     return {
-        symbol: 'BTC/USDT', 
-        exchange: 'BINANCE_FUTURES',
+        symbol: '',            // Пусто, чтобы PopupView понял, что данных не хватает
+        exchange: '',
         algo: 'LONG',
-        isBotPage: true
+        isBotPage: true        // Важно! Это включит интерфейс анализатора
     };
 }

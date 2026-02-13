@@ -118,7 +118,7 @@ export function useBacktestQueue() {
     const tabId = tab.id;
     const token = await VelesService.getToken(tabId);
     if (!token) {
-        addLog('❌ Ошибка: Не удалось получить токен');
+        addLog('❌ Ошибка: Не удалось получить токен. Попробуйте обновить вкладку Велеса. (Вкладка Велеса должна быть только ОДНА!)');
         return;
     }
 
@@ -252,13 +252,24 @@ export function useBacktestQueue() {
              const rawMsg = extractErrorMessage(e);
              const status = rawMsg.includes('TIMEOUT') ? 'TIMEOUT' : 'ERROR';
 
+             // 👇👇👇 НОВОЕ ЛОГИРОВАНИЕ ДЛЯ ОТЛАДКИ 👇👇👇
+             console.group(`❌ Ошибка запуска теста #${currentTestNum}`);
+             console.error('Текст ошибки:', rawMsg);
+             
+             // Выводим проблемный конфиг как объект (раскрываемый)
+             console.dir(item.config);
+             
+             // Выводим как JSON строку для копирования
+             console.log('JSON конфига:', JSON.stringify(item.config));
+             console.groupEnd();
+             // 👆👆👆 -------------------------------- 👆👆👆
+
              setQueue(prev => {
                 const next = [...prev];
                 if (next[i]) next[i] = { ...next[i], status: status, error: rawMsg };
                 return next;
             });
             
-            console.error(`Ошибка в тесте ${i+1}:`, e);
             addLog(`❌ Ошибка: ${rawMsg}`);
         } finally {
             const elapsedTime = Date.now() - loopStartTime;
@@ -272,8 +283,6 @@ export function useBacktestQueue() {
                 await new Promise(r => setTimeout(r, remainingDelay));
             }
         }
-        
-        // Удален setProgress из конца цикла, так как он теперь обновляется в начале
     }
 
     setIsRunning(false);
@@ -285,7 +294,7 @@ export function useBacktestQueue() {
     addLog(finalMsg);
 
     if (!stopRef.current) {
-        sendNotification('Veles Helper', `Очередь завершена! Проверено ${total} конфигураций.`);
+        sendNotification('Veles Helper', `Бектесты завершены! Проверено ${total} конфигураций.`);
     }
 
   }, [queue, addLog, notificationsEnabled]);
