@@ -91,7 +91,7 @@ export function DashboardView({ onNavigate }: Props) {
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
                     <Card shadow="sm" padding="lg" radius="md" withBorder>
                         <Group justify="space-between" mb="xs">
-                            <Text fw={500}>Бектесты</Text>
+                            <Text fw={500}>Конфигуратор</Text>
                             <Badge color="blue" variant="light">Основное</Badge>
                         </Group>
                         <Text size="sm" c="dimmed" mb="lg">

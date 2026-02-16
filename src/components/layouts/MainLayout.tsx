@@ -1,12 +1,12 @@
 // src/components/layouts/MainLayout.tsx
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { 
   AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image, Divider, Anchor
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
   IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, 
-  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck // 👈 Перенесли сюда
+  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -14,12 +14,16 @@ import { DashboardView } from '../views/DashboardView';
 import { BacktesterView } from '../views/BacktesterView';
 import { TemplatesView } from '../views/TemplatesView';
 import { HistoryView } from '../views/HistoryView';
+import { SettingsView } from '../views/SettingsView';
 
 // 👇 Импортируем нашу новую модалку
 import { DonateModal } from '../modals/DonateModal'; 
 
 import { StorageService } from '../../services/StorageService';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template } from '../../types';
+import { LogService } from '../../services/LogService';
+import { getObjectDiff } from '../../utils/objectDiff';
+import { configHash } from '../../utils/configHash';
 
 export function MainLayout() {
   const appVersion = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
@@ -82,10 +86,93 @@ export function MainLayout() {
   // --- SAVE TEMPLATE LOGIC ---
   const [saveModalOpened, { open: openSaveModal, close: closeSaveModal }] = useDisclosure(false);
   const [templateName, setTemplateName] = useState('');
+  const configRef = useRef({ staticConfig, entryConfig, orderState, exitConfig });
+
+  useEffect(() => {
+    configRef.current = { staticConfig, entryConfig, orderState, exitConfig };
+  }, [staticConfig, entryConfig, orderState, exitConfig]);
+
+  useEffect(() => {
+    void LogService.info('layout', 'main_layout.opened', { tab: activeTab });
+  }, []);
+
+  useEffect(() => {
+    void LogService.info('layout', 'navigation.changed', { tab: activeTab });
+  }, [activeTab]);
+
+  const logConfigSectionChanges = useCallback(
+    async (section: 'staticConfig' | 'entryConfig' | 'orderState' | 'exitConfig', before: unknown, after: unknown) => {
+      const changes = getObjectDiff(before, after, 25);
+      if (changes.length === 0) return;
+
+      const snapshot = {
+        staticConfig: section === 'staticConfig' ? after : configRef.current.staticConfig,
+        entryConfig: section === 'entryConfig' ? after : configRef.current.entryConfig,
+        orderState: section === 'orderState' ? after : configRef.current.orderState,
+        exitConfig: section === 'exitConfig' ? after : configRef.current.exitConfig
+      };
+
+      for (const change of changes) {
+        const action =
+          change.before === undefined && change.after !== undefined
+            ? 'added'
+            : change.before !== undefined && change.after === undefined
+              ? 'removed'
+              : 'updated';
+
+        await LogService.info('configurator', 'config.field_changed', {
+          section,
+          action,
+          path: change.path,
+          before: change.before,
+          after: change.after,
+          configHash: configHash(snapshot)
+        });
+      }
+    },
+    []
+  );
+
+  const handleStaticConfigChange = useCallback(
+    (next: StaticConfig) => {
+      const prev = staticConfig;
+      setStaticConfig(next);
+      void logConfigSectionChanges('staticConfig', prev, next);
+    },
+    [staticConfig, logConfigSectionChanges]
+  );
+
+  const handleEntryConfigChange = useCallback(
+    (next: EntryConfig) => {
+      const prev = entryConfig;
+      setEntryConfig(next);
+      void logConfigSectionChanges('entryConfig', prev, next);
+    },
+    [entryConfig, logConfigSectionChanges]
+  );
+
+  const handleOrderStateChange = useCallback(
+    (next: OrderState) => {
+      const prev = orderState;
+      setOrderState(next);
+      void logConfigSectionChanges('orderState', prev, next);
+    },
+    [orderState, logConfigSectionChanges]
+  );
+
+  const handleExitConfigChange = useCallback(
+    (next: ExitConfig) => {
+      const prev = exitConfig;
+      setExitConfig(next);
+      void logConfigSectionChanges('exitConfig', prev, next);
+    },
+    [exitConfig, logConfigSectionChanges]
+  );
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) {
         alert('Введите название шаблона');
+        await LogService.warn('templates', 'template.save_validation_failed', { reason: 'empty_name' });
         return;
     }
 
@@ -102,6 +189,11 @@ export function MainLayout() {
     };
 
     await StorageService.saveTemplate(newTemplate);
+    await LogService.info('templates', 'template.saved', {
+      templateId: newTemplate.id,
+      name: newTemplate.name,
+      configHash: configHash(newTemplate.config)
+    });
     closeSaveModal();
     setTemplateName('');
     alert('Шаблон успешно сохранен!');
@@ -119,6 +211,11 @@ export function MainLayout() {
       setEntryConfig(template.config.entryConfig);
       setOrderState(template.config.orderState);
       setExitConfig(template.config.exitConfig);
+      void LogService.info('templates', 'template.loaded', {
+        templateId: template.id,
+        name: template.name,
+        configHash: configHash(template.config)
+      });
 
       setActiveTab('backtester');
   };
@@ -153,7 +250,7 @@ export function MainLayout() {
                 variant="light"
             />
             <NavLink 
-                label="Бектесты" 
+                label="Конфигуратор" 
                 leftSection={<IconTestPipe size={20} stroke={1.5} />}
                 active={activeTab === 'backtester'}
                 onClick={() => setActiveTab('backtester')}
@@ -171,6 +268,13 @@ export function MainLayout() {
                 leftSection={<IconHistory size={20} stroke={1.5} />}
                 active={activeTab === 'history'}
                 onClick={() => setActiveTab('history')}
+                variant="light"
+            />
+            <NavLink 
+                label="Настройки" 
+                leftSection={<IconSettings size={20} stroke={1.5} />}
+                active={activeTab === 'settings'}
+                onClick={() => setActiveTab('settings')}
                 variant="light"
             />
           </Stack>
@@ -232,15 +336,15 @@ export function MainLayout() {
       <AppShell.Main bg="gray.0">
          {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
          
-         {activeTab === 'backtester' && (
+         <div style={{ display: activeTab === 'backtester' ? 'block' : 'none' }}>
             <BacktesterView 
-               staticConfig={staticConfig} setStaticConfig={setStaticConfig}
-               entryConfig={entryConfig} setEntryConfig={setEntryConfig}
-               orderState={orderState} setOrderState={setOrderState}
-               exitConfig={exitConfig} setExitConfig={setExitConfig}
+               staticConfig={staticConfig} setStaticConfig={handleStaticConfigChange}
+               entryConfig={entryConfig} setEntryConfig={handleEntryConfigChange}
+               orderState={orderState} setOrderState={handleOrderStateChange}
+               exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
                onSaveTemplate={openSaveModal}
             />
-         )}
+         </div>
 
          {activeTab === 'templates' && (
              <TemplatesView 
@@ -250,6 +354,7 @@ export function MainLayout() {
          )}
 
          {activeTab === 'history' && <HistoryView />}
+         {activeTab === 'settings' && <SettingsView appVersion={appVersion} />}
       </AppShell.Main>
 
       {/* МОДАЛКА СОХРАНЕНИЯ ШАБЛОНА */}

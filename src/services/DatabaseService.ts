@@ -78,14 +78,9 @@ export class DatabaseService {
   static async getTestsByIds(ids: number[]): Promise<BacktestResultItem[]> {
     const db = await this.getDB();
     const tx = db.transaction('tests', 'readonly');
-    const results: BacktestResultItem[] = [];
-    
-    for (const id of ids) {
-        const item = await tx.store.get(id);
-        if (item) results.push(item);
-    }
-    
-    return results;
+    const results = await Promise.all(ids.map((id) => tx.store.get(id)));
+    await tx.done;
+    return results.filter((item): item is BacktestResultItem => item !== undefined);
   }
 
   /**

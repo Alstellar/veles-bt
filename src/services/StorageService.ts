@@ -3,11 +3,9 @@ import type { StorageData, BatchInfo, Template } from '../types';
 const STORAGE_KEY = 'veles_bt_storage_v1';
 
 export class StorageService {
+  private static writeQueue: Promise<void> = Promise.resolve();
 
-  /**
-   * Загрузка всех данных из хранилища
-   */
-  static async loadData(): Promise<StorageData> {
+  private static async loadDataRaw(): Promise<StorageData> {
     return new Promise((resolve) => {
       // 1. Пробуем chrome.storage (если мы в расширении)
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -36,6 +34,30 @@ export class StorageService {
     });
   }
 
+  private static async updateData(
+    mutator: (data: StorageData) => void | boolean | Promise<void | boolean>
+  ): Promise<void> {
+    const task = async () => {
+      const data = await this.loadDataRaw();
+      const shouldSave = await mutator(data);
+      if (shouldSave !== false) {
+        await this.saveData(data);
+      }
+    };
+
+    const next = this.writeQueue.then(task, task);
+    this.writeQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  /**
+   * Загрузка всех данных из хранилища
+   */
+  static async loadData(): Promise<StorageData> {
+    await this.writeQueue;
+    return this.loadDataRaw();
+  }
+
   /**
    * Сохранение всей структуры данных
    */
@@ -56,35 +78,34 @@ export class StorageService {
    * Сохранение новой группы тестов (Batch)
    */
   static async saveBatch(batch: BatchInfo): Promise<void> {
-    const data = await this.loadData();
-    
-    // Инициализация, если нет
-    if (!data.batches) data.batches = {};
+    await this.updateData((data) => {
+      // Инициализация, если нет
+      if (!data.batches) data.batches = {};
 
-    // Сохраняем батч
-    data.batches[batch.id] = batch;
-
-    await this.saveData(data);
+      // Сохраняем батч
+      data.batches[batch.id] = batch;
+    });
   }
 
   /**
    * Добавление ID теста в группу (используется при запуске в реальном времени)
    */
   static async addTestIdToBatch(batchId: string, velesId: number): Promise<void> {
-    const data = await this.loadData();
-    
-    if (data.batches && data.batches[batchId]) {
-      // Инициализируем массив, если вдруг его нет
-      if (!data.batches[batchId].velesIds) {
-          data.batches[batchId].velesIds = [];
-      }
+    await this.updateData((data) => {
+      if (data.batches && data.batches[batchId]) {
+        // Инициализируем массив, если вдруг его нет
+        if (!data.batches[batchId].velesIds) {
+            data.batches[batchId].velesIds = [];
+        }
 
-      // Добавляем ID, если его там еще нет
-      if (!data.batches[batchId].velesIds.includes(velesId)) {
-        data.batches[batchId].velesIds.push(velesId);
-        await this.saveData(data);
+        // Добавляем ID, если его там еще нет
+        if (!data.batches[batchId].velesIds.includes(velesId)) {
+          data.batches[batchId].velesIds.push(velesId);
+          return true;
+        }
       }
-    }
+      return false;
+    });
   }
 
   /**
@@ -102,20 +123,22 @@ export class StorageService {
    * Очистка истории (удаляет всё, КРОМЕ шаблонов)
    */
   static async clearHistory(): Promise<void> {
-    const data = await this.loadData();
-    data.batches = {}; // Затираем только историю
-    await this.saveData(data);
+    await this.updateData((data) => {
+      data.batches = {}; // Затираем только историю
+    });
   }
   
   /**
    * НОВОЕ: Удаление конкретной группы тестов
    */
   static async removeBatch(batchId: string): Promise<void> {
-      const data = await this.loadData();
-      if (data.batches && data.batches[batchId]) {
-          delete data.batches[batchId];
-          await this.saveData(data);
-      }
+      await this.updateData((data) => {
+          if (data.batches && data.batches[batchId]) {
+              delete data.batches[batchId];
+              return true;
+          }
+          return false;
+      });
   }
 
   /**
@@ -146,13 +169,12 @@ export class StorageService {
    * Сохранение шаблона
    */
   static async saveTemplate(template: Template): Promise<void> {
-    const data = await this.loadData();
-    
-    // Инициализация, если вдруг нет
-    if (!data.templates) data.templates = {};
+    await this.updateData((data) => {
+      // Инициализация, если вдруг нет
+      if (!data.templates) data.templates = {};
 
-    data.templates[template.id] = template;
-    await this.saveData(data);
+      data.templates[template.id] = template;
+    });
   }
 
   /**
@@ -170,11 +192,12 @@ export class StorageService {
    * Удаление шаблона по ID
    */
   static async deleteTemplate(id: string): Promise<void> {
-    const data = await this.loadData();
-    
-    if (data.templates && data.templates[id]) {
-        delete data.templates[id];
-        await this.saveData(data);
-    }
+    await this.updateData((data) => {
+      if (data.templates && data.templates[id]) {
+          delete data.templates[id];
+          return true;
+      }
+      return false;
+    });
   }
 }

@@ -13,6 +13,41 @@ interface TabState {
 
 // Временный кэш в оперативной памяти (tabId -> State)
 const stateCache: Record<number, TabState> = {};
+const lastSavedCache: Record<number, Pick<TabState, 'symbol' | 'exchange' | 'algo'>> = {};
+const saveTimers: Record<number, ReturnType<typeof setTimeout> | undefined> = {};
+const STORAGE_WRITE_THROTTLE_MS = 400;
+
+function scheduleStateSave(tabId: number) {
+  if (saveTimers[tabId]) {
+    clearTimeout(saveTimers[tabId]);
+  }
+
+  saveTimers[tabId] = setTimeout(() => {
+    const state = stateCache[tabId];
+    if (!state) return;
+
+    const previousSaved = lastSavedCache[tabId];
+    const hasMeaningfulChanges =
+      !previousSaved ||
+      previousSaved.symbol !== state.symbol ||
+      previousSaved.exchange !== state.exchange ||
+      previousSaved.algo !== state.algo;
+
+    if (!hasMeaningfulChanges) return;
+
+    const payload: TabState = { ...state, timestamp: Date.now() };
+    stateCache[tabId] = payload;
+    lastSavedCache[tabId] = {
+      symbol: payload.symbol,
+      exchange: payload.exchange,
+      algo: payload.algo
+    };
+
+    chrome.storage.local.set({
+      [`veles_state_${tabId}`]: payload
+    });
+  }, STORAGE_WRITE_THROTTLE_MS);
+}
 
 /**
  * Основной слушатель сетевых запросов.
@@ -74,11 +109,8 @@ chrome.webRequest.onBeforeRequest.addListener(
       if (updated) {
         current.timestamp = Date.now();
         console.log(`[Tab ${tabId}] Config Updated:`, current);
-
-        // Сохраняем в storage.local, чтобы Popup мог прочитать данные синхронно
-        chrome.storage.local.set({
-          [`veles_state_${tabId}`]: current
-        });
+        // Сохраняем с throttling и только при реальном изменении symbol/exchange/algo
+        scheduleStateSave(tabId);
       }
 
     } catch (e) {
@@ -93,6 +125,13 @@ chrome.webRequest.onBeforeRequest.addListener(
  * Чтобы не засорять storage старыми конфигами.
  */
 chrome.tabs.onRemoved.addListener((tabId: number) => {
+  if (saveTimers[tabId]) {
+    clearTimeout(saveTimers[tabId]);
+    delete saveTimers[tabId];
+  }
+  if (lastSavedCache[tabId]) {
+    delete lastSavedCache[tabId];
+  }
   if (stateCache[tabId]) {
     delete stateCache[tabId];
     chrome.storage.local.remove(`veles_state_${tabId}`);
