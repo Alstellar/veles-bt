@@ -88,3 +88,23 @@ export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolA
   const payload = unwrapPayload<SymbolAvailability[]>(await response.json());
   return Array.isArray(payload) ? payload : [];
 };
+
+export const fetchImportPayload = async (code: string): Promise<unknown> => {
+  const token = await getVelesToken();
+  const response = await fetch(`${BASE_API}/bots/${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: getHeaders(token)
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Ошибка авторизации в Veles (401 Unauthorized)');
+    }
+    if (response.status === 404) {
+      throw new Error('Конфигурация по ссылке не найдена (404)');
+    }
+    throw new Error(`Ошибка загрузки конфигурации: ${response.status} ${response.statusText}`);
+  }
+
+  return unwrapPayload<unknown>(await response.json());
+};

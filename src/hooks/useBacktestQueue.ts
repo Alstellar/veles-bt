@@ -82,6 +82,7 @@ export function useBacktestQueue() {
   useEffect(() => {
     return () => {
       document.title = originalTitleRef.current;
+      void QueueLockService.release(ownerIdRef.current);
     };
   }, []);
 
@@ -251,7 +252,27 @@ export function useBacktestQueue() {
         return;
       }
 
-      const lockAcquired = await QueueLockService.acquire(ownerIdRef.current, batchId);
+      let lockAcquired = await QueueLockService.acquire(ownerIdRef.current, batchId);
+      if (!lockAcquired) {
+        const activeLock = await QueueLockService.getLock();
+        if (activeLock && activeLock.batchId !== batchId) {
+          const confirmed = window.confirm(
+            `Сейчас выполняется задача ${activeLock.batchId}. Остановить ее и запустить новую?`
+          );
+          if (!confirmed) {
+            addLog('Запуск отменен пользователем.');
+            return;
+          }
+
+          addLog(`Останавливаю активную задачу ${activeLock.batchId}...`);
+          await QueueLockService.requestStop(activeLock.batchId);
+          await delay(1000);
+          await QueueLockService.forceAcquire(ownerIdRef.current, batchId);
+          lockAcquired = true;
+          addLog(`Предыдущая задача остановлена. Продолжаю запуск ${batchId}.`);
+        }
+      }
+
       if (!lockAcquired) {
         if (currentBatchIdRef.current === batchId) {
           addLog(`Продолжаю выполнение задачи ${batchId}.`);
@@ -291,6 +312,21 @@ export function useBacktestQueue() {
       let nextIndex = startIndex;
 
       try {
+        const ensureLockOwnership = async (): Promise<boolean> => {
+          const lock = await QueueLockService.getLock();
+          const owned = !!lock && lock.ownerId === ownerIdRef.current && lock.batchId === batchId;
+          if (!owned) {
+            stopRef.current = true;
+          }
+          return owned;
+        };
+
+        const touchLock = async (): Promise<boolean> => {
+          if (!(await ensureLockOwnership())) return false;
+          await QueueLockService.refresh(ownerIdRef.current);
+          return true;
+        };
+
         if (notificationsEnabled && 'Notification' in window && Notification.permission === 'default') {
           await Notification.requestPermission();
         }
@@ -329,6 +365,12 @@ export function useBacktestQueue() {
         let forcedStopMessage: string | undefined;
 
         for (let i = startIndex; i < total; i++) {
+          if (!(await touchLock())) {
+            forcedStopReason = 'manual_stop';
+            forcedStopMessage = 'Запуск остановлен (перехвачен новым процессом).';
+            break;
+          }
+
           await pullExternalStop(batchId);
 
           if (stopRef.current) {
@@ -336,8 +378,6 @@ export function useBacktestQueue() {
             forcedStopMessage = 'Остановлено пользователем';
             break;
           }
-
-          await QueueLockService.refresh(ownerIdRef.current);
 
           const currentTestNum = i + 1;
           const item = itemsToRun[i];
@@ -395,6 +435,12 @@ export function useBacktestQueue() {
                 throw new Error('TIMEOUT: тест не завершился за 5 минут');
               }
 
+              if (!(await touchLock())) {
+                forcedStopReason = 'manual_stop';
+                forcedStopMessage = 'Запуск остановлен (перехвачен новым процессом).';
+                break;
+              }
+
               await delay(1000);
 
               const check = await withContextRecovery(batchId, runContextRef, (ctx) =>
@@ -423,6 +469,11 @@ export function useBacktestQueue() {
             }
 
             addLog(`${testName}: сбор статистики...`);
+            if (!(await touchLock())) {
+              forcedStopReason = 'manual_stop';
+              forcedStopMessage = 'Запуск остановлен (перехвачен новым процессом).';
+              break;
+            }
             await delay(5000);
 
             let statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
@@ -528,6 +579,7 @@ export function useBacktestQueue() {
               configHash: configHash(item.config)
             }, batchId);
           } finally {
+            await touchLock();
             const elapsed = Date.now() - launchAttemptStartedAt;
             const remaining = MIN_TEST_INTERVAL_MS - elapsed;
             if (remaining > 0 && !stopRef.current && i < total - 1) {

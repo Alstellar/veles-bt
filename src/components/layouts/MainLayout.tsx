@@ -25,6 +25,8 @@ import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, Batch
 import { LogService } from '../../services/LogService';
 import { getObjectDiff } from '../../utils/objectDiff';
 import { configHash } from '../../utils/configHash';
+import { fetchImportPayload } from '../../services/apiService';
+import { parseImportLink, mapImportedPayload } from '../../services/ImportSettingsService';
 
 export function MainLayout() {
   const queueController = useBacktestQueue();
@@ -285,6 +287,47 @@ export function MainLayout() {
 
   // --- GRATITUDE MODAL LOGIC ---
   const [gratitudeOpened, { open: openGratitude, close: closeGratitude }] = useDisclosure(false);
+  const [importModalOpened, { open: openImportModal, close: closeImportModal }] = useDisclosure(false);
+  const [importLink, setImportLink] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleImportSettings = async () => {
+    const parsed = parseImportLink(importLink);
+    if (!parsed) {
+      alert('Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки "Поделиться"');
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const payload = await fetchImportPayload(parsed.code);
+      const mapped = mapImportedPayload(payload as any, {
+        staticConfig,
+        entryConfig,
+        orderState,
+        exitConfig
+      });
+
+      setStaticConfig(mapped.staticConfig);
+      setEntryConfig(mapped.entryConfig);
+      setOrderState(mapped.orderState);
+      setExitConfig(mapped.exitConfig);
+
+      closeImportModal();
+      setImportLink('');
+
+      if (mapped.warnings.length > 0) {
+        alert(`Импорт выполнен с предупреждениями:\n- ${mapped.warnings.join('\n- ')}`);
+      } else {
+        alert('Настройки успешно импортированы.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Не удалось импортировать настройки: ${message}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
   
   return (
     <AppShell
@@ -406,6 +449,7 @@ export function MainLayout() {
                orderState={orderState} setOrderState={handleOrderStateChange}
                exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
                onSaveTemplate={openSaveModal}
+               onImportSettings={openImportModal}
                queueController={queueController}
                resumeBatchId={resumeBatchId}
                onResumeHandled={() => setResumeBatchId(null)}
@@ -447,6 +491,25 @@ export function MainLayout() {
 
       {/* 👇 НОВАЯ МОДАЛКА ПОДДЕРЖКИ */}
       <DonateModal opened={gratitudeOpened} onClose={closeGratitude} />
+
+      <Modal opened={importModalOpened} onClose={closeImportModal} title="Импорт настроек">
+        <Stack>
+          <TextInput
+            label="Ссылка на бота или шаблон"
+            placeholder="https://veles.finance/share/SDxEv"
+            value={importLink}
+            onChange={(e) => setImportLink(e.currentTarget.value)}
+            data-autofocus
+          />
+          <Text size="xs" c="dimmed">
+            Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки "Поделиться"
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeImportModal} disabled={isImporting}>Отмена</Button>
+            <Button onClick={handleImportSettings} loading={isImporting}>Импортировать</Button>
+          </Group>
+        </Stack>
+      </Modal>
 
     </AppShell>
   );

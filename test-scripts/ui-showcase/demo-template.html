@@ -1,0 +1,273 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UI Showcase Demo</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --panel: #ffffffcc;
+      --text: #233246;
+      --muted: #6c7b90;
+      --line: #dce4ef;
+      --accent: #2f80ed;
+      --ok: #2ea669;
+      --warn: #c27b14;
+      --danger: #cb3e3e;
+      --shadow-soft: 0 10px 30px rgba(25, 48, 88, 0.08);
+      --shadow-hover: 0 16px 35px rgba(25, 48, 88, 0.14);
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 10px;
+      --ease: 220ms ease;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at -10% -20%, #d6e9ff 0%, transparent 60%),
+        radial-gradient(800px 460px at 110% -10%, #d9f5ef 0%, transparent 62%),
+        var(--bg);
+    }
+
+    .page {
+      max-width: 1200px;
+      margin: 32px auto;
+      padding: 0 20px 40px;
+      animation: fade-up 380ms ease both;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: 26px;
+      letter-spacing: 0.3px;
+    }
+    .hero p {
+      margin: 6px 0 0;
+      color: var(--muted);
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      transition: transform var(--ease), box-shadow var(--ease), background var(--ease), border-color var(--ease);
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft); }
+    .btn:active { transform: translateY(0); }
+    .btn:focus-visible { outline: 2px solid #94c1ff; outline-offset: 2px; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-success { background: var(--ok); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-soft { background: #eef5ff; border-color: #d9e8ff; color: #2456a7; }
+    .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 18px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: blur(8px);
+      transition: transform var(--ease), box-shadow var(--ease), border-color var(--ease);
+      overflow: hidden;
+    }
+    .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+    }
+    .card-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .card-body { padding: 14px 16px; }
+
+    .status {
+      font-size: 12px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+    .status-run { color: #1e7b4f; border-color: #9bdbbe; background: #e8f8ef; }
+    .status-stop { color: #9a620e; border-color: #f0c980; background: #fff4e2; }
+    .status-done { color: #1e5ea8; border-color: #a8c8ee; background: #edf5ff; }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .table th, .table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+    .table th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+    .table tbody tr { transition: background var(--ease); }
+    .table tbody tr:hover { background: #f7fbff; }
+
+    .empty {
+      border: 1px dashed #bfd0e5;
+      background: #f8fbff;
+      border-radius: var(--radius-md);
+      color: var(--muted);
+      text-align: center;
+      padding: 20px;
+    }
+
+    .steps { display: grid; gap: 8px; }
+    .step {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      color: var(--text);
+      transition: all var(--ease);
+      cursor: pointer;
+    }
+    .step:hover { border-color: #bdd7fb; background: #f4f9ff; }
+    .step.active { border-color: #7eb1f5; background: #e8f2ff; box-shadow: inset 0 0 0 1px #8ebaf2; }
+    .step.warn::after {
+      content: "!";
+      color: #fff;
+      background: var(--warn);
+      border-radius: 999px;
+      width: 18px;
+      height: 18px;
+      display: inline-grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1>UI Showcase Demo</h1>
+        <p>Автономный HTML-шаблон для теста визуального стиля без изменения рабочего приложения.</p>
+      </div>
+      <div class="controls">
+        <button class="btn btn-soft">Импорт</button>
+        <button class="btn">Сохранить</button>
+        <button class="btn btn-primary">Запустить</button>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">История запусков (демо)</h2>
+          <span class="status status-run">RUN</span>
+        </div>
+        <div class="card-body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Задача</th>
+                <th>Биржа</th>
+                <th>Прогресс</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>#71300</td>
+                <td>BYBIT_FUTURES</td>
+                <td>12 / 34</td>
+                <td><span class="status status-run">RUN</span></td>
+              </tr>
+              <tr>
+                <td>#71301</td>
+                <td>BINANCE_FUTURES</td>
+                <td>34 / 34</td>
+                <td><span class="status status-done">DONE</span></td>
+              </tr>
+              <tr>
+                <td>#71302</td>
+                <td>OKX_FUTURES</td>
+                <td>7 / 20</td>
+                <td><span class="status status-stop">STOP</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="height:10px"></div>
+          <div class="controls">
+            <button class="btn btn-success">Продолжить</button>
+            <button class="btn btn-danger">Остановить</button>
+            <button class="btn" disabled>Удалить</button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card">
+        <div class="card-head">
+          <h2 class="card-title">Шаги</h2>
+        </div>
+        <div class="card-body">
+          <div class="steps">
+            <button class="step">Базовые настройки</button>
+            <button class="step active">Условия открытия</button>
+            <button class="step">Ордера сделки</button>
+            <button class="step warn">Выход из сделки</button>
+            <button class="step warn">Запуск бектестов</button>
+          </div>
+          <div style="height:14px"></div>
+          <div class="empty">Пустое состояние: здесь может быть подсказка или предупреждение.</div>
+        </div>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

@@ -31,6 +31,7 @@ export interface BacktesterProps {
   exitConfig: ExitConfig;
   setExitConfig: (v: ExitConfig) => void;
   onSaveTemplate: () => void;
+  onImportSettings: () => void;
   queueController: BacktestQueueController;
   resumeBatchId?: string | null;
   onResumeHandled?: () => void;
@@ -155,6 +156,7 @@ export function BacktesterView({
   orderState, setOrderState,
   exitConfig, setExitConfig,
   onSaveTemplate,
+  onImportSettings,
   queueController,
   resumeBatchId,
   onResumeHandled
@@ -489,7 +491,7 @@ export function BacktesterView({
         <aside className={styles.sideColumn}>
           <div className={styles.sideCard}>
             <Stack gap="xs">
-              <Button variant="default" fullWidth>Импорт настроек</Button>
+              <Button variant="default" fullWidth onClick={onImportSettings}>Импорт настроек</Button>
               <Button
                 variant="light"
                 leftSection={<IconDeviceFloppy size={16} />}
@@ -565,3 +567,4 @@ export function BacktesterView({
     </Container>
   );
 }
+

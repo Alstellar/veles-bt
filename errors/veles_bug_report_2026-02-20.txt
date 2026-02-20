@@ -1,0 +1,368 @@
+Veles Helper Bug Report
+GeneratedAt: 2026-02-20T13:08:43.795Z
+ExtensionVersion: 1.3.2
+SessionId: 5e09e997-507f-4514-a14d-3c3be4a5fef5
+LogsDays: 2
+VerboseLogging: enabled
+Entries: 171
+
+Timeline:
+[2026-02-20T12:46:18.302Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:46:20.050Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:46:20.534Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"wr7eipti2","indent":["0"],"volume":100}],"before":[],"configHash":"a3b139b8","path":"custom.orders","section":"orderState"}
+[2026-02-20T12:46:20.534Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T12:46:20.534Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T12:46:25.002Z] [INFO] [layout] navigation.changed
+  context: {"tab":"backtester"}
+[2026-02-20T12:47:50.144Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"D","before":"Test","configHash":"2c3416ca","path":"namePrefix","section":"staticConfig"}
+[2026-02-20T12:47:50.445Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DO","before":"D","configHash":"d3afc165","path":"namePrefix","section":"staticConfig"}
+[2026-02-20T12:47:50.963Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DOG","before":"DO","configHash":"8d843da2","path":"namePrefix","section":"staticConfig"}
+[2026-02-20T12:47:51.174Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DOGE","before":"DOG","configHash":"cf01fc7","path":"namePrefix","section":"staticConfig"}
+[2026-02-20T12:47:55.576Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"D","before":"HYPE","configHash":"6544e647","path":"symbol","section":"staticConfig"}
+[2026-02-20T12:47:55.849Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DO","before":"D","configHash":"29623d48","path":"symbol","section":"staticConfig"}
+[2026-02-20T12:47:56.138Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DOG","before":"DO","configHash":"44f0eaf","path":"symbol","section":"staticConfig"}
+[2026-02-20T12:47:56.361Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DOGE","before":"DOG","configHash":"85769aa","path":"symbol","section":"staticConfig"}
+[2026-02-20T12:48:01.634Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"","before":50,"configHash":"305cb2af","path":"deposit","section":"staticConfig"}
+[2026-02-20T12:48:02.518Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":1,"before":"","configHash":"6adf553e","path":"deposit","section":"staticConfig"}
+[2026-02-20T12:48:02.751Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":10,"before":1,"configHash":"e1c5d1ae","path":"deposit","section":"staticConfig"}
+[2026-02-20T12:48:02.942Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":100,"before":10,"configHash":"8412903e","path":"deposit","section":"staticConfig"}
+[2026-02-20T12:48:19.197Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":2,"before":10,"configHash":"e7a86f8d","path":"leverage","section":"staticConfig"}
+[2026-02-20T12:48:19.400Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":20,"before":2,"configHash":"89915e5d","path":"leverage","section":"staticConfig"}
+[2026-02-20T12:49:01.076Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"0.1","before":"0.02","configHash":"3b1a3eee","path":"makerFee","section":"staticConfig"}
+[2026-02-20T12:49:03.328Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"0.1","before":"0.055","configHash":"72362eaf","path":"takerFee","section":"staticConfig"}
+[2026-02-20T12:49:07.186Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"rqjbjntsz","variants":[]}],"before":[],"configHash":"f223b798","path":"filterSlots","section":"entryConfig"}
+[2026-02-20T12:49:08.715Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"basic":true,"closed":true,"id":"zopm0rgv4","indicator":"RSI","interval":"FIVE_MINUTES","operation":"GREATER","reverse":false,"type":"INDICATOR","value":"30"}],"before":[],"configHash":"297b586d","path":"filterSlots[0].variants","section":"entryConfig"}
+[2026-02-20T12:49:11.192Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"CCI","before":"RSI","configHash":"31c2d34c","path":"filterSlots[0].variants[0].indicator","section":"entryConfig"}
+[2026-02-20T12:49:13.009Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":false,"before":true,"configHash":"d6cebc47","path":"filterSlots[0].variants[0].basic","section":"entryConfig"}
+[2026-02-20T12:49:16.068Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"LESS","before":"GREATER","configHash":"d3819c5c","path":"filterSlots[0].variants[0].operation","section":"entryConfig"}
+[2026-02-20T12:49:17.929Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"-","before":"30","configHash":"29f3fed2","path":"filterSlots[0].variants[0].value","section":"entryConfig"}
+[2026-02-20T12:49:18.271Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"-1","before":"-","configHash":"33ea23e3","path":"filterSlots[0].variants[0].value","section":"entryConfig"}
+[2026-02-20T12:49:18.493Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"-10","before":"-1","configHash":"8b225593","path":"filterSlots[0].variants[0].value","section":"entryConfig"}
+[2026-02-20T12:49:18.654Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"-100","before":"-10","configHash":"21ce4ae3","path":"filterSlots[0].variants[0].value","section":"entryConfig"}
+[2026-02-20T12:49:58.324Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DOGE.","before":"DOGE","configHash":"9c0eb8ad","path":"symbol","section":"staticConfig"}
+[2026-02-20T12:49:59.832Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"DOGE","before":"DOGE.","configHash":"21ce4ae3","path":"symbol","section":"staticConfig"}
+[2026-02-20T12:50:08.881Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"rqjbjntsz","variants":[{"basic":false,"closed":true,"id":"zopm0rgv4","indicator":"CCI","interval":"FIVE_MINUTES","operation":"LESS","reverse":false,"type":"INDICATOR","value":"-100"}]},{"id":"5eroj65uw","variants":[]}],"before":[{"id":"rqjbjntsz","variants":[{"basic":false,"closed":true,"id":"zopm0rgv4","indicator":"CCI","interval":"FIVE_MINUTES","operation":"LESS","reverse":false,"type":"INDICATOR","value":"-100"}]}],"configHash":"1dcbe26c","path":"filterSlots","section":"entryConfig"}
+[2026-02-20T12:50:10.616Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"basic":true,"closed":true,"id":"9wkhceb6h","indicator":"RSI","interval":"FIVE_MINUTES","operation":"GREATER","reverse":false,"type":"INDICATOR","value":"30"}],"before":[],"configHash":"c3f0ac81","path":"filterSlots[1].variants","section":"entryConfig"}
+[2026-02-20T12:50:23.627Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"MACD_CROSS_SIGNAL","before":"RSI","configHash":"83348f48","path":"filterSlots[1].variants[0].indicator","section":"entryConfig"}
+[2026-02-20T12:50:23.642Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":null,"before":"GREATER","configHash":"83348f48","path":"filterSlots[1].variants[0].operation","section":"entryConfig"}
+[2026-02-20T12:50:23.665Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"","before":"30","configHash":"83348f48","path":"filterSlots[1].variants[0].value","section":"entryConfig"}
+[2026-02-20T12:50:25.447Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"ONE_MINUTE","before":"FIVE_MINUTES","configHash":"9ad06763","path":"filterSlots[1].variants[0].interval","section":"entryConfig"}
+[2026-02-20T12:50:30.778Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"0.1","before":"0.2","configHash":"8ef4f7a0","path":"general.pullUp","section":"orderState"}
+[2026-02-20T12:50:32.522Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[],"before":["0.2"],"configHash":"f4e584cc","path":"simple.indent","section":"orderState"}
+[2026-02-20T12:50:34.114Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["0"],"before":[],"configHash":"70bb2cfc","path":"simple.indent","section":"orderState"}
+[2026-02-20T12:50:34.114Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["0"],"before":[],"configHash":"70bb2cfc","path":"simple.indent","section":"orderState"}
+[2026-02-20T12:50:36.100Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[],"before":["10"],"configHash":"8b4244bd","path":"simple.orders","section":"orderState"}
+[2026-02-20T12:50:37.817Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["5"],"before":[],"configHash":"d8b4d888","path":"simple.orders","section":"orderState"}
+[2026-02-20T12:50:37.817Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["5"],"before":[],"configHash":"d8b4d888","path":"simple.orders","section":"orderState"}
+[2026-02-20T12:50:40.416Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[],"before":["5"],"configHash":"d8c51f5d","path":"simple.martingale","section":"orderState"}
+[2026-02-20T12:50:44.498Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["100"],"before":[],"configHash":"ca68a68c","path":"simple.martingale","section":"orderState"}
+[2026-02-20T12:50:44.498Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["100"],"before":[],"configHash":"ca68a68c","path":"simple.martingale","section":"orderState"}
+[2026-02-20T12:50:46.184Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[],"before":["15"],"configHash":"8f40eda8","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:49.290Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50"],"before":[],"configHash":"f0a25d0d","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:49.290Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50"],"before":[],"configHash":"f0a25d0d","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:50.698Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55"],"before":["50"],"configHash":"44475181","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:50.698Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55"],"before":["50"],"configHash":"44475181","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:52.038Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60"],"before":["50","55"],"configHash":"ba1460eb","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:52.038Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60"],"before":["50","55"],"configHash":"ba1460eb","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:53.278Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65"],"before":["50","55","60"],"configHash":"338558c4","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:53.278Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65"],"before":["50","55","60"],"configHash":"338558c4","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:55.378Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70"],"before":["50","55","60","65"],"configHash":"589bf0af","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:55.378Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70"],"before":["50","55","60","65"],"configHash":"589bf0af","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:57.233Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75"],"before":["50","55","60","65","70"],"configHash":"bce45d61","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:57.233Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75"],"before":["50","55","60","65","70"],"configHash":"bce45d61","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:59.082Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75","80"],"before":["50","55","60","65","70","75"],"configHash":"81768745","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:50:59.082Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75","80"],"before":["50","55","60","65","70","75"],"configHash":"81768745","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:51:00.745Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75","80","90"],"before":["50","55","60","65","70","75","80"],"configHash":"7caf8940","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:51:00.745Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75","80","90"],"before":["50","55","60","65","70","75","80"],"configHash":"7caf8940","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:51:02.343Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75","80","90","95"],"before":["50","55","60","65","70","75","80","90"],"configHash":"531c5760","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:51:02.343Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["50","55","60","65","70","75","80","90","95"],"before":["50","55","60","65","70","75","80","90"],"configHash":"531c5760","path":"simple.overlap","section":"orderState"}
+[2026-02-20T12:51:04.636Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":false,"before":true,"configHash":"f7b9096b","path":"simple.logarithmicEnabled","section":"orderState"}
+[2026-02-20T12:51:07.396Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"SIGNAL","before":"SINGLE","configHash":"7f6c92ef","path":"profitMode","section":"exitConfig"}
+[2026-02-20T12:51:08.915Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"wtu5l1cu8","variants":[]}],"before":[],"configHash":"57f97aba","path":"profitSignal.filterSlots","section":"exitConfig"}
+[2026-02-20T12:51:10.326Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"basic":true,"closed":true,"id":"1qhsa7z9j","indicator":"RSI","interval":"FIVE_MINUTES","operation":"GREATER","reverse":false,"type":"INDICATOR","value":"30"}],"before":[],"configHash":"773c3084","path":"profitSignal.filterSlots[0].variants","section":"exitConfig"}
+[2026-02-20T12:51:17.835Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"MACD_CROSS_SIGNAL","before":"RSI","configHash":"13c01d8d","path":"profitSignal.filterSlots[0].variants[0].indicator","section":"exitConfig"}
+[2026-02-20T12:51:17.887Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":null,"before":"GREATER","configHash":"13c01d8d","path":"profitSignal.filterSlots[0].variants[0].operation","section":"exitConfig"}
+[2026-02-20T12:51:17.902Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"","before":"30","configHash":"13c01d8d","path":"profitSignal.filterSlots[0].variants[0].value","section":"exitConfig"}
+[2026-02-20T12:51:19.631Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"ONE_MINUTE","before":"FIVE_MINUTES","configHash":"6b54c2e6","path":"profitSignal.filterSlots[0].variants[0].interval","section":"exitConfig"}
+[2026-02-20T12:51:21.517Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[],"before":["null"],"configHash":"3f44c5d","path":"profitSignal.checkPnl","section":"exitConfig"}
+[2026-02-20T12:51:23.396Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["0.5"],"before":[],"configHash":"e6574816","path":"profitSignal.checkPnl","section":"exitConfig"}
+[2026-02-20T12:52:06.694Z] [INFO] [queue] test.finished
+  batchId: #DDACB
+  context: {"batchId":"#DDACB","configHash":"72d2a2e8","index":1,"velesId":10553138}
+[2026-02-20T12:52:37.530Z] [INFO] [queue] test.finished
+  batchId: #DDACB
+  context: {"batchId":"#DDACB","configHash":"b06074ae","index":2,"velesId":10553149}
+[2026-02-20T12:53:07.538Z] [INFO] [queue] test.finished
+  batchId: #DDACB
+  context: {"batchId":"#DDACB","configHash":"4f2c3a89","index":3,"velesId":10553160}
+[2026-02-20T12:53:32.349Z] [INFO] [layout] navigation.changed
+  context: {"tab":"history"}
+[2026-02-20T12:53:39.724Z] [INFO] [queue] test.finished
+  batchId: #DDACB
+  context: {"batchId":"#DDACB","configHash":"a57a470b","index":4,"velesId":10553169}
+[2026-02-20T12:54:02.998Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:54:06.398Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:54:06.834Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"xhq9ge97r","indent":["0"],"volume":100}],"before":[],"configHash":"7cb5793f","path":"custom.orders","section":"orderState"}
+[2026-02-20T12:54:06.835Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T12:54:06.835Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T12:54:11.217Z] [INFO] [layout] navigation.changed
+  context: {"tab":"history"}
+[2026-02-20T12:54:44.414Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:54:44.833Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"o0llj81p9","indent":["0"],"volume":100}],"before":[],"configHash":"70a941ac","path":"custom.orders","section":"orderState"}
+[2026-02-20T12:54:44.833Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T12:54:44.833Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T12:54:46.597Z] [INFO] [layout] navigation.changed
+  context: {"tab":"history"}
+[2026-02-20T12:54:59.817Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:55:00.231Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"aqhnsywzc","indent":["0"],"volume":100}],"before":[],"configHash":"e361928b","path":"custom.orders","section":"orderState"}
+[2026-02-20T12:55:00.231Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T12:55:00.231Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T12:55:02.918Z] [INFO] [layout] navigation.changed
+  context: {"tab":"history"}
+[2026-02-20T12:55:11.289Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:55:11.726Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"lyrc6pnyk","indent":["0"],"volume":100}],"before":[],"configHash":"1df6e0a7","path":"custom.orders","section":"orderState"}
+[2026-02-20T12:55:11.726Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T12:55:11.726Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T12:55:14.135Z] [INFO] [layout] navigation.changed
+  context: {"tab":"history"}
+[2026-02-20T12:55:40.127Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T12:55:43.198Z] [INFO] [layout] navigation.changed
+  context: {"tab":"backtester"}
+[2026-02-20T12:57:21.618Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T12:57:22.053Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"bzulqz9tq","indent":["0"],"volume":100}],"before":[],"configHash":"9a46488f","path":"custom.orders","section":"orderState"}
+[2026-02-20T12:57:22.053Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T12:57:22.053Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T12:57:24.410Z] [INFO] [layout] navigation.changed
+  context: {"tab":"backtester"}
+[2026-02-20T13:01:20.606Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"0.1","before":"0.02","configHash":"795d54ab","path":"makerFee","section":"staticConfig"}
+[2026-02-20T13:01:22.675Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":"0.1","before":"0.055","configHash":"8fea66a","path":"takerFee","section":"staticConfig"}
+[2026-02-20T13:01:34.383Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55"],"before":["70"],"configHash":"a83e72a6","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:34.383Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55"],"before":["70"],"configHash":"a83e72a6","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:35.415Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60"],"before":["70","55"],"configHash":"47ed484c","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:35.415Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60"],"before":["70","55"],"configHash":"47ed484c","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:37.629Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75"],"before":["70","55","60"],"configHash":"78f6d082","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:37.629Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75"],"before":["70","55","60"],"configHash":"78f6d082","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:39.103Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80"],"before":["70","55","60","75"],"configHash":"46485566","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:39.103Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80"],"before":["70","55","60","75"],"configHash":"46485566","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:40.485Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80","85"],"before":["70","55","60","75","80"],"configHash":"4e1657a7","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:40.485Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80","85"],"before":["70","55","60","75","80"],"configHash":"4e1657a7","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:42.184Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80","85","90"],"before":["70","55","60","75","80","85"],"configHash":"c0fe0962","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:42.184Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80","85","90"],"before":["70","55","60","75","80","85"],"configHash":"c0fe0962","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:43.639Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80","85","90","95"],"before":["70","55","60","75","80","85","90"],"configHash":"343d9aa2","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:01:51.336Z] [WARN] [queue] queue.lock_busy
+  batchId: #7C58B
+  context: {"batchId":"#7C58B"}
+[2026-02-20T13:02:01.467Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80","85","90","95","65"],"before":["70","55","60","75","80","85","90","95"],"configHash":"88df12ed","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:02:01.467Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["70","55","60","75","80","85","90","95","65"],"before":["70","55","60","75","80","85","90","95"],"configHash":"88df12ed","path":"simple.overlap","section":"orderState"}
+[2026-02-20T13:02:04.876Z] [WARN] [queue] queue.lock_busy
+  batchId: #7FBB2
+  context: {"batchId":"#7FBB2"}
+[2026-02-20T13:02:13.110Z] [WARN] [queue] queue.lock_busy
+  batchId: #81B8C
+  context: {"batchId":"#81B8C"}
+[2026-02-20T13:02:37.906Z] [WARN] [queue] queue.lock_busy
+  batchId: #87C1B
+  context: {"batchId":"#87C1B"}
+[2026-02-20T13:02:43.046Z] [WARN] [queue] queue.lock_busy
+  batchId: #891AB
+  context: {"batchId":"#891AB"}
+[2026-02-20T13:02:51.703Z] [INFO] [templates] template.saved
+  context: {"configHash":"88df12ed","name":"LONG","templateId":"6784cdf3-df3d-473d-9fed-bc9ee66520f2"}
+[2026-02-20T13:03:16.005Z] [WARN] [queue] queue.lock_busy
+  batchId: #911FA
+  context: {"batchId":"#911FA"}
+[2026-02-20T13:03:21.315Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T13:03:21.728Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"qkxvr6u1y","indent":["0"],"volume":100}],"before":[],"configHash":"531f36b4","path":"custom.orders","section":"orderState"}
+[2026-02-20T13:03:21.728Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T13:03:21.728Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T13:03:26.389Z] [INFO] [layout] navigation.changed
+  context: {"tab":"backtester"}
+[2026-02-20T13:03:35.589Z] [INFO] [layout] navigation.changed
+  context: {"tab":"templates"}
+[2026-02-20T13:03:36.988Z] [INFO] [templates] template.loaded
+  context: {"configHash":"88df12ed","name":"LONG","templateId":"6784cdf3-df3d-473d-9fed-bc9ee66520f2"}
+[2026-02-20T13:03:36.988Z] [INFO] [layout] navigation.changed
+  context: {"tab":"backtester"}
+[2026-02-20T13:03:57.034Z] [WARN] [queue] queue.lock_busy
+  batchId: #9B1AB
+  context: {"batchId":"#9B1AB"}
+[2026-02-20T13:04:11.788Z] [WARN] [queue] queue.lock_busy
+  batchId: #9E981
+  context: {"batchId":"#9E981"}
+[2026-02-20T13:04:46.007Z] [WARN] [queue] queue.lock_busy
+  batchId: #9FDA8
+  context: {"batchId":"#9FDA8"}
+[2026-02-20T13:04:52.709Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T13:04:53.144Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"1cdwpt2k1","indent":["0"],"volume":100}],"before":[],"configHash":"a8618c54","path":"custom.orders","section":"orderState"}
+[2026-02-20T13:04:53.144Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T13:04:53.144Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T13:04:56.402Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T13:05:01.004Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T13:05:01.415Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"fd8xm4k8v","indent":["0"],"volume":100}],"before":[],"configHash":"53ab5087","path":"custom.orders","section":"orderState"}
+[2026-02-20T13:05:01.415Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T13:05:01.415Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T13:05:05.438Z] [INFO] [layout] navigation.changed
+  context: {"tab":"templates"}
+[2026-02-20T13:05:06.728Z] [INFO] [templates] template.loaded
+  context: {"configHash":"88df12ed","name":"LONG","templateId":"6784cdf3-df3d-473d-9fed-bc9ee66520f2"}
+[2026-02-20T13:05:06.728Z] [INFO] [layout] navigation.changed
+  context: {"tab":"backtester"}
+[2026-02-20T13:05:17.567Z] [WARN] [queue] queue.lock_busy
+  batchId: #AEBFC
+  context: {"batchId":"#AEBFC"}
+[2026-02-20T13:05:52.024Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[],"before":["10"],"configHash":"50f0104c","path":"simple.orders","section":"orderState"}
+[2026-02-20T13:05:54.136Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["5"],"before":[],"configHash":"78dc7899","path":"simple.orders","section":"orderState"}
+[2026-02-20T13:05:54.136Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":["5"],"before":[],"configHash":"78dc7899","path":"simple.orders","section":"orderState"}
+[2026-02-20T13:05:57.855Z] [WARN] [queue] queue.lock_busy
+  batchId: #B8B0F
+  context: {"batchId":"#B8B0F"}
+[2026-02-20T13:06:14.968Z] [WARN] [queue] queue.lock_busy
+  batchId: #BCB08
+  context: {"batchId":"#BCB08"}
+[2026-02-20T13:07:31.686Z] [WARN] [queue] queue.lock_busy
+  batchId: #CF84E
+  context: {"batchId":"#CF84E"}
+[2026-02-20T13:08:35.413Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T13:08:37.458Z] [INFO] [app] app.initialized
+  context: {"userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"}
+[2026-02-20T13:08:37.918Z] [INFO] [configurator] config.field_changed
+  context: {"action":"updated","after":[{"id":"drr5mqxth","indent":["0"],"volume":100}],"before":[],"configHash":"c0bba70","path":"custom.orders","section":"orderState"}
+[2026-02-20T13:08:37.918Z] [INFO] [layout] main_layout.opened
+  context: {"tab":"dashboard"}
+[2026-02-20T13:08:37.918Z] [INFO] [layout] navigation.changed
+  context: {"tab":"dashboard"}
+[2026-02-20T13:08:41.448Z] [INFO] [layout] navigation.changed
+  context: {"tab":"settings"}

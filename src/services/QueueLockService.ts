@@ -6,6 +6,7 @@ interface QueueLockRecord {
 
 const LOCK_KEY = 'vh_queue_lock_v1';
 const STOP_KEY_PREFIX = 'vh_queue_stop_v1_';
+const LOCK_TTL_MS = 5 * 60 * 1000;
 
 export class QueueLockService {
   private static stopKey(batchId: string): string {
@@ -50,7 +51,16 @@ export class QueueLockService {
   }
 
   static async getLock(): Promise<QueueLockRecord | null> {
-    return (await this.sessionGet<QueueLockRecord>(LOCK_KEY)) ?? null;
+    const lock = (await this.sessionGet<QueueLockRecord>(LOCK_KEY)) ?? null;
+    if (!lock) return null;
+
+    const isExpired = Date.now() - lock.updatedAt > LOCK_TTL_MS;
+    if (isExpired) {
+      await this.sessionRemove(LOCK_KEY);
+      return null;
+    }
+
+    return lock;
   }
 
   static async acquire(ownerId: string, batchId: string): Promise<boolean> {
@@ -74,6 +84,14 @@ export class QueueLockService {
 
     await this.sessionSet<QueueLockRecord>(LOCK_KEY, {
       ...lock,
+      updatedAt: Date.now()
+    });
+  }
+
+  static async forceAcquire(ownerId: string, batchId: string): Promise<void> {
+    await this.sessionSet<QueueLockRecord>(LOCK_KEY, {
+      ownerId,
+      batchId,
       updatedAt: Date.now()
     });
   }

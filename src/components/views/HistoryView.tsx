@@ -135,15 +135,25 @@ export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps
   };
 
   const handleStopBatch = async (batchId: string) => {
-    if (!queueController.isRunning || queueController.currentBatchId !== batchId) {
-      alert('Эта задача сейчас не выполняется.');
-      return;
+    if (queueController.isRunning && queueController.currentBatchId === batchId) {
+      queueController.stop();
+    } else {
+      await QueueLockService.requestStop(batchId);
     }
 
-    queueController.stop();
+    await StorageService.updateBatchRunState(batchId, 'STOP', {
+      stopReason: 'manual_stop'
+    });
+
     setBatches((prev) => prev.map((batch) => (
       batch.id === batchId
-        ? { ...batch, runStatus: 'STOP', stopReason: 'manual_stop', updatedAt: Date.now() }
+        ? {
+          ...batch,
+          runStatus: 'STOP',
+          stopReason: 'manual_stop',
+          lastError: undefined,
+          updatedAt: Date.now()
+        }
         : batch
     )));
   };
@@ -263,7 +273,7 @@ export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps
                         </Button>
                       )}
 
-                      {status === 'RUN' && queueController.isRunning && queueController.currentBatchId === batch.id && (
+                      {status === 'RUN' && (
                         <Button
                           size="xs"
                           variant="light"
