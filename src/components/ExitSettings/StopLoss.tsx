@@ -10,6 +10,7 @@ import { FILTERS_LIBRARY } from '../../filtersLibrary';
 import { STOP_LOSS_OPTIONS, CONDITIONAL_OPTIONS } from '../../utils/profitGen';
 import type { IndicatorDef } from '../../filtersLibrary';
 import type { StopLossConfig, FilterSlot, Condition, IntervalType, OperationType } from '../../types';
+import { normalizeCondition } from '../../services/ConditionNormalizationService';
 
 interface Props {
   config: StopLossConfig;
@@ -36,10 +37,10 @@ export function StopLoss({ config, onChange }: Props) {
 
   // --- ЛОГИКА ВАРИАНТОВ ---
   const addVariant = (slotId: string) => {
-    const newVariant: Condition = {
+    const newVariant: Condition = normalizeCondition({
       id: randomId(), type: 'INDICATOR', indicator: 'RSI', interval: 'FIVE_MINUTES',
       basic: true, closed: true, operation: 'GREATER', value: '30', reverse: false
-    };
+    });
 
     const newSlots = config.filterSlots.map(slot => {
         if (slot.id === slotId) {
@@ -64,7 +65,7 @@ export function StopLoss({ config, onChange }: Props) {
     const newSlots = config.filterSlots.map(slot => {
         if (slot.id === slotId) {
             const newVariants = slot.variants.map(v => {
-                if (v.id === variantId) return { ...v, [field]: value };
+                if (v.id === variantId) return normalizeCondition({ ...v, [field]: value });
                 return v;
             });
             return { ...slot, variants: newVariants };

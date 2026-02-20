@@ -2,7 +2,6 @@
 import { useEffect, useRef } from 'react';
 import { Stack, Group, Text, Badge, Button, Progress, ScrollArea } from '@mantine/core';
 import { IconPlayerStop, IconTerminal2 } from '@tabler/icons-react';
-import dayjs from 'dayjs';
 
 interface Props {
   status?: string;
@@ -55,7 +54,6 @@ export function ResultsStatusBlock({ status, progress, isLive, onStop, logs }: P
           ) : (
             logs.map((log, idx) => (
               <Text key={idx} size="xs" c="dark.3" style={{ fontFamily: 'monospace', lineHeight: 1.3 }}>
-                <span style={{ opacity: 0.5, marginRight: 8, userSelect: 'none' }}>{dayjs().format('HH:mm:ss')}</span>
                 {log}
               </Text>
             ))

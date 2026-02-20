@@ -39,6 +39,16 @@ export interface SymbolAvailability {
   availableFrom: string; // ISO Date
 }
 
+export interface ExchangeInfo {
+  name: string;
+  key: ExchangeType;
+  type: 'SPOT' | 'FUTURES';
+  fastApi?: boolean;
+  includePosition?: boolean;
+  trailingStop?: number;
+  asset?: string;
+}
+
 export interface StaticConfig {
   namePrefix: string;
   exchange: ExchangeType;
@@ -232,20 +242,62 @@ export interface StopLossConfig {
 // --- 8. Data Storage & History (Новое) ---
 
 export interface BatchInfo {
-  id: string;          // e.g. "#AH274"
-  timestamp: number;   // Date.now()
-  namePrefix: string;  // "My Test"
-  symbol: string;      // "HYPE/USDT"
+  id: string;
+  timestamp: number;
+  namePrefix: string;
+  symbol: string;
   exchange: ExchangeType;
   totalTests: number;
-  velesIds: number[];  // [3622791, 3622792...] - только ID успешных запусков
+  velesIds: number[];
+  runStatus?: BatchRunStatus;
+  completedTests?: number;
+  stopReason?: BatchStopReason;
+  lastError?: string;
+  updatedAt?: number;
+  resumeSource?: BatchResumeSource;
+}
+
+export type BatchRunStatus = 'RUN' | 'STOP' | 'DONE';
+export type BatchStopReason =
+  | 'manual_stop'
+  | 'no_tab'
+  | 'no_token'
+  | 'lock_busy'
+  | 'runtime_error';
+
+export interface QueueRuntimeItem {
+  id: string;
+  config: VelesConfigPayload;
+  status: 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'TIMEOUT';
+  error?: string;
+  resultId?: number;
+}
+
+export interface BatchResumeSource {
+  staticConfig: Omit<StaticConfig, 'dateFrom' | 'dateTo'> & {
+    dateFrom: string;
+    dateTo: string;
+  };
+  entryConfig: EntryConfig;
+  orderState: OrderState;
+  exitConfig: ExitConfig;
+}
+
+export interface BatchRuntimeState {
+  batchId: string;
+  // Legacy field: old versions persisted full queue payloads here.
+  items?: QueueRuntimeItem[];
+  nextIndex: number;
+  total: number;
+  status: BatchRunStatus;
+  updatedAt: number;
 }
 
 export interface StorageData {
-  batches: Record<string, BatchInfo>; // Key = Batch ID
+  batches: Record<string, BatchInfo>;
   templates?: Record<string, Template>;
+  runtimes?: Record<string, BatchRuntimeState>;
 }
-
 
 // -- Результат выполнения теста --
 export interface TestResult {

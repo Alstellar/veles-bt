@@ -1,5 +1,5 @@
 import { Tabs, Text, ThemeIcon, Group, Paper, Select } from '@mantine/core';
-import { IconAbacus, IconAdjustments, IconAntenna } from '@tabler/icons-react';
+import { IconAbacus } from '@tabler/icons-react';
 import type { OrderState, GridMode } from '../../types';
 import { SimpleMode } from './SimpleMode';
 import { SignalMode } from './SignalMode';
@@ -66,16 +66,16 @@ export function OrderSettings({ state, onChange }: Props) {
       </Paper>
 
       <Tabs value={state.mode} onChange={handleTabChange} variant="outline" radius="md">
-        <Tabs.List>
-          <Tabs.Tab value="SIMPLE" leftSection={<IconAbacus size={16}/>}>
+        <Tabs.List grow>
+          <Tabs.Tab value="SIMPLE">
             Простой
           </Tabs.Tab>
           
-          <Tabs.Tab value="CUSTOM" leftSection={<IconAdjustments size={16}/>}>
+          <Tabs.Tab value="CUSTOM">
             Свой
           </Tabs.Tab>
           
-          <Tabs.Tab value="SIGNAL" leftSection={<IconAntenna size={16}/>}>
+          <Tabs.Tab value="SIGNAL">
             Сигнал
           </Tabs.Tab>
         </Tabs.List>

@@ -20,17 +20,44 @@ import { SettingsView } from '../views/SettingsView';
 import { DonateModal } from '../modals/DonateModal'; 
 
 import { StorageService } from '../../services/StorageService';
-import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template } from '../../types';
+import { useBacktestQueue } from '../../hooks/useBacktestQueue';
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, BatchResumeSource } from '../../types';
 import { LogService } from '../../services/LogService';
 import { getObjectDiff } from '../../utils/objectDiff';
 import { configHash } from '../../utils/configHash';
 
 export function MainLayout() {
+  const queueController = useBacktestQueue();
+
+  const cloneResumeSource = (source: BatchResumeSource): BatchResumeSource => {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(source);
+    }
+    return JSON.parse(JSON.stringify(source)) as BatchResumeSource;
+  };
+
+  const normalizeConfigForCompare = (config: {
+    staticConfig: StaticConfig;
+    entryConfig: EntryConfig;
+    orderState: OrderState;
+    exitConfig: ExitConfig;
+  }) => ({
+    staticConfig: {
+      ...config.staticConfig,
+      dateFrom: config.staticConfig.dateFrom.toISOString(),
+      dateTo: config.staticConfig.dateTo.toISOString()
+    },
+    entryConfig: config.entryConfig,
+    orderState: config.orderState,
+    exitConfig: config.exitConfig
+  });
+
   const appVersion = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
     ? chrome.runtime.getManifest().version
     : '1.0.0'; 
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [resumeBatchId, setResumeBatchId] = useState<string | null>(null);
 
   // --- GLOBAL STATE ---
   const [staticConfig, setStaticConfig] = useState<StaticConfig>({
@@ -220,6 +247,42 @@ export function MainLayout() {
       setActiveTab('backtester');
   };
 
+  const handleResumeFromHistory = useCallback((batchId: string, resumeSource: BatchResumeSource) => {
+    const source = cloneResumeSource(resumeSource);
+    const restoredStatic: StaticConfig = {
+      ...source.staticConfig,
+      dateFrom: new Date(source.staticConfig.dateFrom),
+      dateTo: new Date(source.staticConfig.dateTo)
+    };
+
+    const currentSnapshot = normalizeConfigForCompare({
+      staticConfig,
+      entryConfig,
+      orderState,
+      exitConfig
+    });
+    const resumeSnapshot = normalizeConfigForCompare({
+      staticConfig: restoredStatic,
+      entryConfig: source.entryConfig,
+      orderState: source.orderState,
+      exitConfig: source.exitConfig
+    });
+
+    if (configHash(currentSnapshot) !== configHash(resumeSnapshot)) {
+      const confirmed = window.confirm(
+        'Текущие настройки будут заменены конфигурацией выбранного запуска. Продолжить?'
+      );
+      if (!confirmed) return;
+    }
+
+    setStaticConfig(restoredStatic);
+    setEntryConfig(source.entryConfig);
+    setOrderState(source.orderState);
+    setExitConfig(source.exitConfig);
+    setResumeBatchId(batchId);
+    setActiveTab('backtester');
+  }, [staticConfig, entryConfig, orderState, exitConfig]);
+
   // --- GRATITUDE MODAL LOGIC ---
   const [gratitudeOpened, { open: openGratitude, close: closeGratitude }] = useDisclosure(false);
   
@@ -343,6 +406,9 @@ export function MainLayout() {
                orderState={orderState} setOrderState={handleOrderStateChange}
                exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
                onSaveTemplate={openSaveModal}
+               queueController={queueController}
+               resumeBatchId={resumeBatchId}
+               onResumeHandled={() => setResumeBatchId(null)}
             />
          </div>
 
@@ -353,7 +419,12 @@ export function MainLayout() {
              />
          )}
 
-         {activeTab === 'history' && <HistoryView />}
+         {activeTab === 'history' && (
+           <HistoryView
+             queueController={queueController}
+             onResumeBatch={handleResumeFromHistory}
+           />
+         )}
          {activeTab === 'settings' && <SettingsView appVersion={appVersion} />}
       </AppShell.Main>
 

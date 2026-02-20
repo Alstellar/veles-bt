@@ -7,6 +7,7 @@ import { FILTERS_LIBRARY } from '../../filtersLibrary';
 import { PNL_OPTIONS } from '../../utils/profitGen';
 import type { IndicatorDef } from '../../filtersLibrary';
 import type { Condition, FilterSlot, ProfitSignalConfig, IntervalType, OperationType } from '../../types';
+import { normalizeCondition } from '../../services/ConditionNormalizationService';
 
 interface Props {
   config: ProfitSignalConfig;
@@ -38,7 +39,7 @@ export function ProfitSignal({ config, onChange }: Props) {
   // --- УПРАВЛЕНИЕ ВАРИАНТАМИ ---
 
   const addVariant = (slotId: string) => {
-    const newVariant: Condition = {
+    const newVariant: Condition = normalizeCondition({
       id: randomId(),
       type: 'INDICATOR',
       indicator: 'RSI', 
@@ -48,7 +49,7 @@ export function ProfitSignal({ config, onChange }: Props) {
       operation: 'GREATER',
       value: '30',
       reverse: false
-    };
+    });
 
     const newSlots = config.filterSlots.map(slot => {
         if (slot.id === slotId) {
@@ -73,7 +74,7 @@ export function ProfitSignal({ config, onChange }: Props) {
     const newSlots = config.filterSlots.map(slot => {
         if (slot.id === slotId) {
             const newVariants = slot.variants.map(v => {
-                if (v.id === variantId) return { ...v, [field]: value };
+                if (v.id === variantId) return normalizeCondition({ ...v, [field]: value });
                 return v;
             });
             return { ...slot, variants: newVariants };

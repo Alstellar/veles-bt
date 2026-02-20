@@ -39,7 +39,7 @@ function cartesian(args: Record<string, any[]>): Record<string, any>[] {
  * Выполняет очистку неиспользуемых полей на основе FILTERS_LIBRARY.
  */
 function convertCondition(c: Condition): VelesCondition {
-  const code = c.indicator || 'RSI';
+  const code = c.indicator || (c.type === 'PRICE' ? 'PRICE' : 'RSI');
 
   // --- СПЕЦИАЛЬНЫЙ КЕЙС: PRICE ---
   // У Veles это отдельный тип условия, отличающийся от индикаторов
@@ -59,7 +59,11 @@ function convertCondition(c: Condition): VelesCondition {
   const allowValue = def ? def.settings.hasValue : true;
   const allowOp = def ? def.settings.hasOperation : true;
 
-  const isBasic = c.basic || false;
+  const forceBasic = !allowValue && !allowOp;
+  const isBasic = forceBasic ? true : Boolean(c.basic);
+  const rawValue = typeof c.value === 'string' ? c.value.replace(',', '.').trim() : c.value;
+  const parsedValue = rawValue === '' || rawValue === null || rawValue === undefined ? null : Number(rawValue);
+  const normalizedOperation = c.operation === 'GREATER' || c.operation === 'LESS' ? c.operation : 'GREATER';
 
   return {
     type: 'INDICATOR',
@@ -69,10 +73,10 @@ function convertCondition(c: Condition): VelesCondition {
     
     // ЛОГИКА ОЧИСТКИ:
     // Если включен Basic (карандашик) ИЛИ индикатор не поддерживает ввод числа -> null
-    value: (isBasic || !allowValue) ? null : (c.value ? Number(c.value) : null),
+    value: (isBasic || !allowValue) ? null : (Number.isFinite(parsedValue) ? parsedValue : null),
     
     // Если включен Basic ИЛИ индикатор не поддерживает операции (</>) -> null
-    operation: (isBasic || !allowOp) ? null : (c.operation || null),
+    operation: (isBasic || !allowOp) ? null : normalizedOperation,
     
     closed: c.closed !== undefined ? c.closed : true,
     reverse: c.reverse || false

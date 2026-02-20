@@ -6,6 +6,7 @@ import { IconTrash, IconPlus, IconPencil, IconAntenna, IconArrowsRightLeft } fro
 import { FILTERS_LIBRARY } from '../filtersLibrary';
 import type { IndicatorDef } from '../filtersLibrary';
 import type { Condition, FilterSlot, EntryConfig, IntervalType, OperationType } from '../types';
+import { normalizeCondition } from '../services/ConditionNormalizationService';
 
 interface Props {
   config: EntryConfig;
@@ -37,7 +38,7 @@ export function EntrySettings({ config, onChange }: Props) {
   // --- УПРАВЛЕНИЕ ВАРИАНТАМИ ---
 
   const addVariant = (slotId: string) => {
-    const newVariant: Condition = {
+    const newVariant: Condition = normalizeCondition({
       id: randomId(),
       type: 'INDICATOR',
       indicator: 'RSI', 
@@ -47,7 +48,7 @@ export function EntrySettings({ config, onChange }: Props) {
       operation: 'GREATER',
       value: '30',
       reverse: false
-    };
+    });
 
     const newSlots = config.filterSlots.map(slot => {
         if (slot.id === slotId) {
@@ -72,7 +73,7 @@ export function EntrySettings({ config, onChange }: Props) {
     const newSlots = config.filterSlots.map(slot => {
         if (slot.id === slotId) {
             const newVariants = slot.variants.map(v => {
-                if (v.id === variantId) return { ...v, [field]: value };
+                if (v.id === variantId) return normalizeCondition({ ...v, [field]: value });
                 return v;
             });
             return { ...slot, variants: newVariants };

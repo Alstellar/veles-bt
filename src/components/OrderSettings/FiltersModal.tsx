@@ -7,6 +7,7 @@ import { IconTrash, IconPlus, IconPencil, IconCheck, IconArrowsRightLeft } from 
 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
 import type { IndicatorDef } from '../../filtersLibrary';
+import { normalizeCondition } from '../../services/ConditionNormalizationService';
 
 import type { Condition, FilterSlot, IntervalType, OperationType } from '../../types';
 
@@ -32,10 +33,12 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
       const cleanSlots = safeSlots.map(slot => ({
         id: slot.id || randomId(),
         variants: Array.isArray(slot.variants) ? slot.variants.map(v => ({
+            ...normalizeCondition({
             ...v,
             id: v.id || randomId(),
             value: Array.isArray(v.value) ? (v.value[0] || '') : (v.value || ''),
             basic: v.basic !== undefined ? v.basic : true
+        }),
         })) : []
       }));
       setSlots(cleanSlots);
@@ -64,7 +67,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
   // --- УПРАВЛЕНИЕ ВАРИАНТАМИ ---
 
   const addVariant = (slotId: string) => {
-    const newVariant: Condition = {
+    const newVariant: Condition = normalizeCondition({
       id: randomId(),
       type: 'INDICATOR',
       indicator: 'RSI', 
@@ -74,7 +77,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
       operation: 'GREATER',
       value: '30', 
       reverse: false
-    };
+    });
 
     setSlots(slots.map(slot => {
         if (slot.id === slotId) {
@@ -97,7 +100,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
     setSlots(slots.map(slot => {
         if (slot.id === slotId) {
             const newVariants = slot.variants.map(v => {
-                if (v.id === variantId) return { ...v, [field]: value };
+                if (v.id === variantId) return normalizeCondition({ ...v, [field]: value });
                 return v;
             });
             return { ...slot, variants: newVariants };

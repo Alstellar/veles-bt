@@ -1,7 +1,7 @@
 import { TagsInput } from '@mantine/core';
 
 interface Props {
-  label: string;
+  label?: string;
   description?: string;
   placeholder?: string;
   value: string[];

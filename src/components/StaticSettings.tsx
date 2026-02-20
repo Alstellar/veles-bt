@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { 
-  Paper, SimpleGrid, Select, TextInput, NumberInput, SegmentedControl, Text, 
+  Paper, SimpleGrid, Select, TextInput, NumberInput, SegmentedControl, Text, Autocomplete,
   Group, Button, Switch, Divider, LoadingOverlay, Alert, Tooltip, Stack 
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
@@ -9,19 +9,27 @@ import dayjs from 'dayjs';
 import '@mantine/dates/styles.css';
 
 // Импорты типов и сервисов
-import type { StaticConfig, ExchangeType, AlgoType, SymbolLimitation, SymbolAvailability } from '../types';
+import type { StaticConfig, AlgoType, SymbolLimitation, SymbolAvailability, ExchangeInfo } from '../types';
 import { isSpot } from '../types';
-import { fetchLimitations, fetchAvailability } from '../services/apiService';
+import { fetchLimitations, fetchAvailability, fetchExchanges } from '../services/apiService';
 
 interface Props {
   config: StaticConfig;
   onChange: (newConfig: StaticConfig) => void;
 }
 
-const EXCHANGES: ExchangeType[] = [
-  'BINANCE_FUTURES', 'BINANCE', 'BYBIT_FUTURES', 'BYBIT_SPOT', 
-  'OKX_FUTURES', 'OKX_SPOT', 'BINGX_FUTURES', 'BITGET_FUTURES', 
-  'GATE_IO_FUTURES', 'GATE_IO_SPOT', 'HUOBI_SPOT'
+const FALLBACK_EXCHANGES: ExchangeInfo[] = [
+  { name: 'Binance Futures', key: 'BINANCE_FUTURES', type: 'FUTURES', includePosition: true, fastApi: true },
+  { name: 'Binance Spot', key: 'BINANCE', type: 'SPOT', includePosition: false, fastApi: true },
+  { name: 'Bybit Futures', key: 'BYBIT_FUTURES', type: 'FUTURES', includePosition: true, fastApi: true },
+  { name: 'Bybit Spot', key: 'BYBIT_SPOT', type: 'SPOT', includePosition: false, fastApi: true },
+  { name: 'OKX Futures', key: 'OKX_FUTURES', type: 'FUTURES', includePosition: false, fastApi: true },
+  { name: 'OKX Spot', key: 'OKX_SPOT', type: 'SPOT', includePosition: false, fastApi: true },
+  { name: 'BingX Futures', key: 'BINGX_FUTURES', type: 'FUTURES', includePosition: true, fastApi: true },
+  { name: 'Bitget Futures', key: 'BITGET_FUTURES', type: 'FUTURES', includePosition: true, fastApi: true },
+  { name: 'Gate.io Futures', key: 'GATE_IO_FUTURES', type: 'FUTURES', includePosition: false, fastApi: false },
+  { name: 'Gate.io Spot', key: 'GATE_IO_SPOT', type: 'SPOT', includePosition: false, fastApi: false },
+  { name: 'HTX Spot', key: 'HUOBI_SPOT', type: 'SPOT', includePosition: false, fastApi: false }
 ];
 
 // --- ХЕЛПЕР ДЛЯ УМНОГО ПОИСКА ---
@@ -52,8 +60,32 @@ export function StaticSettings({ config, onChange }: Props) {
   
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState(false);
+  const [exchanges, setExchanges] = useState<ExchangeInfo[]>(FALLBACK_EXCHANGES);
   const [limitations, setLimitations] = useState<SymbolLimitation[]>([]);
   const [availabilities, setAvailabilities] = useState<SymbolAvailability[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadExchanges = async () => {
+      try {
+        const remote = await fetchExchanges();
+        if (!mounted || remote.length === 0) return;
+        const merged = [...remote];
+        FALLBACK_EXCHANGES.forEach((item) => {
+          if (!merged.some((x) => x.key === item.key)) {
+            merged.push(item);
+          }
+        });
+        setExchanges(merged);
+      } catch {
+        // keep fallback exchanges
+      }
+    };
+    void loadExchanges();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // 1. Загрузка данных
   useEffect(() => {
@@ -88,8 +120,25 @@ export function StaticSettings({ config, onChange }: Props) {
   
   const currentLimitation = useMemo(() => findSmart(limitations, config.symbol), [limitations, config.symbol]);
   const currentAvailability = useMemo(() => findSmart(availabilities, config.symbol), [availabilities, config.symbol]);
-  const currentIsSpot = isSpot(config.exchange);
+  const currentExchange = useMemo(
+    () => exchanges.find((item) => item.key === config.exchange) ?? null,
+    [exchanges, config.exchange]
+  );
+  const currentIsSpot = currentExchange ? currentExchange.type === 'SPOT' : isSpot(config.exchange);
   const maxLeverage = currentLimitation?.leverage || 125;
+  const exchangeOptions = useMemo(
+    () => exchanges.map((item) => ({ value: item.key, label: item.name })),
+    [exchanges]
+  );
+  const symbolOptions = useMemo(() => {
+    const set = new Set<string>();
+    limitations.forEach((item) => {
+      const base = item.symbol.includes('/') ? item.symbol.split('/')[0] : item.symbol;
+      const normalized = base.trim().toUpperCase();
+      if (normalized) set.add(normalized);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [limitations]);
 
   // Авто-корректировка плеча
   useEffect(() => {
@@ -152,13 +201,17 @@ export function StaticSettings({ config, onChange }: Props) {
      return `${ticker} | 1/N | #BATCH`;
   }, [config.symbol]);
 
+  const isLongAlgo = config.algo === 'LONG';
+
   return (
-    <Paper withBorder p="md" radius="md" bg="gray.0" pos="relative">
-      <LoadingOverlay visible={loading} overlayProps={{ blur: 1 }} />
+    <Paper p={0} bg="transparent">
       
       <Text size="sm" fw={700} mb="xs" c="dimmed" tt="uppercase">
         Базовые настройки
       </Text>
+
+      <Paper withBorder p="md" radius="md" bg="gray.0" pos="relative">
+        <LoadingOverlay visible={loading} overlayProps={{ blur: 1 }} />
 
       {authError && (
         <Alert variant="light" color="red" title="Нет доступа к API" icon={<IconAlertTriangle />} mb="sm">
@@ -183,9 +236,9 @@ export function StaticSettings({ config, onChange }: Props) {
         />
         <Select
           label="Биржа"
-          data={EXCHANGES}
+          data={exchangeOptions}
           value={config.exchange}
-          onChange={(v) => update('exchange', v)}
+          onChange={(v) => update('exchange', v || config.exchange)}
           allowDeselect={false}
           searchable
         />
@@ -193,11 +246,14 @@ export function StaticSettings({ config, onChange }: Props) {
 
       {/* Монета, Алго, Депо, Плечо */}
       <SimpleGrid cols={2} spacing="xs" mb="sm">
-        <TextInput
+        <Autocomplete
           label="Монета"
           placeholder="BTC"
+          data={symbolOptions}
+          maxDropdownHeight={220}
+          comboboxProps={{ withinPortal: false }}
           value={config.symbol}
-          onChange={(e) => update('symbol', e.currentTarget.value.toUpperCase())}
+          onChange={(v) => update('symbol', v.toUpperCase())}
           rightSectionWidth={80} 
           rightSection={renderCoinStatus()}
         />
@@ -206,14 +262,48 @@ export function StaticSettings({ config, onChange }: Props) {
            <Text size="sm" fw={500} mt={2} mb={3}>Алгоритм</Text>
            <SegmentedControl
             fullWidth
-            size="xs"
-            color={config.algo === 'LONG' ? 'green' : 'red'}
+            w="100%"
+            size="md"
+            style={{ width: '100%' }}
             data={[
               { label: 'Long 📈', value: 'LONG' },
               { label: 'Short 📉', value: 'SHORT' }
             ]}
             value={config.algo}
             onChange={(v) => update('algo', v as AlgoType)}
+            styles={{
+              root: {
+                width: '100%',
+                maxWidth: '100%',
+                display: 'flex',
+                minHeight: 36,
+                padding: 3,
+                borderRadius: 12,
+                border: '1px solid #c6d9ef',
+                background: '#e8f1fb',
+                overflow: 'hidden'
+              },
+              control: {
+                flex: 1,
+                minHeight: 30
+              },
+              indicator: {
+                borderRadius: 9,
+                border: isLongAlgo ? '1px solid rgba(26, 156, 96, 0.38)' : '1px solid rgba(219, 65, 83, 0.38)',
+                background: isLongAlgo ? '#a3e7c3' : '#ffadb9',
+                boxShadow: isLongAlgo
+                  ? '0 0 0 1px rgba(26, 156, 96, 0.24), 0 0 12px rgba(26, 156, 96, 0.22)'
+                  : '0 0 0 1px rgba(219, 65, 83, 0.24), 0 0 12px rgba(219, 65, 83, 0.22)',
+                transition: 'transform 300ms cubic-bezier(0.22, 0.8, 0.26, 1), background 260ms ease, box-shadow 260ms ease, border-color 260ms ease'
+              },
+              label: {
+                color: '#607b98',
+                fontSize: 13,
+                fontWeight: 700,
+                letterSpacing: '0.02em',
+                transition: 'color 260ms ease, transform 260ms ease'
+              }
+            }}
           />
         </div>
 
@@ -329,6 +419,7 @@ export function StaticSettings({ config, onChange }: Props) {
          </Stack>
       </SimpleGrid>
 
+      </Paper>
     </Paper>
   );
 }

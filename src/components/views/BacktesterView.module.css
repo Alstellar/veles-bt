@@ -1,0 +1,403 @@
+.viewRoot {
+  position: relative;
+  --cfg-switch-bg: linear-gradient(180deg, rgba(245, 250, 255, 0.9), rgba(239, 247, 255, 0.9));
+  --cfg-switch-active-bg: linear-gradient(180deg, #ffffff, #edf6ff);
+  --cfg-switch-border: #cfddee;
+  --cfg-switch-active-border: #6fa5dd;
+  --cfg-switch-text: #456384;
+  --cfg-switch-text-active: #184786;
+  --cfg-switch-shadow: 0 10px 18px rgba(47, 92, 154, 0.22);
+  --cfg-switch-radius-outer: 12px;
+  --cfg-switch-radius-inner: 9px;
+  --cfg-switch-height: 36px;
+  --cfg-switch-font-size: 13px;
+  --cfg-switch-font-weight: 600;
+}
+
+.topbar {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(165, 187, 212, 0.46);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(249, 252, 255, 0.72));
+  box-shadow: 0 14px 30px rgba(33, 50, 78, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.sectionsStack > .sectionGlass {
+  animation: sectionIn 0.52s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.sectionsStack > .sectionGlass:nth-child(1) { animation-delay: 0.03s; }
+.sectionsStack > .sectionGlass:nth-child(2) { animation-delay: 0.07s; }
+.sectionsStack > .sectionGlass:nth-child(3) { animation-delay: 0.11s; }
+.sectionsStack > .sectionGlass:nth-child(4) { animation-delay: 0.15s; }
+.sectionsStack > .sectionGlass:nth-child(5) { animation-delay: 0.19s; }
+
+.sectionGlass {
+  padding: 10px;
+  scroll-margin-top: 88px;
+  border-radius: 16px;
+  border: 1px solid rgba(175, 196, 220, 0.45);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(247, 251, 255, 0.66));
+  box-shadow: 0 10px 24px rgba(43, 62, 93, 0.1);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.sectionGlass:hover {
+  transform: translateY(-1px);
+  border-color: rgba(137, 173, 213, 0.58);
+  box-shadow: 0 14px 28px rgba(43, 62, 93, 0.14);
+}
+
+/* Unified style for main block titles (Static/Entry/Order/Exit) */
+.sectionGlass > :global(.mantine-Paper-root) > :global(.mantine-Group-root:first-child) {
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.sectionGlass > :global(.mantine-Paper-root) > :global(.mantine-Group-root:first-child) > :global(.mantine-ThemeIcon-root) {
+  display: none;
+}
+
+.sectionGlass > :global(.mantine-Paper-root) > :global(.mantine-Group-root:first-child) > :global(.mantine-Text-root) {
+  font-size: 1.18rem;
+  font-weight: 700;
+  text-align: center;
+  color: #213853;
+}
+
+/* StaticSettings header is a direct Text after LoadingOverlay */
+:global(#cfg-static) > :global(.mantine-Paper-root) > :global(.mantine-Text-root) {
+  font-size: 1.18rem !important;
+  font-weight: 700 !important;
+  text-transform: none !important;
+  color: #213853 !important;
+  text-align: center !important;
+  margin-bottom: 10px !important;
+}
+
+.sideColumn {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.sideCard {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(175, 196, 220, 0.45);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 251, 255, 0.68));
+  box-shadow: 0 10px 24px rgba(43, 62, 93, 0.1);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  animation: sideIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.sideCard:nth-child(1) { animation-delay: 0.08s; }
+.sideCard:nth-child(2) { animation-delay: 0.14s; }
+.sideCard:nth-child(3) { animation-delay: 0.2s; }
+
+.sideTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #5e6f88;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.stepsTable {
+  display: grid;
+  gap: 8px;
+}
+
+.stepRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid #d4e0ee;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+}
+
+.stepButton {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.stepButton:hover {
+  border-color: #b5cae2;
+  box-shadow: 0 8px 16px rgba(43, 62, 93, 0.08);
+  transform: translateY(-1px);
+}
+
+.stepWarn {
+  border-color: #f0cda8;
+  background: #fff8ef;
+}
+
+.stepActive {
+  border-color: #8bb3de;
+  background: #eef6ff;
+  box-shadow: 0 10px 18px rgba(58, 101, 158, 0.14);
+}
+
+.warnBadge {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #b25a0a;
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.summaryBlock {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #d5e2f0;
+  background: rgba(255, 255, 255, 0.9);
+  margin-bottom: 9px;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 13px;
+}
+
+.kv:last-child {
+  margin-bottom: 0;
+}
+
+.kv span {
+  color: #5f7290;
+}
+
+/* Scoped visual refresh for all configurator block internals */
+.sectionGlass :global(.mantine-Paper-root[data-with-border]),
+.sectionGlass :global(.mantine-Paper-root[with-border]) {
+  border-color: #cfddee !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 255, 0.92));
+  box-shadow: 0 7px 18px rgba(52, 79, 117, 0.08);
+}
+
+.sectionGlass :global(.mantine-Input-input),
+.sectionGlass :global(.mantine-Select-input),
+.sectionGlass :global(.mantine-DateInput-input),
+.sectionGlass :global(.mantine-NumberInput-input),
+.sectionGlass :global(.mantine-MultiSelect-input) {
+  border-color: #cddbed;
+  background: rgba(255, 255, 255, 0.96);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sectionGlass :global(.mantine-Input-input:focus),
+.sectionGlass :global(.mantine-Select-input:focus),
+.sectionGlass :global(.mantine-DateInput-input:focus),
+.sectionGlass :global(.mantine-NumberInput-input:focus),
+.sectionGlass :global(.mantine-MultiSelect-input:focus) {
+  border-color: #8db4e0;
+  box-shadow: 0 0 0 3px rgba(98, 152, 218, 0.2);
+}
+
+.sectionGlass :global(.mantine-Button-root),
+.sideCard :global(.mantine-Button-root) {
+  border-radius: 10px;
+  font-weight: 700;
+  min-height: 36px;
+  border-width: 1px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sectionGlass :global(.mantine-Button-root:hover),
+.sideCard :global(.mantine-Button-root:hover) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(52, 79, 117, 0.15);
+}
+
+#cfg-order :global(.mantine-Tabs-list),
+#cfg-exit :global(.mantine-Tabs-list) {
+  width: 100% !important;
+  min-height: var(--cfg-switch-height);
+  padding: 4px;
+  border-radius: var(--cfg-switch-radius-outer);
+  border: 1px solid var(--cfg-switch-border);
+  background: var(--cfg-switch-bg);
+}
+
+#cfg-order :global(.mantine-Tabs-list),
+#cfg-exit :global(.mantine-Tabs-list) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+
+#cfg-order :global(.mantine-Tabs-tab),
+#cfg-exit :global(.mantine-Tabs-tab) {
+  min-height: calc(var(--cfg-switch-height) - 8px);
+  border-radius: var(--cfg-switch-radius-inner);
+  border: 1px solid transparent;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+#cfg-order :global(.mantine-Tabs-tab:hover),
+#cfg-exit :global(.mantine-Tabs-tab:hover) {
+  transform: translateY(-1px);
+}
+
+#cfg-order :global(.mantine-Tabs-tabSection),
+#cfg-exit :global(.mantine-Tabs-tabSection) {
+  display: none;
+}
+
+#cfg-order :global(.mantine-Tabs-tabLabel),
+#cfg-exit :global(.mantine-Tabs-tabLabel) {
+  width: 100%;
+  min-height: calc(var(--cfg-switch-height) - 8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  text-align: center;
+  font-size: var(--cfg-switch-font-size);
+  font-weight: var(--cfg-switch-font-weight);
+  line-height: 1.1;
+  font-family: inherit;
+  color: var(--cfg-switch-text);
+}
+
+#cfg-order :global(.mantine-Tabs-tab[data-active]),
+#cfg-exit :global(.mantine-Tabs-tab[data-active]) {
+  border-color: var(--cfg-switch-active-border);
+  background: var(--cfg-switch-active-bg);
+  box-shadow: var(--cfg-switch-shadow);
+}
+
+#cfg-order :global(.mantine-Tabs-tab[data-active] .mantine-Tabs-tabLabel),
+#cfg-exit :global(.mantine-Tabs-tab[data-active] .mantine-Tabs-tabLabel) {
+  color: var(--cfg-switch-text-active);
+  font-weight: 700;
+}
+
+.sectionGlass :global(.mantine-Badge-root) {
+  box-shadow: 0 4px 10px rgba(47, 88, 140, 0.12);
+}
+
+/* Variant 04 switch style for StaticSettings toggles:
+   Public test / Use wicks */
+:global(#cfg-static) :global(.mantine-Switch-root),
+:global(#cfg-order) :global(.mantine-Switch-root),
+:global(#cfg-exit) :global(.mantine-Switch-root) {
+  --cfg-sw-w: 58px;
+  --cfg-sw-h: 32px;
+  --cfg-sw-thumb: 22px;
+}
+
+:global(#cfg-static) :global(.mantine-Switch-track),
+:global(#cfg-order) :global(.mantine-Switch-track),
+:global(#cfg-exit) :global(.mantine-Switch-track) {
+  width: var(--cfg-sw-w);
+  min-width: var(--cfg-sw-w);
+  height: var(--cfg-sw-h);
+  border-radius: 999px;
+  border: 1px solid #c7d8ec;
+  background: #e4eef9;
+  position: relative;
+  transition: background var(--ease), border-color var(--ease), box-shadow var(--ease);
+}
+
+:global(#cfg-static) :global(.mantine-Switch-thumb),
+:global(#cfg-order) :global(.mantine-Switch-thumb),
+:global(#cfg-exit) :global(.mantine-Switch-thumb) {
+  width: var(--cfg-sw-thumb);
+  height: var(--cfg-sw-thumb);
+  border: 0;
+  box-shadow: 0 4px 10px rgba(39, 64, 95, 0.18);
+}
+
+:global(#cfg-static) :global(.mantine-Switch-track::before),
+:global(#cfg-order) :global(.mantine-Switch-track::before),
+:global(#cfg-exit) :global(.mantine-Switch-track::before) {
+  content: "OFF";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 800;
+  color: #7991ab;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+:global(#cfg-static) :global(.mantine-Switch-input:checked + .mantine-Switch-track),
+:global(#cfg-order) :global(.mantine-Switch-input:checked + .mantine-Switch-track),
+:global(#cfg-exit) :global(.mantine-Switch-input:checked + .mantine-Switch-track) {
+  background: #d8ecff;
+  border-color: #7db2e6;
+}
+
+:global(#cfg-static) :global(.mantine-Switch-input:checked + .mantine-Switch-track::before),
+:global(#cfg-order) :global(.mantine-Switch-input:checked + .mantine-Switch-track::before),
+:global(#cfg-exit) :global(.mantine-Switch-input:checked + .mantine-Switch-track::before) {
+  content: "ON";
+  right: auto;
+  left: 8px;
+  color: #2f6fb4;
+}
+
+@keyframes sectionIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sideIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1180px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sideColumn {
+    position: static;
+  }
+}

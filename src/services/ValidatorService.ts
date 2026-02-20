@@ -1,199 +1,282 @@
-// src/services/ValidatorService.ts
-import type { 
-  StaticConfig, OrderState, EntryConfig, ExitConfig 
+import type {
+  StaticConfig,
+  OrderState,
+  EntryConfig,
+  ExitConfig,
+  FilterSlot
 } from '../types';
+import { FILTERS_LIBRARY } from '../filtersLibrary';
+
+export interface ValidationSections {
+  static: boolean;
+  entry: boolean;
+  order: boolean;
+  exit: boolean;
+}
 
 export interface ValidationResult {
   valid: boolean;
   error?: string;
+  sections: ValidationSections;
 }
 
-// Хелпер: проверяет, что массив строк содержит хотя бы одно непустое значение
 function hasValues(arr: string[]): boolean {
-  return arr.length > 0 && arr.some(v => v && v.trim() !== '');
+  return arr.length > 0 && arr.some((v) => v && v.trim() !== '');
 }
 
-// Хелпер: безопасно преобразует входное значение в Date или возвращает null
-// Решает проблему, когда дата приходит в виде строки из JSON/Storage
-function getValidDate(value: any): Date | null {
+function hasNumericValues(arr: string[]): boolean {
+  return hasValues(arr) && arr.every((v) => Number.isFinite(parseFloat(v)));
+}
+
+function hasNumericOrNullValues(arr: string[]): boolean {
+  return hasValues(arr) && arr.every((v) => v === 'null' || Number.isFinite(parseFloat(v)));
+}
+
+function getValidDate(value: unknown): Date | null {
   if (!value) return null;
-  const date = new Date(value);
-  return isNaN(date.getTime()) ? null : date;
+  const date = new Date(value as Date | string | number);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function validateSlotsAgainstLibrary(slots: FilterSlot[]): string | null {
+  for (const slot of slots) {
+    if (!slot.variants.length) return 'В одном из слотов нет вариантов индикаторов.';
+
+    for (const variant of slot.variants) {
+      const indicator = variant.indicator;
+      if (!indicator) return 'Индикатор не выбран.';
+
+      const rules = FILTERS_LIBRARY[indicator]?.settings;
+      if (!rules) continue;
+
+      if (rules.hasValue) {
+        const value = String(variant.value ?? '').replace(',', '.').trim();
+        if (value === '' || !Number.isFinite(Number(value))) {
+          return `Индикатор ${indicator}: заполните корректное числовое значение.`;
+        }
+      }
+
+      if (rules.hasOperation && variant.operation !== 'GREATER' && variant.operation !== 'LESS') {
+        return `Индикатор ${indicator}: выберите условие сравнения (> или <).`;
+      }
+    }
+  }
+
+  return null;
 }
 
 export class ValidatorService {
-  
+  private static ok(): ValidationResult {
+    return {
+      valid: true,
+      sections: {
+        static: false,
+        entry: false,
+        order: false,
+        exit: false
+      }
+    };
+  }
+
+  private static fail(section: keyof ValidationSections, error: string): ValidationResult {
+    return {
+      valid: false,
+      error,
+      sections: {
+        static: section === 'static',
+        entry: section === 'entry',
+        order: section === 'order',
+        exit: section === 'exit'
+      }
+    };
+  }
+
   static validate(
-    staticCfg: StaticConfig, 
-    entryCfg: EntryConfig, 
-    orderState: OrderState, 
+    staticCfg: StaticConfig,
+    entryCfg: EntryConfig,
+    orderState: OrderState,
     exitCfg: ExitConfig
   ): ValidationResult {
-
-    // --- 1. STATIC CONFIG (Базовые) ---
-    if (!staticCfg.namePrefix.trim()) return { valid: false, error: 'Базовые: Не указано имя теста (префикс).' };
-    if (!staticCfg.exchange) return { valid: false, error: 'Базовые: Не выбрана биржа.' };
-    if (!staticCfg.symbol.trim()) return { valid: false, error: 'Базовые: Не выбрана монета.' };
-    if (staticCfg.deposit <= 0) return { valid: false, error: 'Базовые: Депозит должен быть больше 0.' };
-    if (staticCfg.leverage < 1) return { valid: false, error: 'Базовые: Плечо должно быть не менее 1.' };
+    if (!staticCfg.namePrefix.trim()) {
+      return this.fail('static', 'Базовые настройки: укажите имя теста (префикс).');
+    }
+    if (!staticCfg.exchange) {
+      return this.fail('static', 'Базовые настройки: выберите биржу.');
+    }
+    if (!staticCfg.symbol.trim()) {
+      return this.fail('static', 'Базовые настройки: выберите тикер.');
+    }
+    if (staticCfg.deposit <= 0) {
+      return this.fail('static', 'Базовые настройки: депозит должен быть больше 0.');
+    }
+    if (staticCfg.leverage < 1) {
+      return this.fail('static', 'Базовые настройки: плечо должно быть не меньше 1.');
+    }
 
     const maker = parseFloat(staticCfg.makerFee);
     const taker = parseFloat(staticCfg.takerFee);
-    if (isNaN(maker) || maker < 0) return { valid: false, error: 'Базовые: Некорректная комиссия Maker.' };
-    if (isNaN(taker) || taker < 0) return { valid: false, error: 'Базовые: Некорректная комиссия Taker.' };
+    if (Number.isNaN(maker) || maker < 0) {
+      return this.fail('static', 'Базовые настройки: некорректная комиссия Maker.');
+    }
+    if (Number.isNaN(taker) || taker < 0) {
+      return this.fail('static', 'Базовые настройки: некорректная комиссия Taker.');
+    }
 
-    // --- ДАТЫ (ИСПРАВЛЕННАЯ ПРОВЕРКА) ---
-    // Преобразуем входные данные в объекты Date (даже если пришли строки)
     const dFrom = getValidDate(staticCfg.dateFrom);
     const dTo = getValidDate(staticCfg.dateTo);
-
     if (!dFrom) {
-        return { valid: false, error: 'Базовые: Некорректная Дата начала. Пожалуйста, выберите дату заново.' };
+      return this.fail('static', 'Базовые настройки: некорректная дата начала.');
     }
     if (!dTo) {
-        return { valid: false, error: 'Базовые: Некорректная Дата конца. Пожалуйста, выберите дату заново.' };
+      return this.fail('static', 'Базовые настройки: некорректная дата окончания.');
     }
-    
-    // Проверка логики дат
     if (dFrom.getTime() >= dTo.getTime()) {
-        return { valid: false, error: 'Базовые: Дата начала должна быть раньше Даты конца.' };
+      return this.fail('static', 'Базовые настройки: дата начала должна быть раньше даты окончания.');
     }
 
-
-    // --- 2. ENTRY CONFIG (Вход) ---
-    const hasEntryConditions = entryCfg.filterSlots.length > 0 && 
-                               entryCfg.filterSlots.some(slot => slot.variants.length > 0);
-    
-    if (!hasEntryConditions) {
-      return { 
-        valid: false, 
-        error: 'Вход: Не заданы условия входа. Добавьте хотя бы один индикатор.' 
-      };
+    if (entryCfg.filterSlots.length === 0) {
+      return this.fail('entry', 'Условия открытия сделки: добавьте хотя бы один слот.');
+    }
+    const entryIndicatorError = validateSlotsAgainstLibrary(entryCfg.filterSlots);
+    if (entryIndicatorError) {
+      return this.fail('entry', entryIndicatorError);
     }
 
+    if (!hasValues(orderState.general.pullUp ? [orderState.general.pullUp] : [])) {
+      return this.fail('order', 'Ордера сделки: заполните поле подтяжки сетки.');
+    }
 
-    // --- 3. ORDER STATE (Сетка) ---
     if (orderState.mode === 'SIMPLE') {
-        const s = orderState.simple;
-        if (!hasValues(s.orders)) return { valid: false, error: 'Сетка (Simple): Не указано количество ордеров.' };
-        if (!hasValues(s.martingale)) return { valid: false, error: 'Сетка (Simple): Не указан Мартингейл.' };
-        if (!hasValues(s.indent)) return { valid: false, error: 'Сетка (Simple): Не указан Отступ.' };
-        if (!hasValues(s.overlap)) return { valid: false, error: 'Сетка (Simple): Не указано Перекрытие.' };
-        
-        if (s.logarithmicEnabled && !hasValues(s.logarithmicFactor)) {
-             return { valid: false, error: 'Сетка (Simple): Включено лог. распределение, но не указан коэффициент.' };
+      const s = orderState.simple;
+      if (!hasNumericValues(s.orders)) return this.fail('order', 'Ордера сделки (Простой): укажите корректное количество ордеров.');
+      if (!hasNumericValues(s.martingale)) return this.fail('order', 'Ордера сделки (Простой): укажите корректный % мартингейла.');
+      if (!hasNumericValues(s.indent)) return this.fail('order', 'Ордера сделки (Простой): укажите корректный отступ.');
+      if (!hasNumericValues(s.overlap)) return this.fail('order', 'Ордера сделки (Простой): укажите корректное перекрытие.');
+      if (s.logarithmicEnabled && !hasValues(s.logarithmicFactor)) {
+        return this.fail('order', 'Ордера сделки (Простой): заполните коэффициент логарифмического распределения.');
+      }
+      if (s.logarithmicEnabled && !hasNumericValues(s.logarithmicFactor)) {
+        return this.fail('order', 'Ордера сделки (Простой): коэффициент логарифмического распределения должен быть числом.');
+      }
+    } else if (orderState.mode === 'CUSTOM') {
+      const c = orderState.custom;
+      if (c.orders.length === 0) {
+        return this.fail('order', 'Ордера сделки (Свой): добавьте хотя бы один ордер.');
+      }
+
+      let totalVol = 0;
+      for (let i = 0; i < c.orders.length; i++) {
+        const o = c.orders[i];
+        if (o.volume <= 0) {
+          return this.fail('order', `Ордера сделки (Свой): ордер #${i + 1} имеет некорректный объем.`);
         }
+        if (!hasNumericValues(o.indent)) {
+          return this.fail('order', `Ордера сделки (Свой): ордер #${i + 1} имеет некорректный отступ.`);
+        }
+        totalVol += o.volume;
+      }
+
+      if (Math.abs(totalVol - 100) > 0.1) {
+        return this.fail('order', `Ордера сделки (Свой): сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(2)}%).`);
+      }
+    } else if (orderState.mode === 'SIGNAL') {
+      const s = orderState.signal;
+      if (s.baseOrder.volume <= 0) {
+        return this.fail('order', 'Ордера сделки (Сигнал): объем базового ордера должен быть больше 0.');
+      }
+      if (!hasNumericValues(s.baseOrder.indent)) {
+        return this.fail('order', 'Ордера сделки (Сигнал): укажите отступ базового ордера.');
+      }
+      if (s.orders.length === 0) {
+        return this.fail('order', 'Ордера сделки (Сигнал): добавьте хотя бы один сигнальный ордер.');
+      }
+
+      let totalVol = s.baseOrder.volume;
+      for (let i = 0; i < s.orders.length; i++) {
+        const o = s.orders[i];
+        if (o.volume <= 0) {
+          return this.fail('order', `Ордера сделки (Сигнал): ордер #${i + 1} имеет некорректный объем.`);
+        }
+        if (!hasNumericValues(o.indent)) {
+          return this.fail('order', `Ордера сделки (Сигнал): ордер #${i + 1} имеет некорректный отступ.`);
+        }
+        const hasFilters = o.filterSlots.length > 0 && o.filterSlots.some((slot) => slot.variants.length > 0);
+        if (!hasFilters) {
+          return this.fail('order', `Ордера сделки (Сигнал): в ордере #${i + 1} отсутствуют фильтры.`);
+        }
+        const signalOrderError = validateSlotsAgainstLibrary(o.filterSlots);
+        if (signalOrderError) {
+          return this.fail('order', signalOrderError);
+        }
+        totalVol += o.volume;
+      }
+
+      if (Math.abs(totalVol - 100) > 0.1) {
+        return this.fail('order', `Ордера сделки (Сигнал): сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(2)}%).`);
+      }
     }
-    else if (orderState.mode === 'CUSTOM') {
-        const c = orderState.custom;
-        
-        let totalVol = 0;
 
-        if (c.orders.length === 0) {
-             return { valid: false, error: 'Сетка (Custom): Не добавлено ни одного ордера.' };
-        }
-
-        for (let i = 0; i < c.orders.length; i++) {
-            const o = c.orders[i];
-            
-            if (o.volume <= 0) return { valid: false, error: `Сетка (Custom): Ордер #${i+1} имеет некорректный объем.` };
-            if (!hasValues(o.indent)) return { valid: false, error: `Сетка (Custom): Ордер #${i+1} не имеет отступа.` };
-            
-            totalVol += o.volume;
-        }
-
-        // Проверка суммы (с допуском для float)
-        if (Math.abs(totalVol - 100) > 0.1) {
-            return { valid: false, error: `Сетка (Custom): Сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(2)}%).` };
-        }
-    }
-    else if (orderState.mode === 'SIGNAL') {
-        const s = orderState.signal;
-
-        // 1. Базовый ордер обязателен
-        if (s.baseOrder.volume <= 0) return { valid: false, error: 'Сетка (Signal): Объем базового ордера должен быть > 0.' };
-        
-        // 2. Страховочные ордера обязательны (хотя бы один)
-        if (s.orders.length === 0) return { valid: false, error: 'Сетка (Signal): Не добавлено ни одного страховочного ордера.' };
-
-        // 3. Считаем общую сумму и ПРОВЕРЯЕМ ФИЛЬТРЫ
-        let totalVol = s.baseOrder.volume;
-
-        for (let i = 0; i < s.orders.length; i++) {
-            const o = s.orders[i];
-            
-            // Проверка объема и отступа
-            if (o.volume <= 0) return { valid: false, error: `Сетка (Signal): Ордер #${i+1} имеет некорректный объем.` };
-            if (!hasValues(o.indent)) return { valid: false, error: `Сетка (Signal): Ордер #${i+1} не имеет отступа.` };
-            
-            // --- ПРОВЕРКА ФИЛЬТРОВ ---
-            const hasFilters = o.filterSlots && 
-                               o.filterSlots.length > 0 && 
-                               o.filterSlots.some(slot => slot.variants.length > 0);
-
-            if (!hasFilters) {
-                return { valid: false, error: `Сетка (Signal): Ордер #${i+1} не имеет настроенных фильтров (индикаторов).` };
-            }
-            
-            totalVol += o.volume;
-        }
-
-        // Проверка суммы
-        if (Math.abs(totalVol - 100) > 0.1) {
-             return { valid: false, error: `Сетка (Signal): Сумма объемов (Базовый + Страховочные) должна быть 100% (сейчас ${totalVol.toFixed(2)}%).` };
-        }
-    }
-
-
-    // --- 4. EXIT CONFIG (Выход) ---
-
-    // -- Profit --
     if (exitCfg.profitMode === 'SINGLE') {
-       if (!hasValues(exitCfg.profitSingle.percents)) {
-           return { valid: false, error: 'Тейк-профит (Простой): Не указан процент.' };
-       }
-    }
-    else if (exitCfg.profitMode === 'MULTIPLE') {
-       const m = exitCfg.profitMultiple;
-       if (m.orders.length === 0) return { valid: false, error: 'Тейк-профит (Свой): Не добавлены ордера.' };
-       
-       let totalVol = 0;
-       for (let i = 0; i < m.orders.length; i++) {
-           const o = m.orders[i];
-           if (!hasValues(o.indent)) return { valid: false, error: `Тейк-профит (Свой): Ордер #${i+1} не имеет отступа.` };
-           if (o.volume <= 0) return { valid: false, error: `Тейк-профит (Свой): Ордер #${i+1} имеет некорректный объем.` };
-           totalVol += o.volume;
-       }
-       if (Math.abs(totalVol - 100) > 0.1) {
-           return { valid: false, error: `Тейк-профит (Свой): Сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(1)}%).` };
-       }
-    }
-    else if (exitCfg.profitMode === 'SIGNAL') {
-       const s = exitCfg.profitSignal;
-       if (s.checkPnl.length === 0) return { valid: false, error: 'Тейк-профит (Сигнал): Не выбраны варианты PnL.' };
-       
-       const hasInd = s.filterSlots.length > 0 && s.filterSlots.some(slot => slot.variants.length > 0);
-       if (!hasInd) return { valid: false, error: 'Тейк-профит (Сигнал): Не добавлены индикаторы.' };
+      if (!hasNumericValues(exitCfg.profitSingle.percents)) {
+        return this.fail('exit', 'Выход из сделки (Простой): заполните проценты тейк-профита.');
+      }
+    } else if (exitCfg.profitMode === 'MULTIPLE') {
+      const m = exitCfg.profitMultiple;
+      if (m.orders.length === 0) {
+        return this.fail('exit', 'Выход из сделки (Свой): добавьте хотя бы один ордер тейк-профита.');
+      }
+
+      let totalVol = 0;
+      for (let i = 0; i < m.orders.length; i++) {
+        const o = m.orders[i];
+        if (!hasNumericValues(o.indent)) {
+          return this.fail('exit', `Выход из сделки (Свой): ордер #${i + 1} имеет некорректный отступ.`);
+        }
+        if (o.volume <= 0) {
+          return this.fail('exit', `Выход из сделки (Свой): ордер #${i + 1} имеет некорректный объем.`);
+        }
+        totalVol += o.volume;
+      }
+
+      if (Math.abs(totalVol - 100) > 0.1) {
+        return this.fail('exit', `Выход из сделки (Свой): сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(1)}%).`);
+      }
+    } else if (exitCfg.profitMode === 'SIGNAL') {
+      const s = exitCfg.profitSignal;
+      if (!hasNumericOrNullValues(s.checkPnl)) {
+        return this.fail('exit', 'Выход из сделки (Сигнал): заполните значения PnL.');
+      }
+      const hasInd = s.filterSlots.length > 0 && s.filterSlots.some((slot) => slot.variants.length > 0);
+      if (!hasInd) {
+        return this.fail('exit', 'Выход из сделки (Сигнал): добавьте условия фильтрации.');
+      }
+      const profitSignalError = validateSlotsAgainstLibrary(s.filterSlots);
+      if (profitSignalError) {
+        return this.fail('exit', profitSignalError);
+      }
     }
 
-    // -- Stop Loss --
-    if (exitCfg.stopLoss.enabledSimple) {
-        if (!hasValues(exitCfg.stopLoss.indent)) {
-            return { valid: false, error: 'Стоп-лосс: Включен, но не указан процент отступа.' };
-        }
+    if (exitCfg.stopLoss.enabledSimple && !hasNumericValues(exitCfg.stopLoss.indent)) {
+      return this.fail('exit', 'Стоп-лосс: включен простой режим, но отступ не заполнен.');
     }
 
     if (exitCfg.stopLoss.enabledSignal) {
-        if (exitCfg.stopLoss.conditionalIndent.length === 0) {
-            return { valid: false, error: 'Стоп-лосс (Сигнал): Не выбраны варианты мин. отступа (или "Отключено").' };
-        }
-
-        const hasInd = exitCfg.stopLoss.filterSlots.length > 0 && exitCfg.stopLoss.filterSlots.some(slot => slot.variants.length > 0);
-        if (!hasInd) {
-            return { valid: false, error: 'Стоп-лосс (Сигнал): Включен, но не добавлены индикаторы.' };
-        }
+      if (!hasNumericValues(exitCfg.stopLoss.conditionalIndent)) {
+        return this.fail('exit', 'Стоп-лосс по сигналу: заполните условный отступ.');
+      }
+      const hasInd =
+        exitCfg.stopLoss.filterSlots.length > 0 &&
+        exitCfg.stopLoss.filterSlots.some((slot) => slot.variants.length > 0);
+      if (!hasInd) {
+        return this.fail('exit', 'Стоп-лосс по сигналу: добавьте условия фильтрации.');
+      }
+      const stopLossSignalError = validateSlotsAgainstLibrary(exitCfg.stopLoss.filterSlots);
+      if (stopLossSignalError) {
+        return this.fail('exit', stopLossSignalError);
+      }
     }
 
-    return { valid: true };
+    return this.ok();
   }
 }
+
