@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Container, Title, Text, Card, Stack, Button, Group, Badge, Switch } from '@mantine/core';
+import { Container, Title, Text, Card, Stack, Button, Badge, Switch, Paper } from '@mantine/core';
 import { IconBug, IconDownload } from '@tabler/icons-react';
 import { LogService } from '../../services/LogService';
+import styles from './SettingsView.module.css';
+import { ConnectionAlert } from '../ConnectionAlert';
 
 interface Props {
   appVersion: string;
+  connectionError?: string | null;
 }
 
-export function SettingsView({ appVersion }: Props) {
+export function SettingsView({ appVersion, connectionError }: Props) {
   const [isExporting, setIsExporting] = useState(false);
   const [lastExport, setLastExport] = useState<string | null>(null);
   const [isVerboseLogging, setIsVerboseLogging] = useState(true);
@@ -45,54 +48,63 @@ export function SettingsView({ appVersion }: Props) {
   };
 
   return (
-    <Container size="md" py="xl">
+    <Container size="md" py="xl" className={`ui-surface ${styles.viewRoot}`}>
       <Stack gap="lg">
-        <Group justify="space-between">
-          <Title order={2}>Настройки</Title>
-          <Badge variant="light">v{appVersion}</Badge>
-        </Group>
+        <div className={`ui-topbar ${styles.topbar}`}>
+          <div className={styles.titleCenter}>
+            <Title order={2}>Настройки</Title>
+            <Badge variant="light">v{appVersion}</Badge>
+          </div>
+        </div>
 
-        <Card withBorder radius="md" p="lg">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <div>
-                <Text fw={600}>Подробное логирование</Text>
-                <Text size="xs" c="dimmed">
-                  Включено: логируются все действия в конфигураторе. Выключено: только ключевые события и ошибки.
-                </Text>
+        {connectionError && (
+          <Paper withBorder p="sm" radius="md" className="ui-card">
+            <ConnectionAlert visible />
+          </Paper>
+        )}
+
+        <div className={styles.sectionStack}>
+          <Card withBorder radius="md" p="lg" className={`ui-card ui-hover-lift ${styles.sectionCard}`}>
+            <div className={styles.cardTitle}>
+              <IconBug size={14} />
+              <span>Логирование и диагностика</span>
+            </div>
+            <Stack gap="md">
+              <div className={styles.row}>
+                <div>
+                  <Text fw={600}>Подробный режим логирования</Text>
+                  <Text size="xs" c="dimmed">
+                    Включен: логируются действия и служебные события. Выключен: остаются только ключевые события и ошибки.
+                  </Text>
+                </div>
+                <Switch
+                  checked={isVerboseLogging}
+                  disabled={isLoggingModeLoading}
+                  onChange={(e) => void handleToggleVerboseLogging(e.currentTarget.checked)}
+                  label={isVerboseLogging ? 'Подробный' : 'Обычный'}
+                />
               </div>
-              <Switch
-                checked={isVerboseLogging}
-                disabled={isLoggingModeLoading}
-                onChange={(e) => void handleToggleVerboseLogging(e.currentTarget.checked)}
-                label={isVerboseLogging ? 'Подробный' : 'Обычный'}
-              />
-            </Group>
 
-            <Group>
-              <IconBug size={20} />
-              <Text fw={600}>Bug-report</Text>
-            </Group>
-
-            <Text size="sm" c="dimmed">
-              Выгружает журнал действий и ошибок за последние 2 дня в текстовый файл для диагностики.
-            </Text>
-
-            <Button
-              leftSection={<IconDownload size={18} />}
-              onClick={handleExportBugReport}
-              loading={isExporting}
-            >
-              Скачать bug-report
-            </Button>
-
-            {lastExport && (
-              <Text size="xs" c="dimmed">
-                Последний файл: {lastExport}
+              <Text size="sm" c="dimmed">
+                Выгружает журнал действий и ошибок за последние 2 дня в текстовый файл для диагностики.
               </Text>
-            )}
-          </Stack>
-        </Card>
+
+              <Button
+                leftSection={<IconDownload size={18} />}
+                onClick={handleExportBugReport}
+                loading={isExporting}
+              >
+                Скачать bug-report
+              </Button>
+
+              {lastExport && (
+                <div className={styles.lastExport}>
+                  Последний файл: {lastExport}
+                </div>
+              )}
+            </Stack>
+          </Card>
+        </div>
       </Stack>
     </Container>
   );

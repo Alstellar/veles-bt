@@ -1,7 +1,7 @@
 // src/components/views/BacktesterView.tsx
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Container, Title, Button, Stack, Group
+  Container, Title, Button, Stack, Group, Paper
 } from '@mantine/core';
 import {
   IconPlayerPlay, IconDeviceFloppy, IconList, IconCalculator, IconPlayerStop
@@ -12,6 +12,7 @@ import { OrderSettings } from '../OrderSettings';
 import { EntrySettings } from '../EntrySettings';
 import { ExitSettings } from '../ExitSettings';
 import { ResultsModal } from '../ResultsModal';
+import { ConnectionAlert } from '../ConnectionAlert';
 
 import { ConfigGenerator } from '../../services/ConfigGenerator';
 import { ValidatorService } from '../../services/ValidatorService';
@@ -35,6 +36,7 @@ export interface BacktesterProps {
   queueController: BacktestQueueController;
   resumeBatchId?: string | null;
   onResumeHandled?: () => void;
+  connectionError?: string | null;
 }
 
 interface ComboStats {
@@ -159,7 +161,8 @@ export function BacktesterView({
   onImportSettings,
   queueController,
   resumeBatchId,
-  onResumeHandled
+  onResumeHandled,
+  connectionError
 }: BacktesterProps) {
   const sectionOrder = ['cfg-static', 'cfg-entry', 'cfg-order', 'cfg-exit', 'cfg-run'] as const;
 
@@ -422,6 +425,12 @@ export function BacktesterView({
         <Title order={2} ta="center">Конфигуратор</Title>
       </div>
 
+      {connectionError && (
+        <Paper withBorder p="sm" radius="md" className={`ui-card ${styles.sectionGlass}`}>
+          <ConnectionAlert visible />
+        </Paper>
+      )}
+
       <div className={styles.layout}>
         <div>
           <Stack gap="xl" className={styles.sectionsStack}>
@@ -567,4 +576,3 @@ export function BacktesterView({
     </Container>
   );
 }
-

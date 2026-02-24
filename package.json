@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "watch": "vite build --watch",
     "lint": "eslint .",
+    "check:encoding": "node test-scripts/check-encoding.mjs",
+    "fix:encoding": "node test-scripts/check-encoding.mjs --fix",
     "preview": "vite preview"
   },
   "dependencies": {

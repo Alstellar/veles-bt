@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { VelesService } from '../services/VelesService';
 import type { VelesConfigPayload } from '../types/veles';
 import type { BatchResumeSource, BatchStopReason, StaticConfig } from '../types';
@@ -9,6 +9,7 @@ import { LogService } from '../services/LogService';
 import { configHash } from '../utils/configHash';
 import { QueueLockService } from '../services/QueueLockService';
 import { ConfigGenerator } from '../services/ConfigGenerator';
+import { ConnectionService } from '../services/ConnectionService';
 
 export interface QueueItem {
   id: string;
@@ -38,6 +39,11 @@ function delay(ms: number): Promise<void> {
 function isNoTabError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   return msg.includes('No tab with id');
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return msg.includes('Unauthorized') || msg.includes('"status":401') || msg.includes('401');
 }
 
 function buildResumeQueue(batchId: string, resumeSource: BatchResumeSource): QueueItem[] {
@@ -141,25 +147,22 @@ export function useBacktestQueue() {
   );
 
   const resolveExecutionContext = useCallback(
-    async (batchId: string): Promise<{ context: ExecutionContext | null; reason: 'no_tab' | 'no_token' }> => {
+    async (batchId: string): Promise<{ context: ExecutionContext | null; reason: 'no_tab' | 'no_token' | 'unauthorized' }> => {
       for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
-        const tabs = await VelesService.findTabs();
-
-        if (tabs.length > 0) {
-          for (const tab of tabs) {
-            if (!tab.id) continue;
-            const token = await VelesService.getToken(tab.id);
-            if (token) {
-              return {
-                context: { tabId: tab.id, token },
-                reason: 'no_token'
-              };
-            }
-          }
+        const connection = await ConnectionService.getConnection({ force: true });
+        if (connection.success) {
+          return {
+            context: {
+              tabId: connection.connection.tabId,
+              token: connection.connection.token
+            },
+            reason: 'no_token'
+          };
         }
 
-        const reason: 'no_tab' | 'no_token' = tabs.length === 0 ? 'no_tab' : 'no_token';
-        const reasonLabel = reason === 'no_tab' ? 'Вкладка Veles не найдена' : 'Токен Veles не найден';
+        const reason: 'no_tab' | 'no_token' | 'unauthorized' =
+          connection.reason === 'unknown' ? 'unauthorized' : connection.reason;
+        const reasonLabel = ConnectionService.reasonToMessage(reason);
 
         if (attempt < RETRY_MAX_ATTEMPTS) {
           addLog(`${reasonLabel}. Откройте Veles, повтор через 60с (${attempt}/${RETRY_MAX_ATTEMPTS - 1})`);
@@ -178,10 +181,10 @@ export function useBacktestQueue() {
           attempts: RETRY_MAX_ATTEMPTS
         }, batchId);
 
-        return { context: null, reason };
-      }
+          return { context: null, reason };
+        }
 
-      return { context: null, reason: 'no_tab' };
+      return { context: null, reason: 'unauthorized' };
     },
     [addLog]
   );
@@ -336,10 +339,17 @@ export function useBacktestQueue() {
 
         const resolved = await resolveExecutionContext(batchId);
         if (!resolved.context) {
+          const connectionError =
+            resolved.reason === 'no_tab'
+              ? 'Вкладка Veles не найдена'
+              : resolved.reason === 'no_token'
+                ? 'Токен Veles не найден'
+                : 'Авторизация в Veles не подтверждена';
+
           await StorageService.updateBatchRunState(batchId, 'STOP', {
             stopReason: resolved.reason,
             completedTests: Math.max(startIndex, batchMeta?.completedTests ?? 0),
-            lastError: resolved.reason === 'no_tab' ? 'Вкладка Veles не найдена' : 'Токен Veles не найден'
+            lastError: connectionError
           });
 
           await saveRuntimeCheckpoint(batchId, startIndex, itemsToRun.length, 'STOP');
@@ -405,6 +415,7 @@ export function useBacktestQueue() {
           addLog(`${testName}: запуск...`);
 
           let launchAttemptStartedAt = Date.now();
+          let retryCurrentItem = false;
           try {
             const runRes = await withContextRecovery(batchId, runContextRef, (ctx) => {
               launchAttemptStartedAt = Date.now();
@@ -447,7 +458,11 @@ export function useBacktestQueue() {
                 VelesService.checkStatus(ctx.tabId, ctx.token, velesId)
               );
 
-              if (check.success && check.data) {
+              if (!check.success) {
+                throw new Error(`Ошибка проверки статуса: ${String(check.error)}`);
+              }
+
+              if (check.data) {
                 const status = check.data.status;
                 if (status === 'FINISHED') {
                   isFinished = true;
@@ -547,17 +562,32 @@ export function useBacktestQueue() {
             const rawMsg = extractErrorMessage(error);
 
             if (rawMsg.startsWith('QUEUE_STOP:')) {
-              const reason = rawMsg.includes('no_token') ? 'no_token' : 'no_tab';
+              const reason = rawMsg.includes('no_token')
+                ? 'no_token'
+                : rawMsg.includes('unauthorized')
+                  ? 'unauthorized'
+                  : 'no_tab';
               forcedStopReason = reason;
-              forcedStopMessage = reason === 'no_tab' ? 'Вкладка Veles не найдена' : 'Токен Veles не найден';
+              forcedStopMessage = ConnectionService.reasonToMessage(reason);
 
-              setQueue((prev) => {
-                const next = [...prev];
-                if (next[i]) next[i] = { ...next[i], status: 'PENDING', error: undefined };
-                itemsToRun = next;
-                return next;
-              });
+              await saveRuntimeCheckpoint(batchId, i, itemsToRun.length, 'STOP');
+              break;
+            }
 
+            if (isUnauthorizedError(rawMsg)) {
+              ConnectionService.invalidate();
+              addLog('Потеря авторизации (401). Ожидание восстановления подключения...');
+              const recovered = await resolveExecutionContext(batchId);
+
+              if (recovered.context) {
+                runContextRef.current = recovered.context;
+                addLog('Подключение восстановлено. Повторяю запуск текущего теста...');
+                retryCurrentItem = true;
+                continue;
+              }
+
+              forcedStopReason = recovered.reason;
+              forcedStopMessage = ConnectionService.reasonToMessage(recovered.reason);
               await saveRuntimeCheckpoint(batchId, i, itemsToRun.length, 'STOP');
               break;
             }
@@ -580,6 +610,10 @@ export function useBacktestQueue() {
             }, batchId);
           } finally {
             await touchLock();
+            if (retryCurrentItem) {
+              i -= 1;
+              continue;
+            }
             const elapsed = Date.now() - launchAttemptStartedAt;
             const remaining = MIN_TEST_INTERVAL_MS - elapsed;
             if (remaining > 0 && !stopRef.current && i < total - 1) {

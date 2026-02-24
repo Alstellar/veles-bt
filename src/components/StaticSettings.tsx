@@ -59,7 +59,7 @@ function findSmart<T extends { symbol: string; externalId?: string }>(
 export function StaticSettings({ config, onChange }: Props) {
   
   const [loading, setLoading] = useState(false);
-  const [authError, setAuthError] = useState(false);
+  const authError = false;
   const [exchanges, setExchanges] = useState<ExchangeInfo[]>(FALLBACK_EXCHANGES);
   const [limitations, setLimitations] = useState<SymbolLimitation[]>([]);
   const [availabilities, setAvailabilities] = useState<SymbolAvailability[]>([]);
@@ -93,7 +93,6 @@ export function StaticSettings({ config, onChange }: Props) {
     const loadData = async () => {
       if (!config.exchange) return;
       setLoading(true);
-      setAuthError(false);
       try {
         const [lims, avails] = await Promise.all([
           fetchLimitations(config.exchange),
@@ -105,9 +104,6 @@ export function StaticSettings({ config, onChange }: Props) {
         }
       } catch (error: any) {
         console.error("Ошибка загрузки данных Veles:", error);
-        if (mounted && error.message && (error.message.includes('401') || error.message.includes('авторизация'))) {
-            setAuthError(true);
-        }
       } finally {
         if (mounted) setLoading(false);
       }

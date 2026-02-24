@@ -262,6 +262,7 @@ export type BatchStopReason =
   | 'manual_stop'
   | 'no_tab'
   | 'no_token'
+  | 'unauthorized'
   | 'lock_busy'
   | 'runtime_error';
 

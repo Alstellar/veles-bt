@@ -4,19 +4,15 @@ import type {
   SymbolAvailability,
   SymbolLimitation
 } from '../types';
-import { getVelesToken } from './authService';
+import { ConnectionService } from './ConnectionService';
 
 const BASE_API = 'https://veles.finance/api';
 
-const getHeaders = (token: string | null): HeadersInit => {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json'
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return headers;
-};
+const getHeaders = (token: string): HeadersInit => ({
+  'Content-Type': 'application/json',
+  'X-Requested-With': 'XMLHttpRequest',
+  Authorization: `Bearer ${token}`
+});
 
 const unwrapPayload = <T,>(raw: unknown): T => {
   if (raw && typeof raw === 'object' && 'payload' in raw) {
@@ -25,18 +21,32 @@ const unwrapPayload = <T,>(raw: unknown): T => {
   return raw as T;
 };
 
+const resolveToken = async (): Promise<string> => {
+  const connection = await ConnectionService.getConnection();
+  if (!connection.success) {
+    throw new Error(ConnectionService.reasonToMessage(connection.reason));
+  }
+  return connection.connection.token;
+};
+
+const handleHttpError = (response: Response, fallback: string): never => {
+  if (response.status === 401 || response.status === 403) {
+    ConnectionService.invalidate();
+    throw new Error('Ошибка авторизации в Veles (401 Unauthorized)');
+  }
+  throw new Error(`${fallback}: ${response.status} ${response.statusText}`);
+};
+
 export const fetchExchanges = async (): Promise<ExchangeInfo[]> => {
-  const token = await getVelesToken();
+  const token = await resolveToken();
   const response = await fetch(`${BASE_API}/exchanges`, {
     method: 'GET',
-    headers: getHeaders(token)
+    headers: getHeaders(token),
+    credentials: 'include'
   });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Ошибка авторизации в Veles (401 Unauthorized)');
-    }
-    throw new Error(`Ошибка загрузки списка бирж: ${response.statusText}`);
+    handleHttpError(response, 'Ошибка загрузки списка бирж');
   }
 
   const data = unwrapPayload<ExchangeInfo[]>(await response.json());
@@ -48,20 +58,18 @@ export const fetchExchanges = async (): Promise<ExchangeInfo[]> => {
 };
 
 export const fetchLimitations = async (exchange: ExchangeType): Promise<SymbolLimitation[]> => {
-  const token = await getVelesToken();
+  const token = await resolveToken();
   const response = await fetch(
     `${BASE_API}/pairs/limitations/dictionary?exchange=${encodeURIComponent(exchange)}`,
     {
       method: 'GET',
-      headers: getHeaders(token)
+      headers: getHeaders(token),
+      credentials: 'include'
     }
   );
 
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Ошибка авторизации в Veles (401 Unauthorized)');
-    }
-    throw new Error(`Ошибка загрузки списка монет: ${response.statusText}`);
+    handleHttpError(response, 'Ошибка загрузки списка монет');
   }
 
   const payload = unwrapPayload<SymbolLimitation[]>(await response.json());
@@ -69,20 +77,18 @@ export const fetchLimitations = async (exchange: ExchangeType): Promise<SymbolLi
 };
 
 export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolAvailability[]> => {
-  const token = await getVelesToken();
+  const token = await resolveToken();
   const response = await fetch(
     `${BASE_API}/pairs/availability/dictionary?exchange=${encodeURIComponent(exchange)}`,
     {
       method: 'GET',
-      headers: getHeaders(token)
+      headers: getHeaders(token),
+      credentials: 'include'
     }
   );
 
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Ошибка авторизации в Veles (401 Unauthorized)');
-    }
-    throw new Error(`Ошибка загрузки доступной истории: ${response.statusText}`);
+    handleHttpError(response, 'Ошибка загрузки доступной истории');
   }
 
   const payload = unwrapPayload<SymbolAvailability[]>(await response.json());
@@ -90,20 +96,18 @@ export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolA
 };
 
 export const fetchImportPayload = async (code: string): Promise<unknown> => {
-  const token = await getVelesToken();
+  const token = await resolveToken();
   const response = await fetch(`${BASE_API}/bots/${encodeURIComponent(code)}`, {
     method: 'GET',
-    headers: getHeaders(token)
+    headers: getHeaders(token),
+    credentials: 'include'
   });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Ошибка авторизации в Veles (401 Unauthorized)');
-    }
     if (response.status === 404) {
       throw new Error('Конфигурация по ссылке не найдена (404)');
     }
-    throw new Error(`Ошибка загрузки конфигурации: ${response.status} ${response.statusText}`);
+    handleHttpError(response, 'Ошибка загрузки конфигурации');
   }
 
   return unwrapPayload<unknown>(await response.json());

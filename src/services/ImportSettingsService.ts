@@ -58,7 +58,7 @@ type RawPayload = {
   conditions?: RawCondition[];
   settings?: {
     type?: 'SIMPLE' | 'CUSTOM' | 'SIGNAL';
-    orders?: Array<{
+    orders?: number | Array<{
       indent?: number;
       volume?: number;
       conditions?: RawCondition[];
@@ -72,6 +72,7 @@ type RawPayload = {
     overlap?: number;
     martingale?: number;
     logarithmicFactor?: number | null;
+    priceStrategy?: 'LINEAR' | 'LOGARITHMIC' | string;
   };
   profit?: {
     type?: 'SINGLE' | 'MULTIPLE' | 'SIGNAL';
@@ -211,6 +212,7 @@ export function mapImportedPayload(
   };
 
   const settingsType = payload.settings?.type ?? current.orderState.mode;
+  const settingsOrdersArray = Array.isArray(payload.settings?.orders) ? payload.settings?.orders : [];
   const orderState: OrderState = {
     ...current.orderState,
     mode: settingsType,
@@ -221,15 +223,25 @@ export function mapImportedPayload(
   };
 
   if (settingsType === 'SIMPLE') {
+    const simpleOrders = payload.settings?.orders;
+    const simpleOrdersCount = typeof simpleOrders === 'number'
+      ? simpleOrders
+      : Array.isArray(simpleOrders)
+        ? simpleOrders.length
+        : null;
+    const hasLogFactor = payload.settings?.logarithmicFactor !== undefined && payload.settings.logarithmicFactor !== null;
+    const isLogarithmicByStrategy = payload.settings?.priceStrategy === 'LOGARITHMIC';
+    const logarithmicEnabled = Boolean(hasLogFactor || isLogarithmicByStrategy);
+
     orderState.simple = {
       ...current.orderState.simple,
-      orders: payload.settings?.orders?.length ? [String(payload.settings.orders.length)] : current.orderState.simple.orders,
+      orders: simpleOrdersCount !== null ? [String(simpleOrdersCount)] : current.orderState.simple.orders,
       martingale: payload.settings?.martingale !== undefined ? [toNumString(payload.settings.martingale)] : current.orderState.simple.martingale,
       indent: payload.settings?.indent !== undefined ? [toNumString(payload.settings.indent)] : current.orderState.simple.indent,
       overlap: payload.settings?.overlap !== undefined ? [toNumString(payload.settings.overlap)] : current.orderState.simple.overlap,
-      logarithmicEnabled: payload.settings?.logarithmicFactor !== undefined && payload.settings.logarithmicFactor !== null,
-      logarithmicFactor: payload.settings?.logarithmicFactor !== undefined && payload.settings.logarithmicFactor !== null
-        ? [String(payload.settings.logarithmicFactor)]
+      logarithmicEnabled,
+      logarithmicFactor: hasLogFactor
+        ? [String(payload.settings?.logarithmicFactor)]
         : current.orderState.simple.logarithmicFactor
     };
   } else if (settingsType === 'CUSTOM') {
@@ -239,7 +251,7 @@ export function mapImportedPayload(
         indent: payload.settings?.baseOrder?.indent !== undefined ? [toNumString(payload.settings.baseOrder.indent)] : current.orderState.custom.baseOrder.indent,
         volume: payload.settings?.baseOrder?.volume ?? current.orderState.custom.baseOrder.volume
       },
-      orders: (payload.settings?.orders ?? []).map((order) => ({
+      orders: settingsOrdersArray.map((order) => ({
         id: randomId(),
         indent: order.indent !== undefined ? [toNumString(order.indent)] : ['0'],
         volume: order.volume ?? 0
@@ -253,7 +265,7 @@ export function mapImportedPayload(
         indent: payload.settings?.baseOrder?.indent !== undefined ? [toNumString(payload.settings.baseOrder.indent)] : current.orderState.signal.baseOrder.indent,
         volume: payload.settings?.baseOrder?.volume ?? current.orderState.signal.baseOrder.volume
       },
-      orders: (payload.settings?.orders ?? []).map((order, index) => ({
+      orders: settingsOrdersArray.map((order, index) => ({
         id: randomId(),
         indent: order.indent !== undefined ? [toNumString(order.indent)] : ['0'],
         volume: order.volume ?? 0,
@@ -305,7 +317,7 @@ export function mapImportedPayload(
       enabledSimple: hasSimple,
       indent: hasSimple ? [String(Math.abs(Number(stopLoss.indent)))] : [],
       enabledSignal: hasSignal,
-      conditionalIndent: hasConditional ? [String(Math.abs(Number(stopLoss.conditionalIndent)))] : [],
+      conditionalIndent: hasConditional ? [String(-1 * Number(stopLoss.conditionalIndent))] : [],
       conditionalIndentType: stopLoss.conditionalIndentType ?? current.exitConfig.stopLoss.conditionalIndentType,
       filterSlots: hasSignalConditions ? mapConditionsToSlots(stopLoss.conditions ?? [], warnings, 'Stop loss signal') : []
     };

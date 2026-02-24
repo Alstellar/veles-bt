@@ -1,23 +1,36 @@
 import { useEffect, useState } from 'react';
-import { 
-  Container, Title, Text, Card, Group, Button, 
-  SimpleGrid, Stack, ActionIcon, ThemeIcon 
+import type { MouseEvent } from 'react';
+import {
+  Container,
+  Title,
+  Text,
+  Card,
+  Group,
+  Button,
+  SimpleGrid,
+  Stack,
+  ActionIcon,
+  Badge,
+  Paper
 } from '@mantine/core';
-import { IconTrash, IconTemplate, IconCalendar, IconArrowRight, IconDatabase } from '@tabler/icons-react';
+import { IconTrash, IconCalendar, IconArrowRight, IconDatabase } from '@tabler/icons-react';
 import { StorageService } from '../../services/StorageService';
 import type { Template } from '../../types';
+import styles from './TemplatesView.module.css';
+import { ConnectionAlert } from '../ConnectionAlert';
 
 interface Props {
   onLoadTemplate: (template: Template) => void;
   onNavigate: (view: string) => void;
+  connectionError?: string | null;
 }
 
-export function TemplatesView({ onLoadTemplate, onNavigate }: Props) {
+export function TemplatesView({ onLoadTemplate, onNavigate, connectionError }: Props) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   const loadData = async () => {
@@ -27,7 +40,7 @@ export function TemplatesView({ onLoadTemplate, onNavigate }: Props) {
     setLoading(false);
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const handleDelete = async (id: string, e: MouseEvent) => {
     e.stopPropagation();
     if (confirm('Удалить этот шаблон?')) {
       await StorageService.deleteTemplate(id);
@@ -37,63 +50,77 @@ export function TemplatesView({ onLoadTemplate, onNavigate }: Props) {
 
   const handleLoad = (template: Template) => {
     onLoadTemplate(template);
-    // Навигация происходит в родителе, но можно продублировать или оставить управление родителю
   };
 
   if (loading) {
-    return <Container p="xl"><Text c="dimmed" ta="center">Загрузка шаблонов...</Text></Container>;
+    return (
+      <Container p="xl" className={`ui-surface ${styles.viewRoot}`}>
+        <Text c="dimmed" ta="center">Загрузка шаблонов...</Text>
+      </Container>
+    );
   }
 
   return (
-    <Container size="lg" py="xl">
-      <Group mb="xl">
-        <ThemeIcon size="lg" variant="light" color="orange"><IconTemplate size={20}/></ThemeIcon>
+    <Container size="lg" py="xl" className={`ui-surface ${styles.viewRoot}`}>
+      <div className={`ui-topbar ${styles.topbar}`}>
         <Title order={2}>Сохраненные шаблоны</Title>
-      </Group>
+      </div>
+
+      {connectionError && (
+        <Paper withBorder p="sm" radius="md" className="ui-card">
+          <ConnectionAlert visible />
+        </Paper>
+      )}
 
       {templates.length === 0 ? (
-        <Stack align="center" gap="md" py={50} bg="gray.0" style={{ borderRadius: 8 }}>
-           <IconDatabase size={48} color="#adb5bd" />
-           <Text c="dimmed">Нет сохраненных шаблонов.</Text>
-           <Button variant="outline" onClick={() => onNavigate('backtester')}>
-             Создать в конфигураторе
-           </Button>
+        <Stack align="center" gap="md" className={styles.emptyState}>
+          <IconDatabase size={48} color="#adb5bd" />
+          <Text c="dimmed">Нет сохраненных шаблонов.</Text>
+          <Button variant="outline" onClick={() => onNavigate('backtester')}>
+            Создать в конфигураторе
+          </Button>
         </Stack>
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
           {templates.map((tpl) => (
-            <Card key={tpl.id} shadow="sm" padding="lg" radius="md" withBorder>
-              
-              <Group justify="space-between" mb="xs">
+            <Card key={tpl.id} withBorder padding="lg" radius="md" className={`ui-card ui-hover-lift ${styles.templateCard}`}>
+              <Group justify="space-between" className={styles.cardHeader}>
                 <Text fw={700} size="lg" truncate>{tpl.name}</Text>
-                <ActionIcon color="red" variant="subtle" onClick={(e) => handleDelete(tpl.id, e)}>
-                    <IconTrash size={18} />
+                <ActionIcon color="red" variant="subtle" onClick={(e) => void handleDelete(tpl.id, e)}>
+                  <IconTrash size={18} />
                 </ActionIcon>
               </Group>
 
-              <Group gap={6} mb="md">
-                 <IconCalendar size={14} style={{ opacity: 0.5 }} />
-                 <Text size="xs" c="dimmed">
-                    {new Date(tpl.timestamp).toLocaleString('ru-RU')}
-                 </Text>
+              <Group gap={6} mb="md" className={styles.metaRow}>
+                <IconCalendar size={14} style={{ opacity: 0.5 }} />
+                <Text size="xs" c="dimmed">
+                  {new Date(tpl.timestamp).toLocaleString('ru-RU')}
+                </Text>
               </Group>
-              
-              <Card.Section inheritPadding py="xs" bg="gray.0">
-                  <Group justify="space-between" align="center">
-                      <Stack gap={0}>
-                          <Text size="xs" c="dimmed" fw={700}>Пара</Text>
-                          <Text fw={500} size="sm">{tpl.config.staticConfig.symbol}</Text>
-                      </Stack>
-                      <Button 
-                        size="xs" variant="white" color="blue" 
-                        rightSection={<IconArrowRight size={14}/>}
-                        onClick={() => handleLoad(tpl)}
-                      >
-                        Загрузить
-                      </Button>
-                  </Group>
-              </Card.Section>
 
+              <Group mb="sm">
+                <Badge variant="dot" color="blue">{tpl.config.staticConfig.exchange}</Badge>
+                <Text fw={500} size="sm">{tpl.config.staticConfig.symbol}</Text>
+              </Group>
+
+              <Card.Section inheritPadding py="xs" className={styles.footerSection}>
+                <Group justify="space-between" align="center">
+                  <Stack gap={0}>
+                    <Text size="xs" c="dimmed" fw={700}>Монета</Text>
+                    <Text fw={500} size="sm">{tpl.config.staticConfig.symbol}</Text>
+                  </Stack>
+
+                  <Button
+                    size="xs"
+                    variant="white"
+                    color="blue"
+                    rightSection={<IconArrowRight size={14} />}
+                    onClick={() => handleLoad(tpl)}
+                  >
+                    Загрузить
+                  </Button>
+                </Group>
+              </Card.Section>
             </Card>
           ))}
         </SimpleGrid>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Container,
   Title,
@@ -9,14 +9,13 @@ import {
   Button,
   SimpleGrid,
   Stack,
-  ThemeIcon,
   Loader,
   ActionIcon,
-  Tooltip
+  Tooltip,
+  Paper
 } from '@mantine/core';
 import {
   IconTrash,
-  IconHistory,
   IconCalendar,
   IconDatabase,
   IconRefresh,
@@ -27,25 +26,28 @@ import {
 
 import { StorageService } from '../../services/StorageService';
 import { SyncService } from '../../services/SyncService';
-import { VelesService } from '../../services/VelesService';
+import { ConnectionService } from '../../services/ConnectionService';
 import { DatabaseService } from '../../services/DatabaseService';
 import { ResultsModal } from '../ResultsModal';
 import { QueueLockService } from '../../services/QueueLockService';
 import type { BacktestQueueController } from '../../hooks/useBacktestQueue';
 import type { BatchInfo, BatchRunStatus, BatchResumeSource } from '../../types';
+import styles from './HistoryView.module.css';
+import { ConnectionAlert } from '../ConnectionAlert';
 
 interface HistoryViewProps {
   onResumeBatch?: (batchId: string, resumeSource: BatchResumeSource) => void;
   queueController: BacktestQueueController;
+  connectionError?: string | null;
 }
 
 function statusColor(status: BatchRunStatus): string {
-  if (status === 'RUN') return 'green';
-  if (status === 'STOP') return 'orange';
-  return 'blue';
+  if (status === 'RUN') return 'yellow';
+  if (status === 'STOP') return 'red';
+  return 'green';
 }
 
-export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps) {
+export function HistoryView({ onResumeBatch, queueController, connectionError }: HistoryViewProps) {
   const [batches, setBatches] = useState<BatchInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -94,7 +96,7 @@ export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps
   };
 
   const handleDeleteBatch = async (batchId: string) => {
-    if (!confirm('Удалить этот запуск и связанный runtime?')) return;
+    if (!confirm('Удалить этот запуск, связанные с ним конфигурации и результаты?')) return;
 
     await StorageService.removeBatch(batchId);
     setBatches((prev) => prev.filter((batch) => batch.id !== batchId));
@@ -105,13 +107,13 @@ export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps
     setSyncCount(0);
 
     try {
-      const tab = await VelesService.findTab();
-      if (!tab || !tab.id) {
-        alert('Откройте вкладку Veles.finance');
+      const conn = await ConnectionService.getConnection({ force: true });
+      if (!conn.success) {
+        alert(ConnectionService.reasonToMessage(conn.reason));
         return;
       }
 
-      await SyncService.sync(tab.id, (count) => {
+      await SyncService.sync(conn.connection.tabId, (count) => {
         setSyncCount(count);
       });
 
@@ -160,52 +162,54 @@ export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps
 
   if (loading) {
     return (
-      <Container p="xl">
+      <Container p="xl" className={`ui-surface ${styles.viewRoot}`}>
         <Text c="dimmed" ta="center">Загрузка истории...</Text>
       </Container>
     );
   }
 
   return (
-    <Container size="lg" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Group>
-          <ThemeIcon size="lg" variant="light" color="violet">
-            <IconHistory size={20} />
-          </ThemeIcon>
-          <Stack gap={0}>
-            <Title order={2}>История запусков</Title>
-            <Text size="xs" c="dimmed">Локально сохранено тестов: {totalSaved}</Text>
-          </Stack>
-        </Group>
-
-        <Group>
-          <Button
-            variant={syncing ? 'light' : 'filled'}
-            color="blue"
-            leftSection={syncing ? <Loader size={16} color="blue" /> : <IconRefresh size={16} />}
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            {syncing ? `Синхронизация (${syncCount})...` : 'Синхронизировать'}
-          </Button>
-
-          {batches.length > 0 && (
+    <Container size="lg" py="xl" className={`ui-surface ${styles.viewRoot}`}>
+      <div className={`ui-topbar ${styles.topbar}`}>
+        <Title order={2}>История запусков</Title>
+        <div className={styles.topbarBody}>
+          <Text size="sm" c="dimmed">Локально сохранено тестов: {totalSaved}</Text>
+          <Group className={styles.metaActions}>
             <Button
-              variant="subtle"
-              color="red"
-              leftSection={<IconTrash size={16} />}
-              onClick={handleClearHistory}
+              variant={syncing ? 'light' : 'filled'}
+              color="blue"
+              leftSection={syncing ? <Loader size={16} color="blue" /> : <IconRefresh size={16} />}
+              onClick={handleSync}
               disabled={syncing}
+              className={styles.actionButton}
             >
-              Очистить всё
+              {syncing ? `Синхронизация (${syncCount})...` : 'Синхронизировать'}
             </Button>
-          )}
-        </Group>
-      </Group>
+
+            {batches.length > 0 && (
+              <Button
+                variant="subtle"
+                color="red"
+                leftSection={<IconTrash size={16} />}
+                onClick={handleClearHistory}
+                disabled={syncing}
+                className={styles.actionButton}
+              >
+                Очистить всё
+              </Button>
+            )}
+          </Group>
+        </div>
+      </div>
+
+      {connectionError && (
+        <Paper withBorder p="sm" radius="md" className="ui-card">
+          <ConnectionAlert visible />
+        </Paper>
+      )}
 
       {batches.length === 0 ? (
-        <Stack align="center" gap="md" py={50} bg="gray.0" style={{ borderRadius: 8 }}>
+        <Stack align="center" gap="md" className={styles.emptyState}>
           <IconDatabase size={48} color="#adb5bd" />
           <Text c="dimmed">История пуста. Запустите бэктест, чтобы записи появились здесь.</Text>
         </Stack>
@@ -217,13 +221,13 @@ export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps
             const progressLabel = `${Math.min(completed, batch.totalTests)} / ${batch.totalTests}`;
 
             return (
-              <Card key={batch.id} shadow="sm" padding="lg" radius="md" withBorder>
-                <Group justify="space-between" mb="xs">
+              <Card key={batch.id} withBorder className={`ui-card ui-hover-lift ${styles.historyCard}`} padding="lg" radius="md">
+                <Group justify="space-between" className={styles.cardHeader}>
                   <Group gap="xs">
                     <Badge size="lg" variant="filled" color="blue">
                       {batch.id}
                     </Badge>
-                    <Group gap={4}>
+                    <Group gap={4} className={styles.badgeMeta}>
                       <IconCalendar size={14} style={{ opacity: 0.5 }} />
                       <Text size="xs" c="dimmed">
                         {new Date(batch.timestamp).toLocaleString('ru-RU')}
@@ -252,7 +256,7 @@ export function HistoryView({ onResumeBatch, queueController }: HistoryViewProps
                   <Text size="sm" fw={600}>{progressLabel}</Text>
                 </Group>
 
-                <Card.Section inheritPadding py="xs" bg="gray.0">
+                <Card.Section inheritPadding py="xs" className={styles.sectionFooter}>
                   <Group justify="space-between" align="center">
                     <Stack gap={0}>
                       <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Всего тестов</Text>

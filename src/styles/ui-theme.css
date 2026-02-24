@@ -1,0 +1,49 @@
+.ui-surface {
+  --ui-bg-panel: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(249, 252, 255, 0.72));
+  --ui-bg-card: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 251, 255, 0.68));
+  --ui-border-soft: rgba(175, 196, 220, 0.45);
+  --ui-border-strong: rgba(137, 173, 213, 0.58);
+  --ui-shadow-soft: 0 10px 24px rgba(43, 62, 93, 0.1);
+  --ui-shadow-hover: 0 14px 28px rgba(43, 62, 93, 0.14);
+  --ui-title-color: #213853;
+  --ui-muted-color: #5e6f88;
+  --ui-radius-lg: 16px;
+  --ui-radius-md: 14px;
+  --ui-radius-sm: 10px;
+  --ui-ease: 0.2s ease;
+}
+
+.ui-topbar {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: var(--ui-radius-lg);
+  border: 1px solid rgba(165, 187, 212, 0.46);
+  background: var(--ui-bg-panel);
+  box-shadow: 0 14px 30px rgba(33, 50, 78, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.ui-card {
+  border-radius: var(--ui-radius-md);
+  border: 1px solid var(--ui-border-soft);
+  background: var(--ui-bg-card);
+  box-shadow: var(--ui-shadow-soft);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  transition: transform var(--ui-ease), box-shadow var(--ui-ease), border-color var(--ui-ease);
+}
+
+.ui-hover-lift:hover {
+  transform: translateY(-1px);
+  border-color: var(--ui-border-strong);
+  box-shadow: var(--ui-shadow-hover);
+}
+
+.ui-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ui-muted-color);
+}

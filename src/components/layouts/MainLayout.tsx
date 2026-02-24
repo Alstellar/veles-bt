@@ -1,12 +1,12 @@
 // src/components/layouts/MainLayout.tsx
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { 
-  AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image, Divider, Anchor
+  AppShell, Stack, Group, Text, NavLink, Modal, TextInput, Button, Image, Divider, Anchor, Paper, ThemeIcon, Loader
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
   IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, 
-  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings
+  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -16,7 +16,7 @@ import { TemplatesView } from '../views/TemplatesView';
 import { HistoryView } from '../views/HistoryView';
 import { SettingsView } from '../views/SettingsView';
 
-// 👇 Импортируем нашу новую модалку
+// Импорт модального окна поддержки
 import { DonateModal } from '../modals/DonateModal'; 
 
 import { StorageService } from '../../services/StorageService';
@@ -27,6 +27,9 @@ import { getObjectDiff } from '../../utils/objectDiff';
 import { configHash } from '../../utils/configHash';
 import { fetchImportPayload } from '../../services/apiService';
 import { parseImportLink, mapImportedPayload } from '../../services/ImportSettingsService';
+import { ConnectionService } from '../../services/ConnectionService';
+import type { UserProfile } from '../../types/veles';
+import styles from './MainLayout.module.css';
 
 export function MainLayout() {
   const queueController = useBacktestQueue();
@@ -60,6 +63,9 @@ export function MainLayout() {
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [resumeBatchId, setResumeBatchId] = useState<string | null>(null);
+  const [sidebarUser, setSidebarUser] = useState<UserProfile | null>(null);
+  const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
 
   // --- GLOBAL STATE ---
   const [staticConfig, setStaticConfig] = useState<StaticConfig>({
@@ -128,6 +134,27 @@ export function MainLayout() {
   useEffect(() => {
     void LogService.info('layout', 'navigation.changed', { tab: activeTab });
   }, [activeTab]);
+
+  const refreshSidebarProfile = useCallback(async () => {
+    setSidebarLoading(true);
+    setSidebarError(null);
+    try {
+      const result = await ConnectionService.getConnection({ force: true });
+      if (!result.success) {
+        throw new Error(ConnectionService.reasonToMessage(result.reason));
+      }
+      setSidebarUser(result.connection.user);
+    } catch (e: any) {
+      setSidebarError(e.message);
+      setSidebarUser(null);
+    } finally {
+      setSidebarLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSidebarProfile();
+  }, [refreshSidebarProfile]);
 
   const logConfigSectionChanges = useCallback(
     async (section: 'staticConfig' | 'entryConfig' | 'orderState' | 'exitConfig', before: unknown, after: unknown) => {
@@ -200,9 +227,9 @@ export function MainLayout() {
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) {
-        alert('Введите название шаблона');
-        await LogService.warn('templates', 'template.save_validation_failed', { reason: 'empty_name' });
-        return;
+      alert('Введите название шаблона');
+      await LogService.warn('templates', 'template.save_validation_failed', { reason: 'empty_name' });
+      return;
     }
 
     const newTemplate: Template = {
@@ -287,7 +314,7 @@ export function MainLayout() {
 
   // --- GRATITUDE MODAL LOGIC ---
   const [gratitudeOpened, { open: openGratitude, close: closeGratitude }] = useDisclosure(false);
-  const [importModalOpened, { open: openImportModal, close: closeImportModal }] = useDisclosure(false);
+  const [importModalV2Opened, { open: openImportModalV2, close: closeImportModalV2 }] = useDisclosure(false);
   const [importLink, setImportLink] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
@@ -313,7 +340,7 @@ export function MainLayout() {
       setOrderState(mapped.orderState);
       setExitConfig(mapped.exitConfig);
 
-      closeImportModal();
+      closeImportModalV2();
       setImportLink('');
 
       if (mapped.warnings.length > 0) {
@@ -334,11 +361,11 @@ export function MainLayout() {
       navbar={{ width: 250, breakpoint: 'sm' }}
       padding="md"
     >
-      <AppShell.Navbar p="xs" style={{ display: 'flex', flexDirection: 'column' }}>
+      <AppShell.Navbar p="xs" className={styles.sidebar}>
           
-          {/* ВЕРХНЯЯ ЧАСТЬ (Меню) */}
-          <Stack gap="xs" style={{ flex: 1 }}>
-            <Group px="md" py="xs" mb="sm">
+          {/* Р’Р•Р РҐРќРЇРЇ Р§РђРЎРўР¬ (РњРµРЅСЋ) */}
+          <Stack gap="xs" className={styles.navTop}>
+            <Group px="md" py="xs" mb="sm" className={styles.brandRow}>
                 <Image 
                     src="/icons/icon-128.png" 
                     w={32} 
@@ -347,6 +374,32 @@ export function MainLayout() {
                 />
                 <Text fw={700} size="lg">Veles Helper</Text>
             </Group>
+            <Paper withBorder p="xs" px="sm" radius="md" bg="white" mx="sm" mb="xs" className={styles.profileCard}>
+              {sidebarLoading ? (
+                <Group justify="center" gap={6}>
+                  <Loader size="xs" />
+                  <Text size="xs">Проверка профиля...</Text>
+                </Group>
+              ) : sidebarError ? (
+                <Group justify="center" gap={6}>
+                  <ThemeIcon color="red" variant="light" size="sm"><IconAlertCircle size={14} /></ThemeIcon>
+                  <Text size="xs" c="red" fw={500}>Нет подключения</Text>
+                  <Button variant="subtle" size="compact-xs" onClick={() => void refreshSidebarProfile()} leftSection={<IconRefresh size={12} />}>
+                    Обновить
+                  </Button>
+                </Group>
+              ) : (
+                <Group justify="center" gap={6} className={styles.connectionOnline}>
+                  <ThemeIcon color="green" variant="light" size="sm" className={styles.connectionIcon}>
+                    <IconPlugConnected size={14} />
+                  </ThemeIcon>
+                  <Stack gap={0}>
+                    <Text size="9px" c="dimmed" fw={700}>СТАТУС ПОДКЛЮЧЕНИЯ</Text>
+                    <Text size="xs" fw={500}>Онлайн, ID: {sidebarUser?.id}</Text>
+                  </Stack>
+                </Group>
+              )}
+            </Paper>
 
             <NavLink 
                 label="Главная" 
@@ -354,6 +407,7 @@ export function MainLayout() {
                 active={activeTab === 'dashboard'}
                 onClick={() => setActiveTab('dashboard')}
                 variant="light"
+                className={styles.navItem}
             />
             <NavLink 
                 label="Конфигуратор" 
@@ -361,6 +415,7 @@ export function MainLayout() {
                 active={activeTab === 'backtester'}
                 onClick={() => setActiveTab('backtester')}
                 variant="light"
+                className={styles.navItem}
             />
             <NavLink 
                 label="Шаблоны" 
@@ -368,6 +423,7 @@ export function MainLayout() {
                 active={activeTab === 'templates'}
                 onClick={() => setActiveTab('templates')}
                 variant="light"
+                className={styles.navItem}
             />
             <NavLink 
                 label="История запусков" 
@@ -375,6 +431,7 @@ export function MainLayout() {
                 active={activeTab === 'history'}
                 onClick={() => setActiveTab('history')}
                 variant="light"
+                className={styles.navItem}
             />
             <NavLink 
                 label="Настройки" 
@@ -382,6 +439,7 @@ export function MainLayout() {
                 active={activeTab === 'settings'}
                 onClick={() => setActiveTab('settings')}
                 variant="light"
+                className={styles.navItem}
             />
           </Stack>
 
@@ -395,6 +453,7 @@ export function MainLayout() {
                 color="blue" 
                 fullWidth
                 leftSection={<IconBrandTelegram size={18} />}
+                className={styles.ctaButton}
              >
                 Канал Algo Bots
              </Button>
@@ -405,13 +464,14 @@ export function MainLayout() {
                 color="pink" 
                 fullWidth
                 leftSection={<IconHeart size={18} />}
+                className={styles.ctaButton}
              >
                 Сказать спасибо
              </Button>
           </Stack>
 
-          {/* НИЖНЯЯ ЧАСТЬ (Контакты) */}
-          <Stack gap={0}>
+          {/* НИЖНЯЯ ЧАСТЬ (контакты) */}
+          <Stack gap={0} className={styles.contactsWrap}>
              <Divider mb="sm" />
              <Stack gap={6} px="xs" mb="xs">
                  <Group gap={8} wrap="nowrap">
@@ -440,7 +500,9 @@ export function MainLayout() {
       </AppShell.Navbar>
 
       <AppShell.Main bg="gray.0">
-         {activeTab === 'dashboard' && <DashboardView onNavigate={setActiveTab} />}
+         {activeTab === 'dashboard' && (
+           <DashboardView onNavigate={setActiveTab} connectionError={sidebarError} />
+         )}
          
          <div style={{ display: activeTab === 'backtester' ? 'block' : 'none' }}>
             <BacktesterView 
@@ -449,10 +511,11 @@ export function MainLayout() {
                orderState={orderState} setOrderState={handleOrderStateChange}
                exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
                onSaveTemplate={openSaveModal}
-               onImportSettings={openImportModal}
+               onImportSettings={openImportModalV2}
                queueController={queueController}
                resumeBatchId={resumeBatchId}
                onResumeHandled={() => setResumeBatchId(null)}
+               connectionError={sidebarError}
             />
          </div>
 
@@ -460,6 +523,7 @@ export function MainLayout() {
              <TemplatesView 
                onLoadTemplate={handleLoadTemplate}
                onNavigate={setActiveTab}
+               connectionError={sidebarError}
              />
          )}
 
@@ -467,35 +531,36 @@ export function MainLayout() {
            <HistoryView
              queueController={queueController}
              onResumeBatch={handleResumeFromHistory}
+             connectionError={sidebarError}
            />
          )}
-         {activeTab === 'settings' && <SettingsView appVersion={appVersion} />}
+         {activeTab === 'settings' && <SettingsView appVersion={appVersion} connectionError={sidebarError} />}
       </AppShell.Main>
 
       {/* МОДАЛКА СОХРАНЕНИЯ ШАБЛОНА */}
       <Modal opened={saveModalOpened} onClose={closeSaveModal} title="Сохранить шаблон">
-         <Stack>
-             <TextInput 
-               label="Название шаблона" 
-               placeholder="Например: HYPE Long Aggressive"
-               data-autofocus
-               value={templateName}
-               onChange={(e) => setTemplateName(e.currentTarget.value)}
-             />
-             <Group justify="flex-end">
-                 <Button variant="default" onClick={closeSaveModal}>Отмена</Button>
-                 <Button onClick={handleSaveTemplate} leftSection={<IconCheck size={16}/>}>Сохранить</Button>
-             </Group>
-         </Stack>
-      </Modal>
-
-      {/* 👇 НОВАЯ МОДАЛКА ПОДДЕРЖКИ */}
-      <DonateModal opened={gratitudeOpened} onClose={closeGratitude} />
-
-      <Modal opened={importModalOpened} onClose={closeImportModal} title="Импорт настроек">
         <Stack>
           <TextInput
-            label="Ссылка на бота или шаблон"
+            label="Название шаблона"
+            placeholder="Например: HYPE Long Aggressive"
+            data-autofocus
+            value={templateName}
+            onChange={(e) => setTemplateName(e.currentTarget.value)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeSaveModal}>Отмена</Button>
+            <Button onClick={handleSaveTemplate} leftSection={<IconCheck size={16} />}>Сохранить</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* МОДАЛЬНОЕ ОКНО ПОДДЕРЖКИ */}
+      <DonateModal opened={gratitudeOpened} onClose={closeGratitude} />
+
+      <Modal opened={importModalV2Opened} onClose={closeImportModalV2} title="Импорт настроек">
+        <Stack>
+          <TextInput
+            label="Ссылка на бота"
             placeholder="https://veles.finance/share/SDxEv"
             value={importLink}
             onChange={(e) => setImportLink(e.currentTarget.value)}
@@ -505,7 +570,7 @@ export function MainLayout() {
             Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки "Поделиться"
           </Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={closeImportModal} disabled={isImporting}>Отмена</Button>
+            <Button variant="default" onClick={closeImportModalV2} disabled={isImporting}>Отмена</Button>
             <Button onClick={handleImportSettings} loading={isImporting}>Импортировать</Button>
           </Group>
         </Stack>
@@ -514,3 +579,6 @@ export function MainLayout() {
     </AppShell>
   );
 }
+
+
+

@@ -1,0 +1,44 @@
+.ui-surface .mantine-Paper-root[data-with-border],
+.ui-surface .mantine-Paper-root[with-border] {
+  border-color: #cfddee !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 255, 0.92));
+  box-shadow: 0 7px 18px rgba(52, 79, 117, 0.08);
+}
+
+.ui-surface .mantine-Input-input,
+.ui-surface .mantine-Select-input,
+.ui-surface .mantine-DateInput-input,
+.ui-surface .mantine-NumberInput-input,
+.ui-surface .mantine-MultiSelect-input,
+.ui-surface .mantine-Textarea-input {
+  border-color: #cddbed;
+  background: rgba(255, 255, 255, 0.96);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ui-surface .mantine-Input-input:focus,
+.ui-surface .mantine-Select-input:focus,
+.ui-surface .mantine-DateInput-input:focus,
+.ui-surface .mantine-NumberInput-input:focus,
+.ui-surface .mantine-MultiSelect-input:focus,
+.ui-surface .mantine-Textarea-input:focus {
+  border-color: #8db4e0;
+  box-shadow: 0 0 0 3px rgba(98, 152, 218, 0.2);
+}
+
+.ui-surface .mantine-Button-root {
+  border-radius: 10px;
+  font-weight: 700;
+  min-height: 36px;
+  border-width: 1px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ui-surface .mantine-Button-root:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(52, 79, 117, 0.15);
+}
+
+.ui-surface .mantine-Badge-root {
+  box-shadow: 0 4px 10px rgba(47, 88, 140, 0.12);
+}

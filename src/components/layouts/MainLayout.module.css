@@ -1,0 +1,87 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 250, 255, 0.86));
+  border-right: 1px solid rgba(170, 194, 223, 0.45);
+}
+
+.navTop {
+  flex: 1;
+}
+
+.brandRow {
+  border-radius: 12px;
+}
+
+.profileCard {
+  border-radius: 12px;
+  border-color: rgba(167, 191, 220, 0.45);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 249, 255, 0.9));
+  box-shadow: 0 8px 20px rgba(42, 66, 96, 0.08);
+}
+
+.connectionOnline {
+  padding-left: 2px;
+}
+
+.connectionIcon {
+  margin-left: -8px;
+  margin-right: 10px;
+}
+
+.navItem {
+  margin: 0 8px;
+  border: 1px solid rgba(167, 191, 220, 0.35);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(246, 251, 255, 0.8));
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.navItem :global(.mantine-NavLink-label) {
+  font-weight: 500;
+  color: #2c3f57;
+}
+
+.navItem :global(.mantine-NavLink-section) {
+  color: #55718f;
+  transition: color 0.16s ease;
+}
+
+.navItem:hover {
+  transform: translateY(-1px);
+  border-color: rgba(129, 168, 211, 0.56);
+  box-shadow: 0 8px 16px rgba(42, 66, 96, 0.1);
+}
+
+.navItem:hover :global(.mantine-NavLink-section) {
+  color: #2d6fad;
+}
+
+.navItem[data-active='true'] {
+  border-color: rgba(104, 154, 209, 0.72);
+  background: linear-gradient(180deg, rgba(229, 241, 255, 0.98), rgba(214, 232, 255, 0.95));
+  box-shadow: 0 10px 18px rgba(51, 96, 154, 0.14);
+}
+
+.navItem[data-active='true'] :global(.mantine-NavLink-label) {
+  color: #1f4368;
+  font-weight: 600;
+}
+
+.navItem[data-active='true'] :global(.mantine-NavLink-section) {
+  color: #1f5f99;
+}
+
+.ctaButton {
+  border-radius: 12px;
+  border: 1px solid rgba(147, 178, 212, 0.45);
+  box-shadow: 0 8px 16px rgba(42, 66, 96, 0.08);
+}
+
+.ctaButton:hover {
+  transform: translateY(-1px);
+}
+
+.contactsWrap {
+  color: #55667e;
+}

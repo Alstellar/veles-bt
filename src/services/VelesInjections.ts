@@ -46,11 +46,19 @@ export async function injectedGetStats(id: number) {
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
-export async function injectedGetProfile() {
+export async function injectedGetProfile(token?: string | null) {
   try {
+    const headers: Record<string, string> = {
+      "Accept": "application/json",
+      "X-Requested-With": "XMLHttpRequest"
+    };
+    if (token) {
+      headers["x-csrf-token"] = token;
+    }
+
     const response = await fetch("https://veles.finance/api/me", {
       method: "GET",
-      headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" }
+      headers
     });
     if (response.ok) return { success: true, data: await response.json() };
     return { success: false, error: response.status };

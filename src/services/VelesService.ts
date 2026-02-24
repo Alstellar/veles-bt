@@ -99,10 +99,11 @@ export class VelesService {
     return result[0]?.result || { success: false, error: 'Injection failed' };
   }
 
-  static async getProfile(tabId: number): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
+  static async getProfile(tabId: number, token?: string): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
     const result = await chrome.scripting.executeScript({
       target: { tabId },
-      func: injectedGetProfile
+      func: injectedGetProfile,
+      args: [token ?? null]
     });
     return result[0]?.result || { success: false, error: 'Injection failed' };
   }

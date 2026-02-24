@@ -1,0 +1,39 @@
+.viewRoot {
+  position: relative;
+}
+
+.topbar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.emptyState {
+  border: 1px dashed #bfd0e5;
+  background: #f8fbff;
+  border-radius: 12px;
+  padding: 32px 16px;
+}
+
+.templateCard {
+  overflow: hidden;
+}
+
+.cardHeader {
+  border-bottom: 1px solid #dbe6f2;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
+.metaRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footerSection {
+  border-top: 1px solid #dbe6f2;
+  margin-top: 8px;
+  padding-top: 10px;
+}
