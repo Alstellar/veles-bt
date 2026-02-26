@@ -37,6 +37,12 @@
   overflow: hidden;
 }
 
+.whatsNewCard {
+  height: 286px;
+  display: flex;
+  flex-direction: column;
+}
+
 .whatsNewHeader {
   display: flex;
   justify-content: space-between;
@@ -45,27 +51,48 @@
   margin-bottom: 10px;
 }
 
-.slideControls {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
 .slideNav {
+  --slide-btn-width: 112px;
   display: flex;
-  gap: 8px;
+  gap: calc(var(--slide-btn-width) * 2);
   margin-top: 10px;
   justify-content: center;
   align-items: center;
   width: 100%;
 }
 
+.slideNavButton {
+  min-width: var(--slide-btn-width);
+  border-radius: 8px;
+  border: 1px solid #9fc0ef;
+  color: #223d63;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f6ff 100%);
+  background-size: 200% 100%;
+  background-image: linear-gradient(90deg, #eef5ff, #dfefff, #eef5ff);
+  transition: background-position 0.35s ease, transform 0.2s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.slideNavButton:hover {
+  background-position: 100% 0;
+  transform: translateY(-1px);
+  border-color: rgba(129, 168, 211, 0.56);
+  box-shadow: 0 8px 16px rgba(42, 66, 96, 0.1);
+}
+
+.slideNavButton:disabled,
+.slideNavButton[data-disabled='true'] {
+  transform: none;
+  box-shadow: none;
+  background-position: 0 0;
+}
+
 .slideBody {
+  flex: 1;
   border: 1px solid #d9e6f5;
   border-radius: 12px;
   padding: 12px;
   background: rgba(255, 255, 255, 0.85);
+  overflow: auto;
 }
 
 .faqCard {

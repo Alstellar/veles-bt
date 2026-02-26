@@ -22,6 +22,7 @@ import {
   IconBrain,
   IconChartBar,
   IconAdjustments,
+  IconCoins,
   IconTable,
   IconLock,
   IconPlayerPause,
@@ -50,6 +51,18 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
   const error = connectionError ?? null;
 
   const releases = useMemo<ReleaseSlide[]>(() => ([
+    {
+      version: 'v1.5.0',
+      title: '\u0427\u0442\u043e \u043d\u043e\u0432\u043e\u0433\u043e',
+      badge: 'NEW',
+      color: 'teal',
+      points: [
+        {
+          icon: <IconCoins size={16} />,
+          text: '\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u0430 \u0432\u043a\u043b\u0430\u0434\u043a\u0430 "\u0410\u043a\u0442\u0438\u0432\u044b": \u0442\u043e\u043f-10 \u0430\u043a\u0442\u0438\u0432\u043d\u044b\u0445 \u043c\u043e\u043d\u0435\u0442 \u0438 \u0442\u0430\u0431\u043b\u0438\u0446\u0430 \u0430\u043a\u0442\u0438\u0432\u043e\u0432 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u0439 \u0431\u0438\u0440\u0436\u0438.'
+        }
+      ]
+    },
     {
       version: 'v1.4.0',
       title: 'Что нового',
@@ -164,7 +177,7 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
           </Card>
         </SimpleGrid>
 
-        <Paper withBorder p="lg" radius="md" className={`ui-card ${styles.mainCard}`}>
+        <Paper withBorder p="lg" radius="md" className={`ui-card ${styles.mainCard} ${styles.whatsNewCard}`}>
           <div className={styles.whatsNewHeader}>
             <Group gap="xs">
               <Title order={4}>{activeSlide.title}</Title>
@@ -193,27 +206,16 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
           <div className={styles.slideNav}>
             <Button
               variant="default"
+              className={styles.slideNavButton}
               leftSection={<IconChevronLeft size={14} />}
               disabled={slideIndex === 0}
               onClick={() => setSlideIndex((prev) => Math.max(0, prev - 1))}
             >
               Назад
             </Button>
-            <div className={styles.slideControls}>
-              {releases.map((slide, idx) => (
-                <Button
-                  key={slide.version}
-                  size="xs"
-                  variant={idx === slideIndex ? 'filled' : 'light'}
-                  color={idx === slideIndex ? 'blue' : 'gray'}
-                  onClick={() => setSlideIndex(idx)}
-                >
-                  {slide.version}
-                </Button>
-              ))}
-            </div>
             <Button
               variant="default"
+              className={styles.slideNavButton}
               rightSection={<IconChevronRight size={14} />}
               disabled={slideIndex === releases.length - 1}
               onClick={() => setSlideIndex((prev) => Math.min(releases.length - 1, prev + 1))}
