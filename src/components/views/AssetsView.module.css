@@ -1,0 +1,111 @@
+.viewRoot {
+  position: relative;
+}
+
+.topbar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.exchangeCard {
+  display: flex;
+  justify-content: center;
+}
+
+.sectionCard {
+  overflow: hidden;
+}
+
+.topListCard {
+  border-color: #dbe6f2;
+  background: #fbfdff;
+}
+
+.topList {
+  margin: 0 auto;
+  padding-left: 20px;
+  width: fit-content;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.thInner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 6px;
+}
+
+.sortButton {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f3550;
+  letter-spacing: 0.02em;
+}
+
+.sortButton:hover {
+  color: #1d5f9b;
+}
+
+.sortIcon {
+  opacity: 0.7;
+}
+
+.infoBadge {
+  cursor: help;
+  padding: 0 4px;
+}
+
+.headerLabelWithInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.assetsTable :global(thead th) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f4f8fd;
+  box-shadow: inset 0 -1px 0 #dbe6f2;
+}
+
+.assetsTable {
+  table-layout: fixed;
+}
+
+.symbolCol {
+  width: 34%;
+  text-align: center;
+}
+
+.metricCol {
+  width: 33%;
+  text-align: center;
+}
+
+.symbolHeaderInner {
+  justify-content: center;
+  width: 100%;
+}
+
+.metricHeaderInner {
+  justify-content: center;
+  width: 100%;
+}
+
+.symbolValue {
+  display: inline-block;
+  max-width: calc(100% - 8px);
+  text-align: center;
+}

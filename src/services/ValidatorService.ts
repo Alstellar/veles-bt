@@ -261,7 +261,7 @@ export class ValidatorService {
     }
 
     if (exitCfg.stopLoss.enabledSignal) {
-      if (!hasNumericValues(exitCfg.stopLoss.conditionalIndent)) {
+      if (!hasNumericOrNullValues(exitCfg.stopLoss.conditionalIndent)) {
         return this.fail('exit', 'Стоп-лосс по сигналу: заполните условный отступ.');
       }
       const hasInd =
@@ -279,4 +279,3 @@ export class ValidatorService {
     return this.ok();
   }
 }
-

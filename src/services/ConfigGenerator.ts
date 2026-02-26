@@ -339,7 +339,14 @@ export class ConfigGenerator {
               });
               stopLoss.conditions = slConditions;
 
-              if (signalSLVal && signalSLVal !== 'null') {
+              const hasSignalIndentValue =
+                  signalSLVal !== null &&
+                  signalSLVal !== undefined &&
+                  signalSLVal !== '' &&
+                  signalSLVal !== 'null' &&
+                  Number.isFinite(Number(signalSLVal));
+
+              if (hasSignalIndentValue) {
                   stopLoss.conditionalIndent = -1 * Number(signalSLVal);
               } else {
                   stopLoss.conditionalIndent = null;

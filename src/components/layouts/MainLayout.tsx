@@ -6,12 +6,13 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { 
   IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, 
-  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh
+  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh, IconCoins
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
 import { DashboardView } from '../views/DashboardView';
 import { BacktesterView } from '../views/BacktesterView';
+import { AssetsView } from '../views/AssetsView';
 import { TemplatesView } from '../views/TemplatesView';
 import { HistoryView } from '../views/HistoryView';
 import { SettingsView } from '../views/SettingsView';
@@ -409,6 +410,14 @@ export function MainLayout() {
                 variant="light"
                 className={styles.navItem}
             />
+            <NavLink
+                label="Активы"
+                leftSection={<IconCoins size={20} stroke={1.5} />}
+                active={activeTab === 'assets'}
+                onClick={() => setActiveTab('assets')}
+                variant="light"
+                className={styles.navItem}
+            />
             <NavLink 
                 label="Конфигуратор" 
                 leftSection={<IconTestPipe size={20} stroke={1.5} />}
@@ -518,6 +527,10 @@ export function MainLayout() {
                connectionError={sidebarError}
             />
          </div>
+
+         {activeTab === 'assets' && (
+           <AssetsView connectionError={sidebarError} />
+         )}
 
          {activeTab === 'templates' && (
              <TemplatesView 

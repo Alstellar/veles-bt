@@ -1,4 +1,5 @@
 import type {
+  AlgoType,
   ExchangeType,
   ExchangeInfo,
   SymbolAvailability,
@@ -93,6 +94,26 @@ export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolA
 
   const payload = unwrapPayload<SymbolAvailability[]>(await response.json());
   return Array.isArray(payload) ? payload : [];
+};
+
+export const fetchTopSymbols = async (exchange: ExchangeType, algorithm: AlgoType): Promise<string[]> => {
+  const token = await resolveToken();
+  const response = await fetch(
+    `${BASE_API}/statistics/symbols/top?exchange=${encodeURIComponent(exchange)}&algorithm=${encodeURIComponent(algorithm)}`,
+    {
+      method: 'GET',
+      headers: getHeaders(token),
+      credentials: 'include'
+    }
+  );
+
+  if (!response.ok) {
+    handleHttpError(response, 'Ошибка загрузки топа активов');
+  }
+
+  const payload = unwrapPayload<string[]>(await response.json());
+  if (!Array.isArray(payload)) return [];
+  return payload.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
 };
 
 export const fetchImportPayload = async (code: string): Promise<unknown> => {

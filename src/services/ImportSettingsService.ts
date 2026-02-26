@@ -317,7 +317,11 @@ export function mapImportedPayload(
       enabledSimple: hasSimple,
       indent: hasSimple ? [String(Math.abs(Number(stopLoss.indent)))] : [],
       enabledSignal: hasSignal,
-      conditionalIndent: hasConditional ? [String(-1 * Number(stopLoss.conditionalIndent))] : [],
+      conditionalIndent: hasConditional
+        ? [String(-1 * Number(stopLoss.conditionalIndent))]
+        : hasSignal
+          ? ['null']
+          : [],
       conditionalIndentType: stopLoss.conditionalIndentType ?? current.exitConfig.stopLoss.conditionalIndentType,
       filterSlots: hasSignalConditions ? mapConditionsToSlots(stopLoss.conditions ?? [], warnings, 'Stop loss signal') : []
     };
