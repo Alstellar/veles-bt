@@ -31,12 +31,12 @@ import { DatabaseService } from '../../services/DatabaseService';
 import { ResultsModal } from '../ResultsModal';
 import { QueueLockService } from '../../services/QueueLockService';
 import type { BacktestQueueController } from '../../hooks/useBacktestQueue';
-import type { BatchInfo, BatchRunStatus, BatchResumeSource } from '../../types';
+import type { BatchInfo, BatchRunStatus } from '../../types';
 import styles from './HistoryView.module.css';
 import { ConnectionAlert } from '../ConnectionAlert';
 
 interface HistoryViewProps {
-  onResumeBatch?: (batchId: string, resumeSource: BatchResumeSource) => void;
+  onResumeBatch?: (batch: BatchInfo) => void;
   queueController: BacktestQueueController;
   connectionError?: string | null;
 }
@@ -128,12 +128,14 @@ export function HistoryView({ onResumeBatch, queueController, connectionError }:
 
   const handleResumeBatch = async (batch: BatchInfo) => {
     const runtime = await StorageService.getBatchRuntime(batch.id);
-    if (!runtime || !batch.resumeSource) {
+    const hasConfiguratorSource = Boolean(batch.resumeSource);
+    const hasBacktestsSource = Boolean(batch.backtestsSource);
+    if (!runtime || (!hasConfiguratorSource && !hasBacktestsSource)) {
       alert('Этот запуск нельзя продолжить: не найдены данные для восстановления. Запустите задачу заново.');
       return;
     }
 
-    onResumeBatch?.(batch.id, batch.resumeSource);
+    onResumeBatch?.(batch);
   };
 
   const handleStopBatch = async (batchId: string) => {

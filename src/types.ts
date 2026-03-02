@@ -254,7 +254,9 @@ export interface BatchInfo {
   stopReason?: BatchStopReason;
   lastError?: string;
   updatedAt?: number;
+  mode?: 'CONFIGURATOR' | 'BACKTESTS';
   resumeSource?: BatchResumeSource;
+  backtestsSource?: BacktestsResumeSource;
 }
 
 export type BatchRunStatus = 'RUN' | 'STOP' | 'DONE';
@@ -282,6 +284,27 @@ export interface BatchResumeSource {
   entryConfig: EntryConfig;
   orderState: OrderState;
   exitConfig: ExitConfig;
+}
+
+export interface BacktestsResumeTemplate {
+  url: string;
+  code: string;
+  name: string;
+  config: VelesConfigPayload;
+}
+
+export interface BacktestsResumeSource {
+  version: 1;
+  exchange: ExchangeType;
+  dateFrom: string;
+  dateTo: string;
+  nameTemplate: string;
+  linksText: string;
+  assetsInputText: string;
+  assetsSource: 'manual' | 'exchange_filtered';
+  symbols: string[];
+  symbolMaxLeverage: Record<string, number | null>;
+  templates: BacktestsResumeTemplate[];
 }
 
 export interface BatchRuntimeState {
@@ -386,6 +409,7 @@ export interface BacktestResultItem {
   duration: number | null;    // Диапазон теста в секундах (не время выполнения!)
   maxDuration: number | null; // Макс время в сделке (сек)
   avgDuration: number | null; // Среднее время в сделке (сек)
+  sourceTemplateUrl?: string;
 }
 
 

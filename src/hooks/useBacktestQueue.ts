@@ -17,6 +17,7 @@ export interface QueueItem {
   status: 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'TIMEOUT';
   error?: string;
   resultId?: number;
+  sourceTemplateUrl?: string;
 }
 
 interface ExecutionContext {
@@ -508,12 +509,18 @@ export function useBacktestQueue() {
             }
 
             const stats = statsRes.stats;
+            const actualFrom = typeof stats.from === 'string' && !Number.isNaN(Date.parse(stats.from))
+              ? stats.from
+              : item.config.from;
+            const actualTo = typeof stats.to === 'string' && !Number.isNaN(Date.parse(stats.to))
+              ? stats.to
+              : item.config.to;
             const resultItem: BacktestResultItem = {
               id: velesId,
               name: item.config.name,
               date: new Date().toISOString(),
-              from: item.config.from,
-              to: item.config.to,
+              from: actualFrom,
+              to: actualTo,
               symbol: item.config.symbol,
               algorithm: item.config.algorithm,
               exchange: item.config.exchange,
@@ -531,7 +538,8 @@ export function useBacktestQueue() {
               breakevens: stats.breakevens ?? 0,
               duration: null,
               maxDuration: stats.maxDuration ?? null,
-              avgDuration: stats.avgDuration
+              avgDuration: stats.avgDuration,
+              sourceTemplateUrl: item.sourceTemplateUrl
             };
 
             await DatabaseService.saveTests([resultItem]);

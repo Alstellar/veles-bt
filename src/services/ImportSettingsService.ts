@@ -108,7 +108,7 @@ const toNumString = (value: unknown): string => {
 
 const cleanNamePrefix = (name: string): string => {
   return name
-    .replace(/\s*\|\s*\d+\s*\/\s*\d+\s*\|\s*VELES HELPER.*$/i, '')
+    .replace(/\s*\|\s*\d+\s*\/\s*\d+\s*\|\s*(VELES HELPER|VH).*$/i, '')
     .trim();
 };
 

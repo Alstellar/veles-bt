@@ -1,4 +1,4 @@
-// src/components/results/ResultsTable.tsx
+﻿// src/components/results/ResultsTable.tsx
 import { useState } from 'react';
 import { 
   Table, ScrollArea, Stack, Text, Anchor, Badge, Group, UnstyledButton, 
@@ -28,6 +28,12 @@ export function ResultsTable({
   
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<string>('20');
+
+  const getTemplateCode = (url: string | undefined): string | null => {
+    if (!url) return null;
+    const match = url.match(/\/share\/([A-Za-z0-9_-]+)/i);
+    return match?.[1] ?? null;
+  };
 
   const limit = parseInt(pageSize);
   const totalPages = Math.ceil(data.length / limit);
@@ -76,6 +82,7 @@ export function ResultsTable({
                   <Th id="name" sortKey="name" align="left">Название</Th>
                   <Th id="exchange" sortKey="exchange">Биржа</Th>
                   <Th id="pair" sortKey="symbol">Пара</Th>
+                  <Th id="sourceTemplate" sortKey="sourceTemplateUrl" align="left">Шаблон</Th>
                   <Th id="period" sortKey="from">Период</Th>
                   <Th id="days" sortKey="days">История (дни)</Th> 
                   <Th id="net" sortKey="netQuote">Net (USDT)</Th>
@@ -124,6 +131,17 @@ export function ResultsTable({
                             <Text fw={600} size="sm">{row.symbol}</Text>
                             <Badge size="xs" variant="light" color={row.algorithm === 'LONG' ? 'green' : 'red'}>{row.algorithm}</Badge>
                           </Stack>
+                        </Table.Td>
+                      )}
+                      {visibleColumns.sourceTemplate && (
+                        <Table.Td>
+                          {row.sourceTemplateUrl ? (
+                            <Anchor href={row.sourceTemplateUrl} target="_blank" size="xs" underline="hover">
+                              {getTemplateCode(row.sourceTemplateUrl) ?? row.sourceTemplateUrl}
+                            </Anchor>
+                          ) : (
+                            <Text size="xs" c="dimmed">-</Text>
+                          )}
                         </Table.Td>
                       )}
                       {visibleColumns.period && (
@@ -202,3 +220,4 @@ export function ResultsTable({
     </Stack>
   );
 }
+

@@ -6,11 +6,12 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { 
   IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, 
-  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh, IconCoins
+  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh, IconCoins, IconList
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
 import { DashboardView } from '../views/DashboardView';
+import { BacktestsView } from '../views/BacktestsView';
 import { BacktesterView } from '../views/BacktesterView';
 import { AssetsView } from '../views/AssetsView';
 import { TemplatesView } from '../views/TemplatesView';
@@ -22,7 +23,7 @@ import { DonateModal } from '../modals/DonateModal';
 
 import { StorageService } from '../../services/StorageService';
 import { useBacktestQueue } from '../../hooks/useBacktestQueue';
-import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, BatchResumeSource } from '../../types';
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, BatchInfo, BatchResumeSource } from '../../types';
 import { LogService } from '../../services/LogService';
 import { getObjectDiff } from '../../utils/objectDiff';
 import { configHash } from '../../utils/configHash';
@@ -64,6 +65,7 @@ export function MainLayout() {
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [resumeBatchId, setResumeBatchId] = useState<string | null>(null);
+  const [resumeBacktestsBatchId, setResumeBacktestsBatchId] = useState<string | null>(null);
   const [sidebarUser, setSidebarUser] = useState<UserProfile | null>(null);
   const [sidebarLoading, setSidebarLoading] = useState(true);
   const [sidebarError, setSidebarError] = useState<string | null>(null);
@@ -277,8 +279,19 @@ export function MainLayout() {
       setActiveTab('backtester');
   };
 
-  const handleResumeFromHistory = useCallback((batchId: string, resumeSource: BatchResumeSource) => {
-    const source = cloneResumeSource(resumeSource);
+  const handleResumeFromHistory = useCallback((batch: BatchInfo) => {
+    if (batch.mode === 'BACKTESTS' || batch.backtestsSource) {
+      setResumeBacktestsBatchId(batch.id);
+      setActiveTab('backtests');
+      return;
+    }
+
+    if (!batch.resumeSource) {
+      alert('Этот запуск невозможно продолжить: не найдены данные для восстановления.');
+      return;
+    }
+
+    const source = cloneResumeSource(batch.resumeSource);
     const restoredStatic: StaticConfig = {
       ...source.staticConfig,
       dateFrom: new Date(source.staticConfig.dateFrom),
@@ -309,7 +322,7 @@ export function MainLayout() {
     setEntryConfig(source.entryConfig);
     setOrderState(source.orderState);
     setExitConfig(source.exitConfig);
-    setResumeBatchId(batchId);
+    setResumeBatchId(batch.id);
     setActiveTab('backtester');
   }, [staticConfig, entryConfig, orderState, exitConfig]);
 
@@ -415,6 +428,14 @@ export function MainLayout() {
                 leftSection={<IconCoins size={20} stroke={1.5} />}
                 active={activeTab === 'assets'}
                 onClick={() => setActiveTab('assets')}
+                variant="light"
+                className={styles.navItem}
+            />
+            <NavLink
+                label="Бектесты"
+                leftSection={<IconList size={20} stroke={1.5} />}
+                active={activeTab === 'backtests'}
+                onClick={() => setActiveTab('backtests')}
                 variant="light"
                 className={styles.navItem}
             />
@@ -530,6 +551,15 @@ export function MainLayout() {
 
          {activeTab === 'assets' && (
            <AssetsView connectionError={sidebarError} />
+         )}
+
+         {activeTab === 'backtests' && (
+           <BacktestsView
+             queueController={queueController}
+             resumeBatchId={resumeBacktestsBatchId}
+             onResumeHandled={() => setResumeBacktestsBatchId(null)}
+             connectionError={sidebarError}
+           />
          )}
 
          {activeTab === 'templates' && (

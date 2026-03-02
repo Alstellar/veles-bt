@@ -203,7 +203,7 @@ export class ConfigGenerator {
       const ticker = pair.split('/')[0];
 
       // Формирование имени
-      const testName = `${staticCfg.namePrefix} ${ticker} | ${index}/${total} | Veles Helper ${batchId}`;
+      const testName = `${staticCfg.namePrefix} ${ticker} | ${index}/${total} | VH ${batchId}`;
 
       // 1. Условия входа
       const conditions: VelesCondition[] = [];

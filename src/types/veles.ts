@@ -75,6 +75,8 @@ export interface BacktestStatusResponse {
 }
 
 export interface BacktestStats {
+  from?: string;
+  to?: string;
   netQuote: number;
   profitQuote: number;
   commissionQuote: number;

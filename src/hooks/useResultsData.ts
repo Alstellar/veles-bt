@@ -12,6 +12,7 @@ export interface SortState { key: SortKey; reversed: boolean; }
 // Обновляем список колонок по умолчанию (убрали winRate)
 const INITIAL_COLUMNS = {
   name: true, exchange: true, pair: true, 
+  sourceTemplate: true,
   period: true, days: true, 
   net: true, recovery: true, 
   effDay: true, deals: true, dealsPerDay: true, 

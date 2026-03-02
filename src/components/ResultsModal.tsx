@@ -1,4 +1,4 @@
-// src/components/ResultsModal.tsx
+﻿// src/components/ResultsModal.tsx
 import { Modal, Group, Text, Badge, Button, Switch, Menu, ActionIcon, Checkbox } from '@mantine/core';
 import { IconDownload, IconColumns } from '@tabler/icons-react';
 
@@ -13,6 +13,7 @@ const COLUMN_NAMES: Record<string, string> = {
   name: 'Название', 
   exchange: 'Биржа', 
   pair: 'Пара',
+  sourceTemplate: 'Шаблон',
   period: 'Период', 
   days: 'История (дни)', 
   net: 'Net (USDT)', 
@@ -150,3 +151,4 @@ export function ResultsModal({
     </Modal>
   );
 }
+

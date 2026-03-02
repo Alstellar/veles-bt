@@ -404,6 +404,7 @@ export function BacktesterView({
       exchange: staticConfig.exchange,
       totalTests: configs.length,
       velesIds: [],
+      mode: 'CONFIGURATOR',
       resumeSource: {
         staticConfig: {
           ...staticConfig,

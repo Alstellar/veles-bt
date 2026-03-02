@@ -1,4 +1,4 @@
-// src/utils/exportUtils.ts
+﻿// src/utils/exportUtils.ts
 import type { BacktestResultItem } from '../types';
 import { formatDurationHuman } from './formatters';
 
@@ -9,6 +9,7 @@ export function downloadAsCsv(data: BacktestResultItem[], filename = 'veles-resu
     const headers = [
         'ID',
         'Ссылка',
+        'Шаблон',
         'Название',
         'Символ',
         'Биржа',
@@ -82,6 +83,7 @@ export function downloadAsCsv(data: BacktestResultItem[], filename = 'veles-resu
         return [
             item.id,
             backtestUrl,
+            item.sourceTemplateUrl ?? '',
             `"${item.name.replace(/"/g, '""')}"`,
             item.symbol,
             item.exchange,
@@ -131,3 +133,4 @@ export function downloadAsCsv(data: BacktestResultItem[], filename = 'veles-resu
         document.body.removeChild(link);
     }
 }
+
