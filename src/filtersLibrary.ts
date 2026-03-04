@@ -329,6 +329,12 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
+  VORTEX: {
+    code: 'VORTEX', 
+    label: 'Vortex', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },
+
   FAST_STOCHASTIC_LEVELS: {
     code: 'FAST_STOCHASTIC_LEVELS', 
     label: 'Быстрый Стохастик, уровни', 
@@ -365,6 +371,42 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
+  VOLUME_SPIKE_DETECTOR_7: {
+    code: 'VOLUME_SPIKE_DETECTOR_7', 
+    label: 'Детектор скачков объема (период 7)', 
+    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+  },  
+
+  VOLUME_SPIKE_DETECTOR_14: {
+    code: 'VOLUME_SPIKE_DETECTOR_14', 
+    label: 'Детектор скачков объема (период 14)', 
+    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+  }, 
+
+  VOLUME_SPIKE_DETECTOR_21: {
+    code: 'VOLUME_SPIKE_DETECTOR_21', 
+    label: 'Детектор скачков объема (период 21)', 
+    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+  }, 
+
+  VOLUME_SPIKE_DETECTOR_30: {
+    code: 'VOLUME_SPIKE_DETECTOR_30', 
+    label: 'Детектор скачков объема (период 30)', 
+    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+  }, 
+
+  VOLUME_SPIKE_DETECTOR_50: {
+    code: 'VOLUME_SPIKE_DETECTOR_50', 
+    label: 'Детектор скачков объема (период 50)', 
+    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+  }, 
+
+  VOLUME_SPIKE_DETECTOR_100: {
+    code: 'VOLUME_SPIKE_DETECTOR_100', 
+    label: 'Детектор скачков объема (период 100)', 
+    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+  }, 
+
   BALANCE_OF_POWER: {
     code: 'BALANCE_OF_POWER', 
     label: 'Баланс сил', 
@@ -376,6 +418,66 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     label: 'Три солдата/ворона', 
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
+
+  CANDLES_TREND_2: {
+    code: 'CANDLES_TREND_2', 
+    label: 'Тренд свечей (период 2)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_3: {
+    code: 'CANDLES_TREND_3', 
+    label: 'Тренд свечей (период 3)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_4: {
+    code: 'CANDLES_TREND_4', 
+    label: 'Тренд свечей (период 4)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_5: {
+    code: 'CANDLES_TREND_5', 
+    label: 'Тренд свечей (период 5)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_6: {
+    code: 'CANDLES_TREND_6', 
+    label: 'Тренд свечей (период 6)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_7: {
+    code: 'CANDLES_TREND_7', 
+    label: 'Тренд свечей (период 7)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_8: {
+    code: 'CANDLES_TREND_8', 
+    label: 'Тренд свечей (период 8)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_9: {
+    code: 'CANDLES_TREND_9', 
+    label: 'Тренд свечей (период 9)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_10: {
+    code: 'CANDLES_TREND_10', 
+    label: 'Тренд свечей (период 10)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
+
+  CANDLES_TREND_15: {
+    code: 'CANDLES_TREND_15', 
+    label: 'Тренд свечей (период 15)', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },  
 
   PARABOLIC_SAR: {
     code: 'PARABOLIC_SAR', 

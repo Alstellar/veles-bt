@@ -307,69 +307,6 @@
   box-shadow: 0 4px 10px rgba(47, 88, 140, 0.12);
 }
 
-/* Variant 04 switch style for StaticSettings toggles:
-   Public test / Use wicks */
-:global(#cfg-static) :global(.mantine-Switch-root),
-:global(#cfg-order) :global(.mantine-Switch-root),
-:global(#cfg-exit) :global(.mantine-Switch-root) {
-  --cfg-sw-w: 58px;
-  --cfg-sw-h: 32px;
-  --cfg-sw-thumb: 22px;
-}
-
-:global(#cfg-static) :global(.mantine-Switch-track),
-:global(#cfg-order) :global(.mantine-Switch-track),
-:global(#cfg-exit) :global(.mantine-Switch-track) {
-  width: var(--cfg-sw-w);
-  min-width: var(--cfg-sw-w);
-  height: var(--cfg-sw-h);
-  border-radius: 999px;
-  border: 1px solid #c7d8ec;
-  background: #e4eef9;
-  position: relative;
-  transition: background var(--ease), border-color var(--ease), box-shadow var(--ease);
-}
-
-:global(#cfg-static) :global(.mantine-Switch-thumb),
-:global(#cfg-order) :global(.mantine-Switch-thumb),
-:global(#cfg-exit) :global(.mantine-Switch-thumb) {
-  width: var(--cfg-sw-thumb);
-  height: var(--cfg-sw-thumb);
-  border: 0;
-  box-shadow: 0 4px 10px rgba(39, 64, 95, 0.18);
-}
-
-:global(#cfg-static) :global(.mantine-Switch-track::before),
-:global(#cfg-order) :global(.mantine-Switch-track::before),
-:global(#cfg-exit) :global(.mantine-Switch-track::before) {
-  content: "OFF";
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 11px;
-  font-weight: 800;
-  color: #7991ab;
-  letter-spacing: 0.01em;
-  pointer-events: none;
-}
-
-:global(#cfg-static) :global(.mantine-Switch-input:checked + .mantine-Switch-track),
-:global(#cfg-order) :global(.mantine-Switch-input:checked + .mantine-Switch-track),
-:global(#cfg-exit) :global(.mantine-Switch-input:checked + .mantine-Switch-track) {
-  background: #d8ecff;
-  border-color: #7db2e6;
-}
-
-:global(#cfg-static) :global(.mantine-Switch-input:checked + .mantine-Switch-track::before),
-:global(#cfg-order) :global(.mantine-Switch-input:checked + .mantine-Switch-track::before),
-:global(#cfg-exit) :global(.mantine-Switch-input:checked + .mantine-Switch-track::before) {
-  content: "ON";
-  right: auto;
-  left: 8px;
-  color: #2f6fb4;
-}
-
 @keyframes sectionIn {
   from {
     opacity: 0;

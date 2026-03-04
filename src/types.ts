@@ -299,6 +299,10 @@ export interface BacktestsResumeSource {
   dateFrom: string;
   dateTo: string;
   nameTemplate: string;
+  makerFee?: string;
+  takerFee?: string;
+  isPublic?: boolean;
+  useWicks?: boolean;
   linksText: string;
   assetsInputText: string;
   assetsSource: 'manual' | 'exchange_filtered';

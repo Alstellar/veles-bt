@@ -22,3 +22,53 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #adb5bd;
 }
+
+/* Unified switch style across the app */
+.mantine-Switch-root {
+  --vh-sw-w: 58px;
+  --vh-sw-h: 32px;
+  --vh-sw-thumb: 22px;
+}
+
+.mantine-Switch-track {
+  width: var(--vh-sw-w);
+  min-width: var(--vh-sw-w);
+  height: var(--vh-sw-h);
+  border-radius: 999px;
+  border: 1px solid #c7d8ec;
+  background: #e4eef9;
+  position: relative;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mantine-Switch-thumb {
+  width: var(--vh-sw-thumb);
+  height: var(--vh-sw-thumb);
+  border: 0;
+  box-shadow: 0 4px 10px rgba(39, 64, 95, 0.18);
+}
+
+.mantine-Switch-track::before {
+  content: "OFF";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 800;
+  color: #7991ab;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.mantine-Switch-input:checked + .mantine-Switch-track {
+  background: #d8ecff;
+  border-color: #7db2e6;
+}
+
+.mantine-Switch-input:checked + .mantine-Switch-track::before {
+  content: "ON";
+  right: auto;
+  left: 8px;
+  color: #2f6fb4;
+}

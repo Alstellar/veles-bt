@@ -47,6 +47,8 @@ type NameContext = {
 };
 
 const DEFAULT_FROM_ISO = '2019-01-01T00:00:00.000Z';
+const DEFAULT_MAKER_FEE = '0.02';
+const DEFAULT_TAKER_FEE = '0.055';
 
 const clonePayload = (payload: VelesConfigPayload): VelesConfigPayload => {
   if (typeof structuredClone === 'function') {
@@ -430,6 +432,16 @@ export const buildQueueItemsFromBacktestsSource = (
     config.symbols = [symbolPair];
     config.from = new Date(source.dateFrom).toISOString();
     config.to = new Date(source.dateTo).toISOString();
+    config.commissions = {
+      maker: source.makerFee && source.makerFee.trim()
+        ? source.makerFee
+        : (config.commissions?.maker ?? DEFAULT_MAKER_FEE),
+      taker: source.takerFee && source.takerFee.trim()
+        ? source.takerFee
+        : (config.commissions?.taker ?? DEFAULT_TAKER_FEE)
+    };
+    config.public = typeof source.isPublic === 'boolean' ? source.isPublic : config.public;
+    config.useWicks = typeof source.useWicks === 'boolean' ? source.useWicks : config.useWicks;
     config.name = renderNameTemplate(source.nameTemplate, {
       template: pair.template.name,
       symbol: symbolBase,

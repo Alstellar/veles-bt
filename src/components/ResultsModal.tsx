@@ -61,20 +61,36 @@ export function ResultsModal({
     downloadAsCsv(rawData, filename);
   };
 
+  const showNotificationsToggle = Boolean(isLive && onToggleNotifications);
+
   return (
     <Modal 
       opened={opened} 
       onClose={onClose} 
       fullScreen // 1. Делаем модалку полноэкранной
       title={
-        <Group>
-          <Text fw={700} size="lg">{title}</Text>
-          {isLive && <Badge color="green" variant="light" size="sm">LIVE</Badge>}
+        <Group justify="space-between" align="center" wrap="nowrap" style={{ width: '100%' }}>
+          <Group gap="xs" wrap="nowrap">
+            <Text fw={700} size="lg">{title}</Text>
+            {isLive && <Badge color="green" variant="light" size="sm">LIVE</Badge>}
+          </Group>
+
+          {showNotificationsToggle && (
+            <Group gap="sm" align="center" wrap="nowrap" style={{ marginRight: 30 }}>
+              <Text size="sm" fw={600}>Уведомлять о завершении</Text>
+              <Switch
+                checked={Boolean(notificationsEnabled)}
+                onChange={(e) => onToggleNotifications?.(e.currentTarget.checked)}
+              />
+            </Group>
+          )}
         </Group>
       }
       closeOnClickOutside={false}
       // 2. Настраиваем Flex-лейаут для модалки, чтобы она занимала 100% высоты без скролла тела
       styles={{
+        header: { alignItems: 'center' },
+        title: { width: '100%' },
         content: { display: 'flex', flexDirection: 'column', height: '100vh', maxHeight: '100vh' },
         body: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 0 }
       }}
@@ -89,18 +105,7 @@ export function ResultsModal({
             logs={logs}
         />
 
-        <Group justify="space-between" mt="md" mb="xs" align="center">
-            <div>
-            {isLive && onToggleNotifications && (
-                <Switch 
-                label="Уведомлять о завершении" 
-                size="xs"
-                checked={notificationsEnabled}
-                onChange={(e) => onToggleNotifications(e.currentTarget.checked)}
-                />
-            )}
-            </div>
-
+        <Group justify="flex-end" mt="md" mb="xs" align="center">
             <Group gap="xs">
             <Button 
                 variant="default" 

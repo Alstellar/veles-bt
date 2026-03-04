@@ -11,7 +11,6 @@ import { StaticSettings } from '../StaticSettings';
 import { OrderSettings } from '../OrderSettings';
 import { EntrySettings } from '../EntrySettings';
 import { ExitSettings } from '../ExitSettings';
-import { ResultsModal } from '../ResultsModal';
 import { ConnectionAlert } from '../ConnectionAlert';
 
 import { ConfigGenerator } from '../../services/ConfigGenerator';
@@ -34,6 +33,7 @@ export interface BacktesterProps {
   onSaveTemplate: () => void;
   onImportSettings: () => void;
   queueController: BacktestQueueController;
+  onOpenLiveResultsModal: (title?: string) => void;
   resumeBatchId?: string | null;
   onResumeHandled?: () => void;
   connectionError?: string | null;
@@ -160,6 +160,7 @@ export function BacktesterView({
   onSaveTemplate,
   onImportSettings,
   queueController,
+  onOpenLiveResultsModal,
   resumeBatchId,
   onResumeHandled,
   connectionError
@@ -168,27 +169,19 @@ export function BacktesterView({
 
   const {
     run, resume, stop,
-    isRunning, progress, statusMessage, currentBatchIds,
-    logs,
-    notificationsEnabled,
-    setNotificationsEnabled
+    isRunning, progress
   } = queueController;
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentBatchName, setCurrentBatchName] = useState('');
   const [activeSection, setActiveSection] = useState<string>('cfg-static');
   const [isSymbolValid, setIsSymbolValid] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (isRunning) setIsModalOpen(true);
-  }, [isRunning]);
 
   useEffect(() => {
     if (!resumeBatchId) return;
     const batchId = resumeBatchId;
     onResumeHandled?.();
+    onOpenLiveResultsModal();
     void resume(batchId);
-  }, [resumeBatchId, resume, onResumeHandled]);
+  }, [resumeBatchId, resume, onResumeHandled, onOpenLiveResultsModal]);
 
   useEffect(() => {
     const nodes = sectionOrder
@@ -394,8 +387,6 @@ export function BacktesterView({
       };
     });
 
-    setCurrentBatchName(`${namePrefix} (${batchId})`);
-
     await StorageService.saveBatch({
       id: batchId,
       timestamp: Date.now(),
@@ -417,6 +408,7 @@ export function BacktesterView({
       }
     });
 
+    onOpenLiveResultsModal(`${namePrefix} (${batchId})`);
     run(batchId, queueItems);
   };
 
@@ -475,7 +467,7 @@ export function BacktesterView({
                     size="md"
                     color="blue"
                     leftSection={<IconList size={20} />}
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={() => onOpenLiveResultsModal()}
                   >
                     Открыть таблицу (Запущено...)
                   </Button>
@@ -561,19 +553,6 @@ export function BacktesterView({
         </aside>
       </div>
 
-      <ResultsModal
-        opened={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={currentBatchName || 'Результаты'}
-        targetIds={currentBatchIds}
-        isLive={isRunning}
-        status={statusMessage}
-        progress={progress}
-        onStop={stop}
-        logs={logs}
-        notificationsEnabled={notificationsEnabled}
-        onToggleNotifications={setNotificationsEnabled}
-      />
     </Container>
   );
 }

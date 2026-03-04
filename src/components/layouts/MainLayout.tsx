@@ -17,6 +17,7 @@ import { AssetsView } from '../views/AssetsView';
 import { TemplatesView } from '../views/TemplatesView';
 import { HistoryView } from '../views/HistoryView';
 import { SettingsView } from '../views/SettingsView';
+import { ResultsModal } from '../ResultsModal';
 
 // Импорт модального окна поддержки
 import { DonateModal } from '../modals/DonateModal'; 
@@ -35,6 +36,8 @@ import styles from './MainLayout.module.css';
 
 export function MainLayout() {
   const queueController = useBacktestQueue();
+  const [liveResultsOpened, setLiveResultsOpened] = useState(false);
+  const [liveResultsTitle, setLiveResultsTitle] = useState('');
 
   const cloneResumeSource = (source: BatchResumeSource): BatchResumeSource => {
     if (typeof structuredClone === 'function') {
@@ -159,6 +162,23 @@ export function MainLayout() {
     void refreshSidebarProfile();
   }, [refreshSidebarProfile]);
 
+  useEffect(() => {
+    if (queueController.isRunning) {
+      setLiveResultsOpened(true);
+    }
+  }, [queueController.isRunning]);
+
+  const openLiveResultsModal = useCallback((title?: string) => {
+    if (title && title.trim()) {
+      setLiveResultsTitle(title);
+    }
+    setLiveResultsOpened(true);
+  }, []);
+
+  const closeLiveResultsModal = useCallback(() => {
+    setLiveResultsOpened(false);
+  }, []);
+
   const logConfigSectionChanges = useCallback(
     async (section: 'staticConfig' | 'entryConfig' | 'orderState' | 'exitConfig', before: unknown, after: unknown) => {
       const changes = getObjectDiff(before, after, 25);
@@ -281,6 +301,7 @@ export function MainLayout() {
 
   const handleResumeFromHistory = useCallback((batch: BatchInfo) => {
     if (batch.mode === 'BACKTESTS' || batch.backtestsSource) {
+      setLiveResultsTitle(`${batch.namePrefix} (${batch.id})`);
       setResumeBacktestsBatchId(batch.id);
       setActiveTab('backtests');
       return;
@@ -322,6 +343,7 @@ export function MainLayout() {
     setEntryConfig(source.entryConfig);
     setOrderState(source.orderState);
     setExitConfig(source.exitConfig);
+    setLiveResultsTitle(`${batch.namePrefix} (${batch.id})`);
     setResumeBatchId(batch.id);
     setActiveTab('backtester');
   }, [staticConfig, entryConfig, orderState, exitConfig]);
@@ -543,6 +565,7 @@ export function MainLayout() {
                onSaveTemplate={openSaveModal}
                onImportSettings={openImportModalV2}
                queueController={queueController}
+               onOpenLiveResultsModal={openLiveResultsModal}
                resumeBatchId={resumeBatchId}
                onResumeHandled={() => setResumeBatchId(null)}
                connectionError={sidebarError}
@@ -556,6 +579,7 @@ export function MainLayout() {
          {activeTab === 'backtests' && (
            <BacktestsView
              queueController={queueController}
+             onOpenLiveResultsModal={openLiveResultsModal}
              resumeBatchId={resumeBacktestsBatchId}
              onResumeHandled={() => setResumeBacktestsBatchId(null)}
              connectionError={sidebarError}
@@ -579,6 +603,20 @@ export function MainLayout() {
          )}
          {activeTab === 'settings' && <SettingsView appVersion={appVersion} connectionError={sidebarError} />}
       </AppShell.Main>
+
+      <ResultsModal
+        opened={liveResultsOpened}
+        onClose={closeLiveResultsModal}
+        title={liveResultsTitle || 'Результаты'}
+        targetIds={queueController.currentBatchIds}
+        isLive={queueController.isRunning}
+        status={queueController.statusMessage}
+        progress={queueController.progress}
+        onStop={queueController.stop}
+        logs={queueController.logs}
+        notificationsEnabled={queueController.notificationsEnabled}
+        onToggleNotifications={queueController.setNotificationsEnabled}
+      />
 
       {/* МОДАЛКА СОХРАНЕНИЯ ШАБЛОНА */}
       <Modal opened={saveModalOpened} onClose={closeSaveModal} title="Сохранить шаблон">

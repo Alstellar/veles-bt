@@ -4,6 +4,7 @@ import {
   Button,
   Checkbox,
   Container,
+  Divider,
   Group,
   Input,
   Loader,
@@ -13,6 +14,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
@@ -32,7 +34,6 @@ import {
 import dayjs from 'dayjs';
 
 import { ConnectionAlert } from '../ConnectionAlert';
-import { ResultsModal } from '../ResultsModal';
 import { StorageService } from '../../services/StorageService';
 import {
   fetchAvailability,
@@ -64,6 +65,7 @@ import styles from './BacktestsView.module.css';
 
 interface BacktestsViewProps {
   queueController: BacktestQueueController;
+  onOpenLiveResultsModal: (title?: string) => void;
   resumeBatchId?: string | null;
   onResumeHandled?: () => void;
   connectionError?: string | null;
@@ -146,8 +148,22 @@ const toDateValue = (value: string | Date | null): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const DEFAULT_MAKER_FEE = '0.02';
+const DEFAULT_TAKER_FEE = '0.055';
+
+const normalizeFeeInput = (value: string): string => value.trim().replace(',', '.');
+
+const parseFeeValue = (value: string): number | null => {
+  const normalized = normalizeFeeInput(value);
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+};
+
 export function BacktestsView({
   queueController,
+  onOpenLiveResultsModal,
   resumeBatchId,
   onResumeHandled,
   connectionError
@@ -156,17 +172,16 @@ export function BacktestsView({
     run,
     stop,
     isRunning,
-    progress,
-    statusMessage,
-    currentBatchIds,
-    logs,
-    notificationsEnabled,
-    setNotificationsEnabled
+    progress
   } = queueController;
 
   const [nameTemplate, setNameTemplate] = useState(DEFAULT_BACKTESTS_NAME_TEMPLATE);
   const [dateFrom, setDateFrom] = useState<Date | null>(dayjs().subtract(1, 'year').toDate());
   const [dateTo, setDateTo] = useState<Date | null>(new Date());
+  const [makerFee, setMakerFee] = useState(DEFAULT_MAKER_FEE);
+  const [takerFee, setTakerFee] = useState(DEFAULT_TAKER_FEE);
+  const [isPublic, setIsPublic] = useState(true);
+  const [useWicks, setUseWicks] = useState(true);
 
   const [linksText, setLinksText] = useState('');
   const [assetsSource, setAssetsSource] = useState<'manual' | 'exchange_filtered'>('manual');
@@ -189,13 +204,6 @@ export function BacktestsView({
 
   const [isValidating, setIsValidating] = useState(false);
   const [validationReport, setValidationReport] = useState<MatrixValidationResult | null>(null);
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [currentBatchName, setCurrentBatchName] = useState('');
-
-  useEffect(() => {
-    if (isRunning) setIsModalOpen(true);
-  }, [isRunning]);
 
   useEffect(() => {
     let mounted = true;
@@ -391,6 +399,15 @@ export function BacktestsView({
   const buildValidationResult = useCallback(async (): Promise<MatrixValidationResult> => {
     const errors: string[] = [];
     const invalidLinks = parsedTemplateLinks.invalidLines;
+    const parsedMakerFee = parseFeeValue(makerFee);
+    const parsedTakerFee = parseFeeValue(takerFee);
+
+    if (parsedMakerFee === null) {
+      errors.push('Maker Fee (%) должен быть неотрицательным числом.');
+    }
+    if (parsedTakerFee === null) {
+      errors.push('Taker Fee (%) должен быть неотрицательным числом.');
+    }
 
     if (!exchange) errors.push('Выберите биржу.');
     if (!dateFrom || !dateTo) errors.push('Заполните даты начала и конца.');
@@ -472,6 +489,10 @@ export function BacktestsView({
       dateFrom: toIsoDateString(dateFrom),
       dateTo: toIsoDateString(dateTo),
       nameTemplate: nameTemplate.trim() || DEFAULT_BACKTESTS_NAME_TEMPLATE,
+      makerFee: normalizeFeeInput(makerFee) || DEFAULT_MAKER_FEE,
+      takerFee: normalizeFeeInput(takerFee) || DEFAULT_TAKER_FEE,
+      isPublic,
+      useWicks,
       linksText,
       assetsInputText,
       assetsSource,
@@ -506,6 +527,10 @@ export function BacktestsView({
     manualSymbolsResult.missingSymbols,
     manualSymbolsResult.resolvedSymbols,
     nameTemplate,
+    makerFee,
+    takerFee,
+    isPublic,
+    useWicks,
     parsedTemplateLinks.invalidLines,
     parsedTemplateLinks.links,
     selectedFilteredSymbols
@@ -580,8 +605,7 @@ export function BacktestsView({
         runStatus: 'STOP'
       });
 
-      setCurrentBatchName(`${namePrefix} (${batchId})`);
-      setIsModalOpen(true);
+      onOpenLiveResultsModal(`${namePrefix} (${batchId})`);
       run(batchId, built.items);
     } finally {
       setIsValidating(false);
@@ -622,13 +646,16 @@ export function BacktestsView({
       setDateFrom(new Date(source.dateFrom));
       setDateTo(new Date(source.dateTo));
       setNameTemplate(source.nameTemplate);
+      setMakerFee(source.makerFee ?? DEFAULT_MAKER_FEE);
+      setTakerFee(source.takerFee ?? DEFAULT_TAKER_FEE);
+      setIsPublic(source.isPublic ?? true);
+      setUseWicks(source.useWicks ?? true);
       setLinksText(source.linksText);
       setAssetsSource(source.assetsSource);
       setAssetsInputText(source.assetsInputText);
       setSelectedFilteredSymbols(source.symbols);
       setHasCustomFilteredSelection(true);
 
-      setCurrentBatchName(`${batch.namePrefix} (${batch.id})`);
       setValidationReport({
         ok: true,
         errors: [],
@@ -642,10 +669,10 @@ export function BacktestsView({
         skippedPairs: regenerated.skipped
       });
 
-      setIsModalOpen(true);
+      onOpenLiveResultsModal(`${batch.namePrefix} (${batch.id})`);
       run(batchId, preparedItems, { resumeFrom: nextIndex });
     },
-    [run]
+    [run, onOpenLiveResultsModal]
   );
 
   useEffect(() => {
@@ -676,7 +703,7 @@ export function BacktestsView({
       <Stack gap="lg" className={styles.sectionsStack}>
         <Paper withBorder radius="md" p="md" className={styles.sectionGlass}>
           <Stack gap="md">
-            <Title order={3} className={styles.sectionTitle}>Параметры запуска</Title>
+            <Title order={3} className={styles.sectionTitle}>Базовые настройки</Title>
 
             <TextInput
               label="Шаблон имени"
@@ -712,6 +739,45 @@ export function BacktestsView({
                 />
               </SimpleGrid>
             </Paper>
+
+            <Divider label="Дополнительно" labelPosition="center" />
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+              <Stack gap="lg">
+                <TextInput
+                  label="Maker Fee (%)"
+                  value={makerFee}
+                  onChange={(event) => setMakerFee(event.currentTarget.value)}
+                />
+                <Paper withBorder p="xs" bg="gray.1" radius="md">
+                  <Group justify="space-between" align="center">
+                    <Text size="sm" fw={500}>Публичный тест</Text>
+                    <Switch
+                      size="md"
+                      checked={isPublic}
+                      onChange={(event) => setIsPublic(event.currentTarget.checked)}
+                    />
+                  </Group>
+                </Paper>
+              </Stack>
+
+              <Stack gap="lg">
+                <TextInput
+                  label="Taker Fee (%)"
+                  value={takerFee}
+                  onChange={(event) => setTakerFee(event.currentTarget.value)}
+                />
+                <Paper withBorder p="xs" bg="gray.1" radius="md">
+                  <Group justify="space-between" align="center">
+                    <Text size="sm" fw={500}>Учитывать тени</Text>
+                    <Switch
+                      size="md"
+                      checked={useWicks}
+                      onChange={(event) => setUseWicks(event.currentTarget.checked)}
+                    />
+                  </Group>
+                </Paper>
+              </Stack>
+            </SimpleGrid>
           </Stack>
         </Paper>
 
@@ -992,7 +1058,7 @@ export function BacktestsView({
                 size="md"
                 color="blue"
                 leftSection={<IconList size={20} />}
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => onOpenLiveResultsModal()}
               >
                 Открыть таблицу (выполняется...)
               </Button>
@@ -1014,19 +1080,6 @@ export function BacktestsView({
         </Paper>
       </Stack>
 
-      <ResultsModal
-        opened={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={currentBatchName || 'Результаты'}
-        targetIds={currentBatchIds}
-        isLive={isRunning}
-        status={statusMessage}
-        progress={progress}
-        onStop={stop}
-        logs={logs}
-        notificationsEnabled={notificationsEnabled}
-        onToggleNotifications={setNotificationsEnabled}
-      />
     </Container>
   );
 }
