@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 
 import { FILTERS_LIBRARY } from '../filtersLibrary';
+import { parseVelesShareLink } from '../config/velesDomains';
 import { normalizeCondition } from './ConditionNormalizationService';
 import type {
   StaticConfig,
@@ -13,6 +14,8 @@ import type {
 
 export interface ParsedImportLink {
   code: string;
+  origin: string;
+  url: string;
 }
 
 export interface ImportedConfigs {
@@ -155,9 +158,13 @@ export function parseImportLink(link: string): ParsedImportLink | null {
   const normalized = link.trim();
   if (!normalized) return null;
 
-  const botMatch = normalized.match(/^https:\/\/veles\.finance\/share\/([A-Za-z0-9_-]+)\/?$/i);
-  if (botMatch) {
-    return { code: botMatch[1] };
+  const parsed = parseVelesShareLink(normalized);
+  if (parsed) {
+    return {
+      code: parsed.code,
+      origin: parsed.origin,
+      url: parsed.url
+    };
   }
 
   return null;

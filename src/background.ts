@@ -1,4 +1,5 @@
 // src/background.ts
+import { VELES_API_REQUEST_PATTERNS } from './config/velesDomains';
 
 // Объявляем chrome как any.
 declare const chrome: any;
@@ -117,7 +118,7 @@ chrome.webRequest.onBeforeRequest.addListener(
       console.error('Background error:', e);
     }
   },
-  { urls: ["https://veles.finance/api/*"] } // Слушаем только Veles API
+  { urls: [...VELES_API_REQUEST_PATTERNS] } // Слушаем Veles API для всех поддерживаемых доменов
 );
 
 /**

@@ -6,8 +6,22 @@ import type {
   SymbolLimitation
 } from '../types';
 import { ConnectionService } from './ConnectionService';
+import { getVelesApiUrl } from '../config/velesDomains';
 
-const BASE_API = 'https://veles.finance/api';
+const isUsdtPair = (value: unknown): boolean => {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return false;
+
+  if (normalized.includes('/')) {
+    const parts = normalized.split('/');
+    if (parts.length !== 2) return false;
+    const [base, quote] = parts;
+    return Boolean(base) && quote === 'USDT';
+  }
+
+  return normalized.endsWith('USDT') && normalized.length > 4;
+};
 
 const getHeaders = (token: string): HeadersInit => ({
   'Content-Type': 'application/json',
@@ -22,12 +36,15 @@ const unwrapPayload = <T,>(raw: unknown): T => {
   return raw as T;
 };
 
-const resolveToken = async (): Promise<string> => {
+const resolveApiContext = async (): Promise<{ token: string; origin: string }> => {
   const connection = await ConnectionService.getConnection();
   if (!connection.success) {
     throw new Error(ConnectionService.reasonToMessage(connection.reason));
   }
-  return connection.connection.token;
+  return {
+    token: connection.connection.token,
+    origin: connection.connection.origin
+  };
 };
 
 const handleHttpError = (response: Response, fallback: string): never => {
@@ -39,8 +56,8 @@ const handleHttpError = (response: Response, fallback: string): never => {
 };
 
 export const fetchExchanges = async (): Promise<ExchangeInfo[]> => {
-  const token = await resolveToken();
-  const response = await fetch(`${BASE_API}/exchanges`, {
+  const { token, origin } = await resolveApiContext();
+  const response = await fetch(getVelesApiUrl('/exchanges', origin), {
     method: 'GET',
     headers: getHeaders(token),
     credentials: 'include'
@@ -59,9 +76,9 @@ export const fetchExchanges = async (): Promise<ExchangeInfo[]> => {
 };
 
 export const fetchLimitations = async (exchange: ExchangeType): Promise<SymbolLimitation[]> => {
-  const token = await resolveToken();
+  const { token, origin } = await resolveApiContext();
   const response = await fetch(
-    `${BASE_API}/pairs/limitations/dictionary?exchange=${encodeURIComponent(exchange)}`,
+    `${getVelesApiUrl('/pairs/limitations/dictionary', origin)}?exchange=${encodeURIComponent(exchange)}`,
     {
       method: 'GET',
       headers: getHeaders(token),
@@ -74,13 +91,17 @@ export const fetchLimitations = async (exchange: ExchangeType): Promise<SymbolLi
   }
 
   const payload = unwrapPayload<SymbolLimitation[]>(await response.json());
-  return Array.isArray(payload) ? payload : [];
+  if (!Array.isArray(payload)) return [];
+
+  return payload.filter((item) => {
+    return isUsdtPair(item?.symbol) || isUsdtPair(item?.externalId);
+  });
 };
 
 export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolAvailability[]> => {
-  const token = await resolveToken();
+  const { token, origin } = await resolveApiContext();
   const response = await fetch(
-    `${BASE_API}/pairs/availability/dictionary?exchange=${encodeURIComponent(exchange)}`,
+    `${getVelesApiUrl('/pairs/availability/dictionary', origin)}?exchange=${encodeURIComponent(exchange)}`,
     {
       method: 'GET',
       headers: getHeaders(token),
@@ -93,13 +114,14 @@ export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolA
   }
 
   const payload = unwrapPayload<SymbolAvailability[]>(await response.json());
-  return Array.isArray(payload) ? payload : [];
+  if (!Array.isArray(payload)) return [];
+  return payload.filter((item) => isUsdtPair(item?.symbol));
 };
 
 export const fetchTopSymbols = async (exchange: ExchangeType, algorithm: AlgoType): Promise<string[]> => {
-  const token = await resolveToken();
+  const { token, origin } = await resolveApiContext();
   const response = await fetch(
-    `${BASE_API}/statistics/symbols/top?exchange=${encodeURIComponent(exchange)}&algorithm=${encodeURIComponent(algorithm)}`,
+    `${getVelesApiUrl('/statistics/symbols/top', origin)}?exchange=${encodeURIComponent(exchange)}&algorithm=${encodeURIComponent(algorithm)}`,
     {
       method: 'GET',
       headers: getHeaders(token),
@@ -117,8 +139,8 @@ export const fetchTopSymbols = async (exchange: ExchangeType, algorithm: AlgoTyp
 };
 
 export const fetchImportPayload = async (code: string): Promise<unknown> => {
-  const token = await resolveToken();
-  const response = await fetch(`${BASE_API}/bots/${encodeURIComponent(code)}`, {
+  const { token, origin } = await resolveApiContext();
+  const response = await fetch(getVelesApiUrl(`/bots/${encodeURIComponent(code)}`, origin), {
     method: 'GET',
     headers: getHeaders(token),
     credentials: 'include'

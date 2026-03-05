@@ -5,6 +5,7 @@ import type {
   BacktestStats,
   UserProfile
 } from '../types/veles';
+import { VELES_HOST_PATTERNS, getVelesOriginFromUrl } from '../config/velesDomains';
 
 import {
   injectedRunTest,
@@ -16,7 +17,7 @@ import {
 
 export class VelesService {
   static async findTabs(): Promise<chrome.tabs.Tab[]> {
-    return chrome.tabs.query({ url: '*://veles.finance/*' });
+    return chrome.tabs.query({ url: [...VELES_HOST_PATTERNS] });
   }
 
   static async findTab(): Promise<chrome.tabs.Tab | null> {
@@ -45,6 +46,14 @@ export class VelesService {
     } catch {
       return false;
     }
+  }
+
+  static extractOriginFromTab(tab?: chrome.tabs.Tab | null): string | null {
+    if (!tab) return null;
+    const candidateUrl =
+      tab.url ||
+      ((tab as chrome.tabs.Tab & { pendingUrl?: string }).pendingUrl ?? null);
+    return getVelesOriginFromUrl(candidateUrl);
   }
 
   static async getToken(tabId: number): Promise<string | null> {

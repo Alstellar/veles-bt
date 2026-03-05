@@ -1,6 +1,7 @@
 ﻿// src/utils/exportUtils.ts
 import type { BacktestResultItem } from '../types';
 import { formatDurationHuman } from './formatters';
+import { getVelesPublicBacktestUrl } from '../config/velesDomains';
 
 export function downloadAsCsv(data: BacktestResultItem[], filename = 'veles-results.csv') {
     if (!data || data.length === 0) return;
@@ -78,7 +79,7 @@ export function downloadAsCsv(data: BacktestResultItem[], filename = 'veles-resu
             ? (netQuote / absMae).toFixed(2) 
             : '0.00';
 
-        const backtestUrl = `https://veles.finance/backtests/${item.id}`;
+        const backtestUrl = getVelesPublicBacktestUrl(item.id);
 
         return [
             item.id,

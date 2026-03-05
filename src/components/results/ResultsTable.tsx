@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import type { BacktestResultItem } from '../../types';
 import type { SortKey, SortState } from '../../hooks/useResultsData'; 
 import { formatMoney, formatPercent, formatDate, formatDurationHuman } from '../../utils/formatters';
+import { getVelesCabinetBacktestUrl } from '../../config/velesDomains';
 
 interface Props {
   data: BacktestResultItem[];
@@ -82,7 +83,7 @@ export function ResultsTable({
                   <Th id="name" sortKey="name" align="left">Название</Th>
                   <Th id="exchange" sortKey="exchange">Биржа</Th>
                   <Th id="pair" sortKey="symbol">Пара</Th>
-                  <Th id="sourceTemplate" sortKey="sourceTemplateUrl" align="left">Шаблон</Th>
+                  <Th id="sourceTemplate" sortKey="sourceTemplateUrl" align="center">Шаблон</Th>
                   <Th id="period" sortKey="from">Период</Th>
                   <Th id="days" sortKey="days">История (дни)</Th> 
                   <Th id="net" sortKey="netQuote">Net (USDT)</Th>
@@ -118,7 +119,7 @@ export function ResultsTable({
                             <Text fw={600} size="sm" title={row.name} truncate="end" style={{ maxWidth: '20vw' }}>
                               {row.name}
                             </Text>
-                            <Anchor href={`https://veles.finance/cabinet/backtests/${row.id}`} target="_blank" size="xs" underline="hover">
+                            <Anchor href={getVelesCabinetBacktestUrl(row.id)} target="_blank" size="xs" underline="hover">
                               ID: {row.id}
                             </Anchor>
                           </Stack>
@@ -134,7 +135,7 @@ export function ResultsTable({
                         </Table.Td>
                       )}
                       {visibleColumns.sourceTemplate && (
-                        <Table.Td>
+                        <Table.Td ta="center">
                           {row.sourceTemplateUrl ? (
                             <Anchor href={row.sourceTemplateUrl} target="_blank" size="xs" underline="hover">
                               {getTemplateCode(row.sourceTemplateUrl) ?? row.sourceTemplateUrl}

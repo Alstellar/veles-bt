@@ -1,5 +1,7 @@
 // src/utils/tabUtils.ts
 
+import { getVelesOriginFromUrl } from '../config/velesDomains';
+
 /**
  * Получает текущую активную вкладку пользователя.
  * Используется для определения контекста (находится ли юзер на сайте Veles).
@@ -13,9 +15,15 @@ export async function getCurrentTab(): Promise<chrome.tabs.Tab | null> {
 
 /**
  * Проверяет, является ли переданный URL страницей настройки бота Veles.
- * Критерий: домен veles.finance и путь /cabinet/bot/
+ * Критерий: поддерживаемый домен Veles и путь /cabinet/bot/
  */
 export function isVelesBotPage(url?: string): boolean {
     if (!url) return false;
-    return url.includes('veles.finance/cabinet/bot');
+    if (!getVelesOriginFromUrl(url)) return false;
+    try {
+        const parsed = new URL(url);
+        return parsed.pathname.includes('/cabinet/bot');
+    } catch {
+        return false;
+    }
 }

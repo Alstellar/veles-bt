@@ -357,7 +357,7 @@ export function MainLayout() {
   const handleImportSettings = async () => {
     const parsed = parseImportLink(importLink);
     if (!parsed) {
-      alert('Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки "Поделиться"');
+      alert('Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки «Поделиться»');
       return;
     }
 
@@ -648,7 +648,7 @@ export function MainLayout() {
             data-autofocus
           />
           <Text size="xs" c="dimmed">
-            Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки "Поделиться"
+            Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки «Поделиться»
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={closeImportModalV2} disabled={isImporting}>Отмена</Button>

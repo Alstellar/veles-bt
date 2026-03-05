@@ -203,6 +203,14 @@ const getBaseSymbol = (pair: string): string => {
   return pair.includes('/') ? pair.split('/')[0] : pair;
 };
 
+const isUsdtPair = (pair: string): boolean => {
+  const normalized = pair.trim().toUpperCase();
+  if (!normalized) return false;
+  if (!normalized.includes('/')) return normalized.endsWith('USDT') && normalized.length > 4;
+  const [base, quote] = normalized.split('/');
+  return Boolean(base) && quote === 'USDT';
+};
+
 const mapLimitationsByKey = (limitations: SymbolLimitation[]): Map<string, string> => {
   const map = new Map<string, string>();
   limitations.forEach((item) => {
@@ -250,7 +258,7 @@ export const parseTemplateLinksInput = (input: string): ParsedTemplateLinksResul
     seenCodes.add(code);
     links.push({
       code,
-      url: `https://veles.finance/share/${code}`,
+      url: parsed.url,
       raw: line
     });
   });
@@ -375,6 +383,7 @@ export const getExchangeFilteredSymbols = (
   const result: string[] = [];
   limitations.forEach((item) => {
     const pair = item.symbol.toUpperCase();
+    if (!isUsdtPair(pair)) return;
     const leverage = Number(item.leverage ?? 1);
     const availableFrom = availabilityMap[pair] ?? null;
 

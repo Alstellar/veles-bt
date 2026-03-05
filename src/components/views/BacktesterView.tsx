@@ -441,7 +441,7 @@ export function BacktesterView({
             </div>
 
             <div id="cfg-run" className={styles.sectionGlass}>
-              <Group grow mt="md">
+              <Group grow className={styles.runButtons}>
                 <Button
                   size="md"
                   color="blue"

@@ -1,4 +1,6 @@
 // src/services/CandleService.ts
+import { VELES_DEFAULT_ORIGIN, getVelesApiUrl, toVelesOrigin } from '../config/velesDomains';
+import { ConnectionService } from './ConnectionService';
 
 export interface Candle {
     open: number;
@@ -40,7 +42,12 @@ export async function fetchCandles(symbol: string, exchange: string, timeframe: 
 
     const encodedSymbol = encodeURIComponent(symbol);
 
-    const url = `https://veles.finance/api/candles?symbol=${encodedSymbol}&exchange=${exchange}&interval=${apiInterval}&from=${fromISO}&limit=${limit}`;
+    let origin = VELES_DEFAULT_ORIGIN;
+    const connection = await ConnectionService.getConnection();
+    if (connection.success) {
+      origin = toVelesOrigin(connection.connection.origin);
+    }
+    const url = `${getVelesApiUrl('/candles', origin)}?symbol=${encodedSymbol}&exchange=${exchange}&interval=${apiInterval}&from=${fromISO}&limit=${limit}`;
 
     try {
         const response = await fetch(url);

@@ -4,7 +4,7 @@
 
 export async function injectedRunTest(payload: any, token: string) {
   try {
-    const response = await fetch("https://veles.finance/api/backtests/", {
+    const response = await fetch('/api/backtests/', {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -24,7 +24,7 @@ export async function injectedRunTest(payload: any, token: string) {
 
 export async function injectedCheckStatus(id: number, token: string) {
   try {
-    const response = await fetch(`https://veles.finance/api/backtests/${id}`, {
+    const response = await fetch(`/api/backtests/${id}`, {
       method: "GET",
       headers: { "Accept": "application/json", "x-csrf-token": token, "X-Requested-With": "XMLHttpRequest" }
     });
@@ -35,7 +35,7 @@ export async function injectedCheckStatus(id: number, token: string) {
 
 export async function injectedGetStats(id: number) {
   try {
-    const statsRes = await fetch(`https://veles.finance/api/backtests/statistics/${id}`, {
+    const statsRes = await fetch(`/api/backtests/statistics/${id}`, {
       method: "GET",
       headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" }
     });
@@ -56,7 +56,7 @@ export async function injectedGetProfile(token?: string | null) {
       headers["x-csrf-token"] = token;
     }
 
-    const response = await fetch("https://veles.finance/api/me", {
+    const response = await fetch('/api/me', {
       method: "GET",
       headers
     });
@@ -67,7 +67,7 @@ export async function injectedGetProfile(token?: string | null) {
 
 export async function injectedGetStatisticsPage(page: number, size: number) {
   try {
-    const url = `https://veles.finance/api/backtests/statistics?page=${page}&size=${size}&sort=date,desc`;
+    const url = `/api/backtests/statistics?page=${page}&size=${size}&sort=date,desc`;
     const response = await fetch(url, {
       method: "GET",
       headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" }

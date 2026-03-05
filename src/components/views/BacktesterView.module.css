@@ -239,6 +239,10 @@
   box-shadow: 0 8px 16px rgba(52, 79, 117, 0.15);
 }
 
+.runButtons {
+  margin-top: 4px;
+}
+
 #cfg-order :global(.mantine-Tabs-list),
 #cfg-exit :global(.mantine-Tabs-list) {
   width: 100% !important;

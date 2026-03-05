@@ -1,11 +1,13 @@
 import { VelesService } from './VelesService';
 import type { UserProfile } from '../types/veles';
+import { VELES_DEFAULT_ORIGIN } from '../config/velesDomains';
 
 export type ConnectionFailureReason = 'no_tab' | 'no_token' | 'unauthorized' | 'unknown';
 
 export interface ActiveConnection {
   tabId: number;
   token: string;
+  origin: string;
   user: UserProfile;
   checkedAt: number;
 }
@@ -60,6 +62,7 @@ export class ConnectionService {
       const connection: ActiveConnection = {
         tabId: tab.id,
         token,
+        origin: VelesService.extractOriginFromTab(tab) ?? VELES_DEFAULT_ORIGIN,
         user: profile.data,
         checkedAt: Date.now()
       };
@@ -76,7 +79,7 @@ export class ConnectionService {
   }
 
   static reasonToMessage(reason: ConnectionFailureReason): string {
-    if (reason === 'no_tab') return 'Вкладка veles.finance не найдена';
+    if (reason === 'no_tab') return 'Вкладка Veles (veles.finance) не найдена';
     if (reason === 'no_token') return 'Токен Veles не найден';
     if (reason === 'unauthorized') return 'Ошибка авторизации в Veles (401 Unauthorized)';
     return 'Подключение к Veles недоступно';
