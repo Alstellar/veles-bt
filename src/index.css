@@ -25,16 +25,18 @@ body {
 
 /* Unified switch style across the app */
 .mantine-Switch-root {
-  --vh-sw-w: 58px;
-  --vh-sw-h: 32px;
-  --vh-sw-thumb: 22px;
+  --switch-width: 58px !important;
+  --switch-height: 32px !important;
+  --switch-thumb-size: 22px !important;
+  --switch-track-label-padding: 4px !important;
+  --switch-radius: 999px !important;
 }
 
 .mantine-Switch-track {
-  width: var(--vh-sw-w);
-  min-width: var(--vh-sw-w);
-  height: var(--vh-sw-h);
-  border-radius: 999px;
+  width: var(--switch-width);
+  min-width: var(--switch-width);
+  height: var(--switch-height);
+  border-radius: var(--switch-radius);
   border: 1px solid #c7d8ec;
   background: #e4eef9;
   position: relative;
@@ -42,8 +44,9 @@ body {
 }
 
 .mantine-Switch-thumb {
-  width: var(--vh-sw-thumb);
-  height: var(--vh-sw-thumb);
+  width: var(--switch-thumb-size);
+  height: var(--switch-thumb-size);
+  border-radius: 50%;
   border: 0;
   box-shadow: 0 4px 10px rgba(39, 64, 95, 0.18);
 }

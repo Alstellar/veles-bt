@@ -9,11 +9,30 @@ import { VELES_HOST_PATTERNS, getVelesOriginFromUrl } from '../config/velesDomai
 
 import {
   injectedRunTest,
+  injectedValidateSymbols,
+  injectedGetApiKeys,
   injectedCheckStatus,
   injectedGetStats,
   injectedGetProfile,
   injectedGetStatisticsPage
 } from './VelesInjections';
+
+interface ValidateSymbolsResult {
+  success: boolean;
+  status: number;
+  successful: string[];
+  failed: string[];
+  body?: unknown;
+  error?: string;
+}
+
+interface ApiKeysResult {
+  success: boolean;
+  status: number;
+  items: Array<{ id: number; exchange: string }>;
+  body?: unknown;
+  error?: string;
+}
 
 export class VelesService {
   static async findTabs(): Promise<chrome.tabs.Tab[]> {
@@ -87,6 +106,58 @@ export class VelesService {
       success: false,
       status: res?.status || 0,
       error: res?.error || JSON.stringify(res?.body)
+    };
+  }
+
+  static async validateSymbols(tabId: number, token: string, payload: Record<string, unknown>): Promise<ValidateSymbolsResult> {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: injectedValidateSymbols,
+      args: [payload, token]
+    });
+
+    const res = result[0]?.result as ValidateSymbolsResult | undefined;
+    if (!res) {
+      return { success: false, status: 0, successful: [], failed: [], error: 'Injection failed' };
+    }
+
+    return {
+      success: Boolean(res.success),
+      status: Number(res.status || 0),
+      successful: Array.isArray(res.successful) ? res.successful : [],
+      failed: Array.isArray(res.failed) ? res.failed : [],
+      body: (res as unknown as { body?: unknown }).body,
+      error: res.error
+    };
+  }
+
+  static async getApiKeys(tabId: number, token: string): Promise<ApiKeysResult> {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: injectedGetApiKeys,
+      args: [token]
+    });
+
+    const res = result[0]?.result as ApiKeysResult | undefined;
+    if (!res) {
+      return { success: false, status: 0, items: [], error: 'Injection failed' };
+    }
+
+    const items = Array.isArray(res.items)
+      ? res.items
+        .map((item) => ({
+          id: Number(item?.id),
+          exchange: typeof item?.exchange === 'string' ? item.exchange : ''
+        }))
+        .filter((item) => Number.isFinite(item.id) && item.id > 0 && item.exchange.length > 0)
+      : [];
+
+    return {
+      success: Boolean(res.success),
+      status: Number(res.status || 0),
+      items,
+      body: (res as unknown as { body?: unknown }).body,
+      error: res.error
     };
   }
 

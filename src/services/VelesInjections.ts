@@ -22,6 +22,78 @@ export async function injectedRunTest(payload: any, token: string) {
   }
 }
 
+export async function injectedValidateSymbols(payload: any, token: string) {
+  try {
+    const response = await fetch('/api/bots/validate/symbols', {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "x-csrf-token": token,
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const text = await response.text();
+    let body;
+    try { body = JSON.parse(text); } catch { body = { raw: text }; }
+
+    const successful = Array.isArray(body?.successful)
+      ? body.successful.filter((s: unknown) => typeof s === 'string')
+      : [];
+    const failed = Array.isArray(body?.failed)
+      ? body.failed.filter((s: unknown) => typeof s === 'string')
+      : [];
+
+    return {
+      success: response.ok,
+      status: response.status,
+      body,
+      successful,
+      failed,
+      error: response.ok ? undefined : (body?.message || text || `HTTP ${response.status}`)
+    };
+  } catch (err: any) {
+    return { success: false, status: 0, successful: [], failed: [], error: err.message };
+  }
+}
+
+export async function injectedGetApiKeys(token: string) {
+  try {
+    const response = await fetch('/api/api-keys?size=100&sort=createdAt,desc', {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "x-csrf-token": token,
+        "X-Requested-With": "XMLHttpRequest"
+      }
+    });
+
+    const text = await response.text();
+    let body;
+    try { body = JSON.parse(text); } catch { body = { raw: text }; }
+
+    const content = Array.isArray(body?.content) ? body.content : [];
+    const items = content
+      .map((entry: any) => ({
+        id: Number(entry?.id),
+        exchange: typeof entry?.exchange === 'string' ? entry.exchange : ''
+      }))
+      .filter((entry: { id: number; exchange: string }) => Number.isFinite(entry.id) && entry.id > 0 && entry.exchange.length > 0);
+
+    return {
+      success: response.ok,
+      status: response.status,
+      body,
+      items,
+      error: response.ok ? undefined : (body?.message || text || `HTTP ${response.status}`)
+    };
+  } catch (err: any) {
+    return { success: false, status: 0, body: null, items: [], error: err.message };
+  }
+}
+
 export async function injectedCheckStatus(id: number, token: string) {
   try {
     const response = await fetch(`/api/backtests/${id}`, {

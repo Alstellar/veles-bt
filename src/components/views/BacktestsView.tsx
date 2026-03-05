@@ -61,6 +61,7 @@ import {
   toIsoDateString,
   type MatrixPairError
 } from '../../services/BacktestsMatrixService';
+import { makeBatchId } from '../../utils/batchId';
 import styles from './BacktestsView.module.css';
 
 interface BacktestsViewProps {
@@ -126,10 +127,6 @@ const compareNullableNumber = (a: number | null, b: number | null, dir: AssetsSo
   if (b === null) return -1;
   const diff = a - b;
   return dir === 'asc' ? diff : -diff;
-};
-
-const makeBatchId = (): string => {
-  return `#${Math.floor(Date.now() % 0xfffff).toString(16).toUpperCase()}`;
 };
 
 const toNumberInputValue = (value: string | number): number | '' => {

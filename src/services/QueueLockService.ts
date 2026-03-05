@@ -65,8 +65,12 @@ export class QueueLockService {
 
   static async acquire(ownerId: string, batchId: string): Promise<boolean> {
     const lock = await this.getLock();
-    if (lock && lock.ownerId !== ownerId) {
-      return false;
+    if (lock) {
+      const sameOwner = lock.ownerId === ownerId;
+      const sameBatch = lock.batchId === batchId;
+      if (!sameOwner || !sameBatch) {
+        return false;
+      }
     }
 
     await this.sessionSet<QueueLockRecord>(LOCK_KEY, {
@@ -78,14 +82,15 @@ export class QueueLockService {
     return true;
   }
 
-  static async refresh(ownerId: string): Promise<void> {
+  static async refresh(ownerId: string, batchId: string): Promise<boolean> {
     const lock = await this.getLock();
-    if (!lock || lock.ownerId !== ownerId) return;
+    if (!lock || lock.ownerId !== ownerId || lock.batchId !== batchId) return false;
 
     await this.sessionSet<QueueLockRecord>(LOCK_KEY, {
       ...lock,
       updatedAt: Date.now()
     });
+    return true;
   }
 
   static async forceAcquire(ownerId: string, batchId: string): Promise<void> {
@@ -96,10 +101,12 @@ export class QueueLockService {
     });
   }
 
-  static async release(ownerId: string): Promise<void> {
+  static async release(ownerId: string, batchId?: string): Promise<boolean> {
     const lock = await this.getLock();
-    if (!lock || lock.ownerId !== ownerId) return;
+    if (!lock || lock.ownerId !== ownerId) return false;
+    if (batchId && lock.batchId !== batchId) return false;
     await this.sessionRemove(LOCK_KEY);
+    return true;
   }
 
   static async forceClear(): Promise<void> {

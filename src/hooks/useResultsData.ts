@@ -46,11 +46,16 @@ export function useResultsData(targetIds: number[], opened: boolean, isLive?: bo
 
   // Эффект: Загружаем данные при открытии или изменении списка ID
   useEffect(() => {
-    if (opened && targetIds.length > 0) {
-      loadData();
-    } else if (!opened) {
-      // Очищаем данные при закрытии (опционально, для экономии памяти)
-      if (!isLive) setData([]);
+    if (opened) {
+      if (targetIds.length > 0) {
+        loadData();
+      } else {
+        // Для нового live-запуска, пока нет результатов, очищаем прошлую таблицу
+        setData([]);
+      }
+    } else {
+      // Очищаем данные при закрытии
+      setData([]);
     }
   }, [opened, targetIds, loadData, isLive]);
 

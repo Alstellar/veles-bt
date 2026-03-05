@@ -616,6 +616,8 @@ export function MainLayout() {
         logs={queueController.logs}
         notificationsEnabled={queueController.notificationsEnabled}
         onToggleNotifications={queueController.setNotificationsEnabled}
+        validationEnabled={queueController.validationEnabled}
+        onToggleValidation={queueController.setValidationEnabled}
       />
 
       {/* МОДАЛКА СОХРАНЕНИЯ ШАБЛОНА */}

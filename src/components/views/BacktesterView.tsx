@@ -19,6 +19,7 @@ import { StorageService } from '../../services/StorageService';
 import { fetchLimitations } from '../../services/apiService';
 import type { BacktestQueueController, QueueItem } from '../../hooks/useBacktestQueue';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolLimitation } from '../../types';
+import { makeBatchId } from '../../utils/batchId';
 import styles from './BacktesterView.module.css';
 
 export interface BacktesterProps {
@@ -366,7 +367,7 @@ export function BacktesterView({
       return;
     }
 
-    const batchId = `#${Math.floor(Date.now() % 1000000).toString(16).toUpperCase()}`;
+    const batchId = makeBatchId();
     const namePrefix = staticConfig.namePrefix || 'Backtest';
 
     const { configs } = ConfigGenerator.generate(staticConfig, entryConfig, orderState, exitConfig, '#TEMP');
