@@ -266,6 +266,7 @@ export type BatchStopReason =
   | 'no_token'
   | 'unauthorized'
   | 'lock_busy'
+  | 'lock_lost'
   | 'runtime_error';
 
 export interface QueueRuntimeItem {

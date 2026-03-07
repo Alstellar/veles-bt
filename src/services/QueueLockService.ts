@@ -6,7 +6,7 @@ interface QueueLockRecord {
 
 const LOCK_KEY = 'vh_queue_lock_v1';
 const STOP_KEY_PREFIX = 'vh_queue_stop_v1_';
-const LOCK_TTL_MS = 5 * 60 * 1000;
+const LOCK_TTL_MS = 30 * 60 * 1000;
 
 export class QueueLockService {
   private static stopKey(batchId: string): string {

@@ -33,6 +33,9 @@ const RETRY_WAIT_MS = 60000;
 const RETRY_MAX_ATTEMPTS = 3;
 const MIN_TEST_INTERVAL_MS = 31000;
 const PRECHECK_INTERVAL_MS = 1500;
+const WAIT_CHUNK_MS = 250;
+const LOCK_HEARTBEAT_MS = 2000;
+const FREEZE_WARN_THRESHOLD_MS = 60000;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -300,16 +303,52 @@ export function useBacktestQueue() {
     void LogService.warn('queue', 'queue.stop_requested');
   }, [addLog]);
 
-  const waitInterruptible = useCallback(async (ms: number): Promise<boolean> => {
-    let remaining = Math.max(0, ms);
-    while (remaining > 0) {
-      if (stopRef.current) return false;
-      const chunk = Math.min(250, remaining);
-      await delay(chunk);
-      remaining -= chunk;
-    }
-    return !stopRef.current;
-  }, []);
+  const waitInterruptible = useCallback(
+    async (
+      ms: number,
+      options?: {
+        onHeartbeat?: () => Promise<boolean> | boolean;
+        heartbeatEveryMs?: number;
+        warnOnFreeze?: boolean;
+        onHeartbeatLost?: () => void;
+      }
+    ): Promise<boolean> => {
+      let remaining = Math.max(0, ms);
+      let lastHeartbeatAt = Date.now();
+      let freezeWarned = false;
+      const heartbeatEveryMs = Math.max(250, options?.heartbeatEveryMs ?? LOCK_HEARTBEAT_MS);
+
+      while (remaining > 0) {
+        if (stopRef.current) return false;
+
+        const chunk = Math.min(WAIT_CHUNK_MS, remaining);
+        const startedAt = Date.now();
+        await delay(chunk);
+        const actualSleepMs = Date.now() - startedAt;
+        remaining -= chunk;
+
+        if (options?.warnOnFreeze && !freezeWarned && actualSleepMs > FREEZE_WARN_THRESHOLD_MS) {
+          freezeWarned = true;
+          addLog(
+            `Обнаружена длительная пауза ${Math.round(actualSleepMs / 1000)}с. Возможно, вкладка или система была неактивна.`
+          );
+        }
+
+        const now = Date.now();
+        if (options?.onHeartbeat && now - lastHeartbeatAt >= heartbeatEveryMs) {
+          const ok = await options.onHeartbeat();
+          lastHeartbeatAt = now;
+          if (!ok) {
+            options.onHeartbeatLost?.();
+            return false;
+          }
+        }
+      }
+
+      return !stopRef.current;
+    },
+    [addLog]
+  );
 
   const pullExternalStop = useCallback(
     async (batchId: string): Promise<boolean> => {
@@ -651,19 +690,40 @@ export function useBacktestQueue() {
 
         let forcedStopReason: BatchStopReason | null = null;
         let forcedStopMessage: string | undefined;
+        const markLockLost = () => {
+          if (forcedStopReason) return;
+          forcedStopReason = 'lock_lost';
+          forcedStopMessage = 'Тестирование остановлено: потерян lock очереди (вкладка была неактивна или запущен другой процесс).';
+        };
+        const waitWithLockHeartbeat = async (ms: number): Promise<boolean> => {
+          const completed = await waitInterruptible(ms, {
+            onHeartbeat: touchLock,
+            heartbeatEveryMs: LOCK_HEARTBEAT_MS,
+            warnOnFreeze: true,
+            onHeartbeatLost: markLockLost
+          });
+
+          if (!completed && !forcedStopReason && stopRef.current) {
+            forcedStopReason = 'manual_stop';
+            forcedStopMessage = 'Остановлено пользователем';
+          }
+
+          return completed;
+        };
 
         for (let i = startIndex; i < total; i++) {
           if (!(await touchLock())) {
-            forcedStopReason = 'manual_stop';
-            forcedStopMessage = 'Тестирование остановлено.';
+            markLockLost();
             break;
           }
 
           await pullExternalStop(batchId);
 
           if (stopRef.current) {
-            forcedStopReason = 'manual_stop';
-            forcedStopMessage = 'Остановлено пользователем';
+            if (!forcedStopReason) {
+              forcedStopReason = 'manual_stop';
+              forcedStopMessage = 'Остановлено пользователем';
+            }
             break;
           }
 
@@ -749,8 +809,10 @@ export function useBacktestQueue() {
               await pullExternalStop(batchId);
 
               if (stopRef.current) {
-                forcedStopReason = 'manual_stop';
-                forcedStopMessage = 'Остановлено пользователем';
+                if (!forcedStopReason) {
+                  forcedStopReason = 'manual_stop';
+                  forcedStopMessage = 'Остановлено пользователем';
+                }
                 break;
               }
 
@@ -759,12 +821,13 @@ export function useBacktestQueue() {
               }
 
               if (!(await touchLock())) {
-                forcedStopReason = 'manual_stop';
-                forcedStopMessage = 'Тестирование остановлено.';
+                markLockLost();
                 break;
               }
 
-              await delay(1000);
+              if (!(await waitWithLockHeartbeat(1000))) {
+                break;
+              }
 
               const check = await withContextRecovery(batchId, runContextRef, (ctx) =>
                 VelesService.checkStatus(ctx.tabId, ctx.token, velesId)
@@ -797,11 +860,12 @@ export function useBacktestQueue() {
 
             addLog(`${testName}: сбор статистики...`);
             if (!(await touchLock())) {
-              forcedStopReason = 'manual_stop';
-              forcedStopMessage = 'Тестирование остановлено.';
+              markLockLost();
               break;
             }
-            await delay(5000);
+            if (!(await waitWithLockHeartbeat(5000))) {
+              break;
+            }
 
             let statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
               VelesService.getStats(ctx.tabId, velesId)
@@ -809,7 +873,9 @@ export function useBacktestQueue() {
 
             if (!statsRes.success || !statsRes.stats) {
               addLog(`${testName}: повторный запрос статистики через 10с...`);
-              await delay(10000);
+              if (!(await waitWithLockHeartbeat(10000))) {
+                break;
+              }
               statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
                 VelesService.getStats(ctx.tabId, velesId)
               );
@@ -928,10 +994,17 @@ export function useBacktestQueue() {
               configHash: configHash(item.config)
             }, batchId);
           } finally {
-            await touchLock();
+            const lockStillOwned = await touchLock();
+            if (!lockStillOwned) {
+              markLockLost();
+            }
             if (retryCurrentItem) {
-              i -= 1;
-              continue;
+              if (forcedStopReason) {
+                stopRef.current = true;
+              } else {
+                i -= 1;
+                continue;
+              }
             }
             if (!usedRemoteRun) {
               minIntervalAfterIteration = PRECHECK_INTERVAL_MS;
@@ -941,7 +1014,7 @@ export function useBacktestQueue() {
             if (remaining > 0 && !stopRef.current && i < total - 1) {
               const waitSec = Math.ceil(remaining / 1000);
               addLog(`Пауза ${waitSec}с перед следующим тестом...`);
-              const fullWaitCompleted = await waitInterruptible(remaining);
+              const fullWaitCompleted = await waitWithLockHeartbeat(remaining);
               if (!fullWaitCompleted) {
                 stopRef.current = true;
               }

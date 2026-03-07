@@ -390,7 +390,7 @@ export function BacktestsView({
   };
 
   const applyWholePeriod = () => {
-    setDateFrom(dayjs('2019-01-01').toDate());
+    setDateFrom(dayjs('2018-01-01').toDate());
   };
 
   const buildValidationResult = useCallback(async (): Promise<MatrixValidationResult> => {
