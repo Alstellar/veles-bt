@@ -399,7 +399,6 @@ export function MainLayout() {
     >
       <AppShell.Navbar p="xs" className={styles.sidebar}>
           
-          {/* Р’Р•Р РҐРќРЇРЇ Р§РђРЎРўР¬ (РњРµРЅСЋ) */}
           <Stack gap="xs" className={styles.navTop}>
             <Group px="md" py="xs" mb="sm" className={styles.brandRow}>
                 <Image 
@@ -495,7 +494,6 @@ export function MainLayout() {
             />
           </Stack>
 
-          {/* СРЕДНЯЯ ЧАСТЬ: КНОПКИ ДЕЙСТВИЯ */}
           <Stack gap="xs" px="md" mt="auto" mb="sm">
              <Button 
                 component="a" 
@@ -522,7 +520,6 @@ export function MainLayout() {
              </Button>
           </Stack>
 
-          {/* НИЖНЯЯ ЧАСТЬ (контакты) */}
           <Stack gap={0} className={styles.contactsWrap}>
              <Divider mb="sm" />
              <Stack gap={6} px="xs" mb="xs">
@@ -616,11 +613,8 @@ export function MainLayout() {
         logs={queueController.logs}
         notificationsEnabled={queueController.notificationsEnabled}
         onToggleNotifications={queueController.setNotificationsEnabled}
-        validationEnabled={queueController.validationEnabled}
-        onToggleValidation={queueController.setValidationEnabled}
       />
 
-      {/* МОДАЛКА СОХРАНЕНИЯ ШАБЛОНА */}
       <Modal opened={saveModalOpened} onClose={closeSaveModal} title="Сохранить шаблон">
         <Stack>
           <TextInput
@@ -637,7 +631,6 @@ export function MainLayout() {
         </Stack>
       </Modal>
 
-      {/* МОДАЛЬНОЕ ОКНО ПОДДЕРЖКИ */}
       <DonateModal opened={gratitudeOpened} onClose={closeGratitude} />
 
       <Modal opened={importModalV2Opened} onClose={closeImportModalV2} title="Импорт настроек">

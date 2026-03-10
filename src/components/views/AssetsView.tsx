@@ -6,6 +6,7 @@ import {
   Card,
   Container,
   Group,
+  Input,
   Loader,
   Paper,
   ScrollArea,
@@ -43,6 +44,7 @@ interface AssetsViewState {
   leverageMin: string;
   leverageMax: string;
   availableFromMin: string;
+  availableFromMax: string;
   sortKey: SortKey;
   sortDir: SortDir;
   symbolFormat: SymbolFormat;
@@ -75,6 +77,7 @@ const defaultState: AssetsViewState = {
   leverageMin: '',
   leverageMax: '',
   availableFromMin: '',
+  availableFromMax: '',
   sortKey: 'symbol',
   sortDir: 'asc',
   symbolFormat: 'PAIR'
@@ -163,6 +166,8 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
   const [loadingExchanges, setLoadingExchanges] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string>('');
+  const [historyFromFocused, setHistoryFromFocused] = useState(false);
+  const [historyToFocused, setHistoryToFocused] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -191,6 +196,7 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
         leverageMin: storedRaw.leverageMin ?? '',
         leverageMax: storedRaw.leverageMax ?? '',
         availableFromMin: storedRaw.availableFromMin ?? '',
+        availableFromMax: storedRaw.availableFromMax ?? '',
         sortKey: isSortKey(storedRaw.sortKey) ? storedRaw.sortKey : 'symbol',
         sortDir: isSortDir(storedRaw.sortDir) ? storedRaw.sortDir : 'asc',
         symbolFormat: isSymbolFormat(storedRaw.symbolFormat) ? storedRaw.symbolFormat : 'PAIR'
@@ -274,14 +280,16 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
     const leverageMin = parseOptionalNumber(state.leverageMin);
     const leverageMax = parseOptionalNumber(state.leverageMax);
     const dateFrom = state.availableFromMin || null;
+    const dateTo = state.availableFromMax || null;
 
     return rows.filter((row) => {
       if (leverageMin !== null && row.leverage < leverageMin) return false;
       if (leverageMax !== null && row.leverage > leverageMax) return false;
       if (dateFrom && (!row.availableFrom || row.availableFrom < dateFrom)) return false;
+      if (dateTo && (!row.availableFrom || row.availableFrom > dateTo)) return false;
       return true;
     });
-  }, [rows, state.leverageMin, state.leverageMax, state.availableFromMin]);
+  }, [rows, state.leverageMin, state.leverageMax, state.availableFromMin, state.availableFromMax]);
 
   const sortedRows = useMemo(() => {
     const next = [...filteredRows];
@@ -483,37 +491,65 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
           <Stack gap="sm">
             <Title order={4} ta="center">Таблица активов</Title>
 
-            <SimpleGrid cols={{ base: 1, sm: 4 }} spacing="xs">
-              <Select
-                label="Symbol"
-                value={state.symbolFormat}
-                onChange={(value) => setField('symbolFormat', (value as SymbolFormat) ?? 'PAIR')}
-                data={[
-                  { value: 'BASE', label: 'BTC' },
-                  { value: 'NOSLASH', label: 'BTCUSDT' },
-                  { value: 'PAIR', label: 'BTC/USDT' }
-                ]}
-                allowDeselect={false}
-              />
-              <TextInput
-                label="Leverage от"
-                type="number"
-                value={state.leverageMin}
-                onChange={(event) => setField('leverageMin', event.currentTarget.value)}
-              />
-              <TextInput
-                label="Leverage до"
-                type="number"
-                value={state.leverageMax}
-                onChange={(event) => setField('leverageMax', event.currentTarget.value)}
-              />
-              <TextInput
-                label="История от"
-                type="date"
-                value={state.availableFromMin}
-                onChange={(event) => setField('availableFromMin', event.currentTarget.value)}
-              />
-            </SimpleGrid>
+            <div className={styles.filtersRow}>
+              <div className={styles.symbolBlock}>
+                <Select
+                  label="Symbol"
+                  value={state.symbolFormat}
+                  onChange={(value) => setField('symbolFormat', (value as SymbolFormat) ?? 'PAIR')}
+                  data={[
+                    { value: 'BASE', label: 'BTC' },
+                    { value: 'NOSLASH', label: 'BTCUSDT' },
+                    { value: 'PAIR', label: 'BTC/USDT' }
+                  ]}
+                  allowDeselect={false}
+                />
+              </div>
+              <Input.Wrapper label="Leverage" className={`${styles.rangeBlock} ${styles.leverageBlock}`.trim()}>
+                <div className={styles.rangeInputs}>
+                  <TextInput
+                    type="number"
+                    value={state.leverageMin}
+                    onChange={(event) => setField('leverageMin', event.currentTarget.value)}
+                    placeholder="от"
+                    aria-label="Leverage от"
+                    className={styles.compactInput}
+                  />
+                  <TextInput
+                    type="number"
+                    value={state.leverageMax}
+                    onChange={(event) => setField('leverageMax', event.currentTarget.value)}
+                    placeholder="до"
+                    aria-label="Leverage до"
+                    className={styles.compactInput}
+                  />
+                </div>
+              </Input.Wrapper>
+              <Input.Wrapper label="История" className={`${styles.rangeBlock} ${styles.historyBlock}`.trim()}>
+                <div className={styles.historyInputs}>
+                  <TextInput
+                    type={historyFromFocused || Boolean(state.availableFromMin) ? 'date' : 'text'}
+                    value={state.availableFromMin}
+                    onFocus={() => setHistoryFromFocused(true)}
+                    onBlur={() => setHistoryFromFocused(false)}
+                    onChange={(event) => setField('availableFromMin', event.currentTarget.value)}
+                    placeholder="от"
+                    aria-label="История от"
+                    className={styles.compactDateInput}
+                  />
+                  <TextInput
+                    type={historyToFocused || Boolean(state.availableFromMax) ? 'date' : 'text'}
+                    value={state.availableFromMax}
+                    onFocus={() => setHistoryToFocused(true)}
+                    onBlur={() => setHistoryToFocused(false)}
+                    onChange={(event) => setField('availableFromMax', event.currentTarget.value)}
+                    placeholder="до"
+                    aria-label="История до"
+                    className={styles.compactDateInput}
+                  />
+                </div>
+              </Input.Wrapper>
+            </div>
 
             <Group justify="space-between">
               <Text size="sm" c="dimmed">

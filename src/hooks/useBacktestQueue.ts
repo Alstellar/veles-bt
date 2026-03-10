@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { VelesService } from '../services/VelesService';
 import type { VelesConfigPayload } from '../types/veles';
 import type { BatchResumeSource, BatchStopReason, StaticConfig } from '../types';
@@ -32,7 +32,6 @@ interface RunOptions {
 const RETRY_WAIT_MS = 60000;
 const RETRY_MAX_ATTEMPTS = 3;
 const MIN_TEST_INTERVAL_MS = 31000;
-const PRECHECK_INTERVAL_MS = 1500;
 const WAIT_CHUNK_MS = 250;
 const LOCK_HEARTBEAT_MS = 2000;
 const FREEZE_WARN_THRESHOLD_MS = 60000;
@@ -108,19 +107,6 @@ function decorateQueueLogMessage(message: string): string {
     return `✅ ${message}`;
   }
 
-  if (/ошибка валидации конфигурации/u.test(text)) {
-    return `⛔ ${message}`;
-  }
-
-  if (
-    /не найден API-ключ/u.test(text) ||
-    /Проверка Veles недоступна/u.test(text) ||
-    /Запрос проверки Veles отклонен/u.test(text) ||
-    /вернула неожиданный результат/u.test(text)
-  ) {
-    return `⚠️ ${message}`;
-  }
-
   if (/Потеря авторизации/u.test(text)) {
     return `🔐 ${message}`;
   }
@@ -163,31 +149,17 @@ export function useBacktestQueue() {
   const [currentBatchIds, setCurrentBatchIds] = useState<number[]>([]);
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [validationEnabled, setValidationEnabled] = useState(true);
 
   const stopRef = useRef(false);
   const originalTitleRef = useRef(document.title);
   const ownerIdRef = useRef(`runner_${crypto.randomUUID()}`);
   const currentBatchIdRef = useRef<string | null>(null);
-  const lastPrecheckApiCallAtRef = useRef(0);
-  const validationEnabledRef = useRef(true);
-  const apiKeyByExchangeRef = useRef<Map<string, number>>(new Map());
-  const apiKeysLoadedRef = useRef(false);
 
   useEffect(() => {
     return () => {
       document.title = originalTitleRef.current;
       void QueueLockService.release(ownerIdRef.current, currentBatchIdRef.current ?? undefined);
     };
-  }, []);
-
-  useEffect(() => {
-    validationEnabledRef.current = validationEnabled;
-  }, [validationEnabled]);
-
-  const setValidationEnabledRuntime = useCallback((enabled: boolean) => {
-    validationEnabledRef.current = enabled;
-    setValidationEnabled(enabled);
   }, []);
 
   const addLog = useCallback((msg: string) => {
@@ -388,177 +360,6 @@ export function useBacktestQueue() {
     [resolveExecutionContext]
   );
 
-  const waitPrecheckApiSlot = useCallback(async () => {
-    const now = Date.now();
-    const diff = now - lastPrecheckApiCallAtRef.current;
-    if (diff < PRECHECK_INTERVAL_MS) {
-      await delay(PRECHECK_INTERVAL_MS - diff);
-    }
-    lastPrecheckApiCallAtRef.current = Date.now();
-  }, []);
-
-  const normalizeSymbolKey = useCallback((value: string): string => {
-    return value.trim().toUpperCase().replace('/', '');
-  }, []);
-
-  const normalizeExchangeKey = useCallback((value: string): string => {
-    return value.trim().toUpperCase();
-  }, []);
-
-  const getApiKeyForExchange = useCallback(
-    async (
-      batchId: string,
-      runRef: { current: ExecutionContext },
-      exchange: string
-    ): Promise<number | null> => {
-      const exchangeKey = normalizeExchangeKey(exchange);
-      if (!exchangeKey) return null;
-
-      const cached = apiKeyByExchangeRef.current.get(exchangeKey);
-      if (typeof cached === 'number') {
-        return cached;
-      }
-
-      if (!apiKeysLoadedRef.current) {
-        await waitPrecheckApiSlot();
-
-        const apiKeys = await withContextRecovery(batchId, runRef, (ctx) =>
-          VelesService.getApiKeys(ctx.tabId, ctx.token)
-        );
-
-        if (!apiKeys.success) {
-          throw new Error(apiKeys.error || `HTTP ${apiKeys.status}`);
-        }
-
-        apiKeyByExchangeRef.current.clear();
-        for (const keyItem of apiKeys.items) {
-          const key = normalizeExchangeKey(keyItem.exchange);
-          if (!key) continue;
-          if (!apiKeyByExchangeRef.current.has(key)) {
-            apiKeyByExchangeRef.current.set(key, keyItem.id);
-          }
-        }
-        apiKeysLoadedRef.current = true;
-      }
-
-      return apiKeyByExchangeRef.current.get(exchangeKey) ?? null;
-    },
-    [normalizeExchangeKey, waitPrecheckApiSlot, withContextRecovery]
-  );
-
-  const buildValidateSymbolsPayload = useCallback((item: QueueItem, symbol: string, apiKey: number) => {
-    const configAny = item.config as unknown as Record<string, unknown>;
-    const payload: Record<string, unknown> = {
-      name: item.config.name,
-      exchange: item.config.exchange,
-      apiKey,
-      algorithm: item.config.algorithm,
-      pullUp: item.config.pullUp,
-      portion: item.config.portion,
-      commissions: item.config.commissions,
-      deposit: item.config.deposit,
-      conditions: item.config.conditions,
-      settings: item.config.settings,
-      profit: item.config.profit,
-      stopLoss: item.config.stopLoss,
-      public: item.config.public,
-      symbols: [symbol]
-    };
-
-    if (typeof configAny.id === 'number') {
-      payload.id = configAny.id;
-    }
-
-    return payload;
-  }, []);
-
-  const runRuntimePrecheck = useCallback(
-    async (
-      batchId: string,
-      runRef: { current: ExecutionContext },
-      item: QueueItem
-    ): Promise<{ ok: boolean; message?: string; warning?: string }> => {
-      const symbol = String(item.config.symbol || '').trim().toUpperCase();
-      if (!symbol) {
-        return { ok: false, message: 'некорректная конфигурация: не указан актив.' };
-      }
-
-      try {
-        const apiKey = await getApiKeyForExchange(batchId, runRef, item.config.exchange);
-        if (!apiKey) {
-          return {
-            ok: true,
-            warning: `Для биржи ${item.config.exchange} не найден API-ключ. Проверка пропущена, тест отправлен в Veles.`
-          };
-        }
-
-        await waitPrecheckApiSlot();
-        const payload = buildValidateSymbolsPayload(item, symbol, apiKey);
-
-        const validation = await withContextRecovery(batchId, runRef, (ctx) =>
-          VelesService.validateSymbols(ctx.tabId, ctx.token, payload)
-        );
-
-        if (!validation.success) {
-          const reason = validation.error || `HTTP ${validation.status}`;
-          if (validation.status === 0 || validation.status >= 500) {
-            return {
-              ok: true,
-              warning: `Проверка Veles недоступна (${reason}), тест отправлен в Veles.`
-            };
-          }
-          return {
-            ok: false,
-            message: `Запрос проверки Veles отклонен (${reason}).`
-          };
-        }
-
-        const failed = validation.failed.map(normalizeSymbolKey);
-        const successful = validation.successful.map(normalizeSymbolKey);
-        const symbolKey = normalizeSymbolKey(symbol);
-
-        if (failed.includes(symbolKey)) {
-          const templateLink = typeof item.sourceTemplateUrl === 'string'
-            ? item.sourceTemplateUrl.trim()
-            : '';
-          return {
-            ok: false,
-            message: templateLink
-              ? `Ошибка валидации конфигурации (${templateLink}) и актива ${symbol} на Veles.`
-              : `Ошибка валидации конфигурации и актива ${symbol} на Veles.`
-          };
-        }
-
-        if (successful.length > 0 && !successful.includes(symbolKey)) {
-          return {
-            ok: true,
-            warning: `Проверка Veles вернула неожиданный результат для ${symbol}, тест отправлен в Veles.`
-          };
-        }
-
-        return { ok: true };
-      } catch (error) {
-        const rawMsg = extractErrorMessage(error);
-        if (rawMsg.startsWith('QUEUE_STOP:')) {
-          throw error;
-        }
-        return {
-          ok: true,
-          warning: `Проверка Veles недоступна (${rawMsg}), тест отправлен в Veles.`
-        };
-      }
-    },
-    [
-      addLog,
-      buildValidateSymbolsPayload,
-      extractErrorMessage,
-      getApiKeyForExchange,
-      normalizeSymbolKey,
-      waitPrecheckApiSlot,
-      withContextRecovery
-    ]
-  );
-
   const run = useCallback(
     async (batchId: string, initialItems?: QueueItem[], options?: RunOptions) => {
       if (isRunning) {
@@ -611,9 +412,6 @@ export function useBacktestQueue() {
       setCurrentBatchId(batchId);
       setLogs([]);
       setCurrentBatchIds([]);
-      lastPrecheckApiCallAtRef.current = 0;
-      apiKeyByExchangeRef.current.clear();
-      apiKeysLoadedRef.current = false;
       originalTitleRef.current = document.title;
       await QueueLockService.clearStopRequest(batchId);
 
@@ -753,46 +551,12 @@ export function useBacktestQueue() {
           addLog(buildTestLaunchLogMessage(testName, item));
 
           let launchAttemptStartedAt = Date.now();
-          let minIntervalAfterIteration = MIN_TEST_INTERVAL_MS;
-          let usedRemoteRun = false;
           let retryCurrentItem = false;
           try {
-            if (validationEnabledRef.current) {
-              const precheck = await runRuntimePrecheck(batchId, runContextRef, item);
-              if (precheck.warning) {
-                addLog(`${testName}: ${precheck.warning}`);
-              }
-
-              if (!precheck.ok) {
-                const precheckMessage = precheck.message || 'Ошибка валидации конфигурации и актива на Veles.';
-                setQueue((prev) => {
-                  const next = [...prev];
-                  if (next[i]) next[i] = { ...next[i], status: 'ERROR', error: precheckMessage };
-                  itemsToRun = next;
-                  return next;
-                });
-
-                addLog(`⛔ ${testName}: ${precheckMessage}`);
-                await LogService.warn('queue', 'test.skipped_precheck', {
-                  batchId,
-                  index: currentTestNum,
-                  symbol: item.config.symbol,
-                  template: item.sourceTemplateUrl ?? null,
-                  configHash: configHash(item.config)
-                }, batchId);
-
-                nextIndex = i + 1;
-                await saveRuntimeCheckpoint(batchId, nextIndex, itemsToRun.length, 'RUN');
-                minIntervalAfterIteration = PRECHECK_INTERVAL_MS;
-                continue;
-              }
-            }
-
             const runRes = await withContextRecovery(batchId, runContextRef, (ctx) => {
               launchAttemptStartedAt = Date.now();
               return VelesService.runTest(ctx.tabId, ctx.token, item.config);
             });
-            usedRemoteRun = true;
 
             if (!runRes.success || !runRes.id) {
               throw new Error(runRes.error || `Ошибка запуска (${runRes.status})`);
@@ -1006,11 +770,8 @@ export function useBacktestQueue() {
                 continue;
               }
             }
-            if (!usedRemoteRun) {
-              minIntervalAfterIteration = PRECHECK_INTERVAL_MS;
-            }
             const elapsed = Date.now() - launchAttemptStartedAt;
-            const remaining = minIntervalAfterIteration - elapsed;
+            const remaining = MIN_TEST_INTERVAL_MS - elapsed;
             if (remaining > 0 && !stopRef.current && i < total - 1) {
               const waitSec = Math.ceil(remaining / 1000);
               addLog(`Пауза ${waitSec}с перед следующим тестом...`);
@@ -1077,7 +838,6 @@ export function useBacktestQueue() {
       queue,
       pullExternalStop,
       resolveExecutionContext,
-      runRuntimePrecheck,
       saveRuntimeCheckpoint,
       waitInterruptible,
       withContextRecovery
@@ -1149,9 +909,7 @@ export function useBacktestQueue() {
     currentBatchId,
     logs,
     notificationsEnabled,
-    setNotificationsEnabled,
-    validationEnabled,
-    setValidationEnabled: setValidationEnabledRuntime
+    setNotificationsEnabled
   };
 }
 

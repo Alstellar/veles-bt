@@ -40,8 +40,6 @@ interface Props {
 
   notificationsEnabled?: boolean;
   onToggleNotifications?: (val: boolean) => void;
-  validationEnabled?: boolean;
-  onToggleValidation?: (val: boolean) => void;
 }
 
 export function ResultsModal({
@@ -55,9 +53,7 @@ export function ResultsModal({
   onStop,
   logs = [],
   notificationsEnabled,
-  onToggleNotifications,
-  validationEnabled,
-  onToggleValidation
+  onToggleNotifications
 }: Props) {
   const {
     data,
@@ -76,8 +72,7 @@ export function ResultsModal({
   };
 
   const showNotificationsToggle = Boolean(isLive && onToggleNotifications);
-  const showValidationToggle = Boolean(isLive && onToggleValidation);
-  const showToggleGroup = showValidationToggle || showNotificationsToggle;
+  const showToggleGroup = showNotificationsToggle;
 
   return (
     <Modal
@@ -93,15 +88,6 @@ export function ResultsModal({
 
           {showToggleGroup && (
             <Group gap={14} align="center" wrap="nowrap" style={{ marginRight: 30 }}>
-              {showValidationToggle && (
-                <Group gap="sm" align="center" wrap="nowrap">
-                  <Text size="sm" fw={600}>Валидация</Text>
-                  <Switch
-                    checked={Boolean(validationEnabled)}
-                    onChange={(e) => onToggleValidation?.(e.currentTarget.checked)}
-                  />
-                </Group>
-              )}
               {showNotificationsToggle && (
                 <Group gap="sm" align="center" wrap="nowrap">
                   <Text size="sm" fw={600}>Уведомлять о завершении</Text>

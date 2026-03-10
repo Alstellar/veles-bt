@@ -188,6 +188,7 @@ export function BacktestsView({
   const [leverageMin, setLeverageMin] = useState<number | ''>('');
   const [leverageMax, setLeverageMax] = useState<number | ''>('');
   const [availableFromMin, setAvailableFromMin] = useState<Date | null>(null);
+  const [availableFromMax, setAvailableFromMax] = useState<Date | null>(null);
   const [selectedFilteredSymbols, setSelectedFilteredSymbols] = useState<string[]>([]);
   const [hasCustomFilteredSelection, setHasCustomFilteredSelection] = useState(false);
   const [assetsSortKey, setAssetsSortKey] = useState<AssetsSortKey>('symbol');
@@ -278,11 +279,12 @@ export function BacktestsView({
       {
         leverageMin: parseOptionalNumber(leverageMin),
         leverageMax: parseOptionalNumber(leverageMax),
-        availableFromMin: availableFromMin ? dayjs(availableFromMin).format('YYYY-MM-DD') : null
+        availableFromMin: availableFromMin ? dayjs(availableFromMin).format('YYYY-MM-DD') : null,
+        availableFromMax: availableFromMax ? dayjs(availableFromMax).format('YYYY-MM-DD') : null
       },
       availabilityMap
     );
-  }, [availabilityMap, availableFromMin, leverageMax, leverageMin, limitations]);
+  }, [availabilityMap, availableFromMax, availableFromMin, leverageMax, leverageMin, limitations]);
 
   useEffect(() => {
     setSelectedFilteredSymbols((prev) => {
@@ -783,11 +785,9 @@ export function BacktestsView({
             <Paper withBorder radius="md" p="md" className={`${styles.sectionGlass} ${styles.columnPaper}`}>
               <Stack gap="md" className={styles.columnStack}>
                 <Title order={3} className={styles.sectionTitle}>Шаблоны</Title>
-                <Text size="sm" c="dimmed">
-                  Вставьте ссылки на ботов Veles, по одной на строку.
-                </Text>
                 <div className={styles.templatesTextareaWrap}>
                   <Textarea
+                    label="Вставьте ссылки на ботов Veles, по одной на строку."
                     placeholder={'https://veles.finance/share/SDxEv\nhttps://veles.finance/share/AbCd1'}
                     value={linksText}
                     onChange={(event) => setLinksText(event.currentTarget.value)}
@@ -877,13 +877,26 @@ export function BacktestsView({
                           </div>
                         </Input.Wrapper>
                       </div>
-                      <DateInput
-                        label="История от"
-                        value={availableFromMin}
-                        onChange={(value) => setAvailableFromMin(toDateValue(value))}
-                        valueFormat="DD.MM.YYYY"
-                        className={styles.compactDate}
-                      />
+                      <div className={styles.historyGroup}>
+                        <Input.Wrapper label="История">
+                          <div className={styles.historyInputs}>
+                            <DateInput
+                              value={availableFromMin}
+                              onChange={(value) => setAvailableFromMin(toDateValue(value))}
+                              valueFormat="DD.MM.YYYY"
+                              placeholder="от"
+                              className={styles.compactDate}
+                            />
+                            <DateInput
+                              value={availableFromMax}
+                              onChange={(value) => setAvailableFromMax(toDateValue(value))}
+                              valueFormat="DD.MM.YYYY"
+                              placeholder="до"
+                              className={styles.compactDate}
+                            />
+                          </div>
+                        </Input.Wrapper>
+                      </div>
                     </div>
                     <Text size="sm" c="dimmed">
                       Подбор активов идет из лимитов выбранной биржи с учетом фильтров.

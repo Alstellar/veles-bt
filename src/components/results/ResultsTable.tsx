@@ -1,4 +1,4 @@
-﻿// src/components/results/ResultsTable.tsx
+// src/components/results/ResultsTable.tsx
 import { useState } from 'react';
 import { 
   Table, ScrollArea, Stack, Text, Anchor, Badge, Group, UnstyledButton, 

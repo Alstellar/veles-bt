@@ -100,6 +100,7 @@
 .templatesTextarea {
   flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 100%;
 }
@@ -108,6 +109,10 @@
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+}
+
+.templatesTextarea :global(.mantine-InputWrapper-label) {
+  margin-bottom: 2px;
 }
 
 .templatesTextarea :global(.mantine-Textarea-input) {
@@ -144,7 +149,7 @@
 
 .assetsFilterRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 230px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   align-items: start;
 }
@@ -154,6 +159,16 @@
 }
 
 .leverageGroup :global(.mantine-InputWrapper-root) {
+  width: 100%;
+}
+
+.historyGroup {
+  min-width: 0;
+  grid-column: 2;
+  justify-self: stretch;
+}
+
+.historyGroup :global(.mantine-InputWrapper-root) {
   width: 100%;
 }
 
@@ -168,12 +183,18 @@
 }
 
 .compactDate {
-  min-width: 180px;
+  width: 100%;
+}
+
+.historyInputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .symbolsTableWrap {
   border: 1px solid #d7e3f1;
-  border-radius: 10px;
+  border-radius: var(--mantine-radius-sm);
   overflow: hidden;
   background: rgba(255, 255, 255, 0.94);
 }
@@ -273,6 +294,10 @@
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.sectionGlass :global(.mantine-InputWrapper-root) {
+  --input-radius: var(--mantine-radius-sm);
+}
+
 .sectionGlass :global(.mantine-Input-input:focus),
 .sectionGlass :global(.mantine-Select-input:focus),
 .sectionGlass :global(.mantine-DateInput-input:focus),
@@ -322,5 +347,14 @@
 
   .assetsFilterRow {
     grid-template-columns: 1fr;
+  }
+
+  .historyGroup {
+    grid-column: auto;
+    justify-self: stretch;
+  }
+
+  .historyGroup :global(.mantine-InputWrapper-root) {
+    width: 100%;
   }
 }

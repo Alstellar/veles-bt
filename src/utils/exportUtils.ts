@@ -1,4 +1,4 @@
-﻿// src/utils/exportUtils.ts
+// src/utils/exportUtils.ts
 import type { BacktestResultItem } from '../types';
 import { formatDurationHuman } from './formatters';
 import { getVelesPublicBacktestUrl } from '../config/velesDomains';

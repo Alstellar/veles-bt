@@ -377,6 +377,7 @@ export const getExchangeFilteredSymbols = (
     leverageMin?: number | null;
     leverageMax?: number | null;
     availableFromMin?: string | null;
+    availableFromMax?: string | null;
   },
   availabilityMap: Record<string, string | null>
 ): string[] => {
@@ -390,6 +391,7 @@ export const getExchangeFilteredSymbols = (
     if (filters.leverageMin !== null && filters.leverageMin !== undefined && leverage < filters.leverageMin) return;
     if (filters.leverageMax !== null && filters.leverageMax !== undefined && leverage > filters.leverageMax) return;
     if (filters.availableFromMin && (!availableFrom || availableFrom < filters.availableFromMin)) return;
+    if (filters.availableFromMax && (!availableFrom || availableFrom > filters.availableFromMax)) return;
     result.push(pair);
   });
   return result;

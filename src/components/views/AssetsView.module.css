@@ -33,6 +33,67 @@
   line-height: 1.4;
 }
 
+.filtersRow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  column-gap: clamp(16px, 10%, 72px);
+  row-gap: 8px;
+  align-items: end;
+}
+
+.symbolBlock {
+  justify-self: end;
+}
+
+.symbolBlock > :global(.mantine-InputWrapper-root) {
+  width: clamp(150px, 15vw, 220px);
+}
+
+.symbolBlock > :global(.mantine-InputWrapper-root) > :global(.mantine-InputWrapper-label) {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.rangeBlock {
+  min-width: 0;
+  width: max-content;
+}
+
+.leverageBlock {
+  justify-self: center;
+}
+
+.historyBlock {
+  justify-self: start;
+}
+
+.rangeBlock > :global(.mantine-InputWrapper-label) {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.rangeInputs {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 6px;
+}
+
+.compactInput {
+  width: 82px;
+}
+
+.compactDateInput {
+  width: 144px;
+}
+
+.historyInputs {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 6px;
+}
+
 .thInner {
   display: flex;
   align-items: center;
@@ -108,4 +169,37 @@
   display: inline-block;
   max-width: calc(100% - 8px);
   text-align: center;
+}
+
+@media (max-width: 960px) {
+  .filtersRow {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .symbolBlock {
+    justify-self: stretch;
+  }
+
+  .symbolBlock > :global(.mantine-InputWrapper-root) {
+    width: 100%;
+  }
+
+  .leverageBlock,
+  .historyBlock {
+    justify-self: stretch;
+  }
+
+  .rangeBlock {
+    width: 100%;
+  }
+
+  .rangeInputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compactInput,
+  .compactDateInput {
+    width: 100%;
+  }
 }
