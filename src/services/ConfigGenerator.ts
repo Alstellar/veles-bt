@@ -6,7 +6,7 @@ import type {
   Condition 
 } from '../types';
 import type { VelesConfigPayload, VelesCondition, VelesOrder } from '../types/veles';
-import { FILTERS_LIBRARY } from '../filtersLibrary';
+import { getIndicatorSettings, toApiIndicatorCode } from '../utils/indicatorMapping';
 
 // --- HELPERS ---
 
@@ -39,7 +39,7 @@ function cartesian(args: Record<string, any[]>): Record<string, any>[] {
  * Выполняет очистку неиспользуемых полей на основе FILTERS_LIBRARY.
  */
 function convertCondition(c: Condition): VelesCondition {
-  const code = c.indicator || (c.type === 'PRICE' ? 'PRICE' : 'RSI');
+  const code = toApiIndicatorCode(c.indicator || (c.type === 'PRICE' ? 'PRICE' : 'RSI'));
 
   // --- СПЕЦИАЛЬНЫЙ КЕЙС: PRICE ---
   // У Veles это отдельный тип условия, отличающийся от индикаторов
@@ -52,12 +52,11 @@ function convertCondition(c: Condition): VelesCondition {
   }
 
   // --- СТАНДАРТНАЯ ЛОГИКА (INDICATOR) ---
-  const def = FILTERS_LIBRARY[code];
-
   // Проверяем настройки из библиотеки. 
   // Если определения нет (fallback), считаем что поля разрешены.
-  const allowValue = def ? def.settings.hasValue : true;
-  const allowOp = def ? def.settings.hasOperation : true;
+  const settings = getIndicatorSettings(code);
+  const allowValue = settings ? settings.hasValue : true;
+  const allowOp = settings ? settings.hasOperation : true;
 
   const forceBasic = !allowValue && !allowOp;
   const isBasic = forceBasic ? true : Boolean(c.basic);

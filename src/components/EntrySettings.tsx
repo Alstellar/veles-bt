@@ -7,6 +7,7 @@ import { FILTERS_LIBRARY } from '../filtersLibrary';
 import type { IndicatorDef } from '../filtersLibrary';
 import type { Condition, FilterSlot, EntryConfig, IntervalType, OperationType } from '../types';
 import { normalizeCondition } from '../services/ConditionNormalizationService';
+import { resolveIndicator, toApiIndicatorCode } from '../utils/indicatorMapping';
 
 interface Props {
   config: EntryConfig;
@@ -172,8 +173,14 @@ export function EntrySettings({ config, onChange }: Props) {
                     )}
 
                     {slot.variants.map((variant, vIndex) => {
-                          const def = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
-                          const settings = def?.settings || { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false };
+                          const resolvedIndicator = resolveIndicator(variant.indicator);
+                          const settings = resolvedIndicator.settings || { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false };
+                          const periodOptions = resolvedIndicator.periods.map((period) => ({
+                            value: String(period),
+                            label: String(period)
+                          }));
+                          const showPeriodSelector = periodOptions.length > 0;
+                          const selectedPeriodValue = resolvedIndicator.period ? String(resolvedIndicator.period) : null;
                           
                           const showTimeframe = settings.hasTimeframe;
                           // Кнопка Basic
@@ -203,8 +210,8 @@ export function EntrySettings({ config, onChange }: Props) {
                                     <Select
                                         placeholder="Индикатор"
                                         data={indicatorOptions}
-                                        value={variant.indicator}
-                                        onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', v)}
+                                        value={resolvedIndicator.baseCode}
+                                        onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(v || undefined))}
                                         searchable
                                         allowDeselect={false}
                                         style={{ flex: 1 }}
@@ -219,6 +226,18 @@ export function EntrySettings({ config, onChange }: Props) {
                                             onChange={(v) => updateVariant(slot.id, variant.id!, 'interval', v)}
                                             allowDeselect={false}
                                             w={80}
+                                            size="xs"
+                                        />
+                                    )}
+
+                                    {showPeriodSelector && (
+                                        <Select
+                                            placeholder="Период"
+                                            data={periodOptions}
+                                            value={selectedPeriodValue}
+                                            onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(resolvedIndicator.baseCode, v ? Number(v) : null))}
+                                            allowDeselect={false}
+                                            w={88}
                                             size="xs"
                                         />
                                     )}

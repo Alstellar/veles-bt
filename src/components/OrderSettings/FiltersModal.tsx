@@ -8,6 +8,7 @@ import { IconTrash, IconPlus, IconPencil, IconCheck, IconArrowsRightLeft } from 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
 import type { IndicatorDef } from '../../filtersLibrary';
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
+import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
 
 import type { Condition, FilterSlot, IntervalType, OperationType } from '../../types';
 
@@ -192,8 +193,14 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
 
                     {/* ПЕРЕБОР ВАРИАНТОВ ВНУТРИ СЛОТА */}
                     {slot.variants.map((variant, vIndex) => {
-                          const libData = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
-                          const settings = libData?.settings; 
+                          const resolvedIndicator = resolveIndicator(variant.indicator);
+                          const settings = resolvedIndicator.settings; 
+                          const periodOptions = resolvedIndicator.periods.map((period) => ({
+                            value: String(period),
+                            label: String(period)
+                          }));
+                          const showPeriodSelector = periodOptions.length > 0;
+                          const selectedPeriodValue = resolvedIndicator.period ? String(resolvedIndicator.period) : null;
                           
                           // Логика отображения полей
                           const showTimeframe = settings?.hasTimeframe;
@@ -217,8 +224,8 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                     <Select
                                         placeholder="Индикатор"
                                         data={indicatorOptions}
-                                        value={variant.indicator}
-                                        onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', v)}
+                                        value={resolvedIndicator.baseCode}
+                                        onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(v || undefined))}
                                         searchable
                                         allowDeselect={false}
                                         style={{ flex: 1 }}
@@ -233,6 +240,18 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                             onChange={(v) => updateVariant(slot.id, variant.id!, 'interval', v)}
                                             allowDeselect={false}
                                             w={110}
+                                            size="xs"
+                                        />
+                                    )}
+
+                                    {showPeriodSelector && (
+                                        <Select
+                                            placeholder="Период"
+                                            data={periodOptions}
+                                            value={selectedPeriodValue}
+                                            onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(resolvedIndicator.baseCode, v ? Number(v) : null))}
+                                            allowDeselect={false}
+                                            w={90}
                                             size="xs"
                                         />
                                     )}

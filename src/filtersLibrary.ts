@@ -6,6 +6,7 @@ export interface IndicatorSettings {
   hasOperation: boolean; // Больше / Меньше
   allowBasic: boolean;   // Карандашик (режим по умолчанию)
   hasReverse: boolean;   // Кнопка реверса
+  periods?: number[];    // Доступные периоды индикатора (если есть)
 }
 
 export interface IndicatorDef {
@@ -20,7 +21,7 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
   PRICE: {
     code: 'PRICE', 
     label: 'Цена', 
-    settings: { hasTimeframe: false, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+    settings: { hasTimeframe: false, hasValue: true, hasOperation: true, allowBasic: false, hasReverse: false }
   },
 
   VOLUME: {
@@ -107,6 +108,24 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
+  VMC_WAVE_TREND: {
+    code: 'VMC_WAVE_TREND', 
+    label: 'VMC Wave Trend', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },
+
+  VMC_DIVERGENCE: {
+    code: 'VMC_DIVERGENCE', 
+    label: 'VMC Divergence', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },
+
+  VMC_MONEY_FLOW: {
+    code: 'VMC_MONEY_FLOW', 
+    label: 'VMC Money Flow', 
+    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  },
+
   PRICE_CHANGE: {
     code: 'PRICE_CHANGE', 
     label: '% изменения цены', 
@@ -155,76 +174,30 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
-  SMA_5: {
-    code: 'SMA_5', 
-    label: 'SMA (Период 5)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_10: {
-    code: 'SMA_10', 
-    label: 'SMA (Период 10)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_20: {
-    code: 'SMA_20', 
-    label: 'SMA (Период 20)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_30: {
-    code: 'SMA_30', 
-    label: 'SMA (Период 30)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_50: {
-    code: 'SMA_50', 
-    label: 'SMA (Период 50)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_100: {
-    code: 'SMA_100', 
-    label: 'SMA (Период 100)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  SMA: {
+    code: 'SMA',
+    label: 'SMA',
+    settings: {
+      hasTimeframe: true,
+      hasValue: false,
+      hasOperation: false,
+      allowBasic: true,
+      hasReverse: true,
+      periods: [5, 10, 20, 30, 50, 100]
+    }
   },
 
-  EMA_5: {
-    code: 'EMA_5', 
-    label: 'EMA (Период 5)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_10: {
-    code: 'EMA_10', 
-    label: 'EMA (Период 10)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_20: {
-    code: 'EMA_20', 
-    label: 'EMA (Период 20)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_30: {
-    code: 'EMA_30', 
-    label: 'EMA (Период 30)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_50: {
-    code: 'EMA_50', 
-    label: 'EMA (Период 50)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_100: {
-    code: 'EMA_100', 
-    label: 'EMA (Период 100)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  EMA: {
+    code: 'EMA',
+    label: 'EMA',
+    settings: {
+      hasTimeframe: true,
+      hasValue: false,
+      hasOperation: false,
+      allowBasic: true,
+      hasReverse: true,
+      periods: [5, 10, 20, 30, 50, 100]
+    }
   },
 
   EMA_50_CROSS_EMA_100: {
@@ -233,76 +206,30 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
-  SMA_CROSS_5: {
-    code: 'SMA_CROSS_5', 
-    label: 'SMA пересечение ценой (период 5)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_CROSS_10: {
-    code: 'SMA_CROSS_10', 
-    label: 'SMA пересечение ценой (период 10)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_CROSS_20: {
-    code: 'SMA_CROSS_20', 
-    label: 'SMA пересечение ценой (период 20)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_CROSS_30: {
-    code: 'SMA_CROSS_30', 
-    label: 'SMA пересечение ценой (период 30)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_CROSS_50: {
-    code: 'SMA_CROSS_50', 
-    label: 'SMA пересечение ценой (период 50)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  SMA_CROSS_100: {
-    code: 'SMA_CROSS_100', 
-    label: 'SMA пересечение ценой (период 100)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  SMA_CROSS: {
+    code: 'SMA_CROSS',
+    label: 'SMA пересечение ценой',
+    settings: {
+      hasTimeframe: true,
+      hasValue: false,
+      hasOperation: false,
+      allowBasic: true,
+      hasReverse: true,
+      periods: [5, 10, 20, 30, 50, 100]
+    }
   },
 
-  EMA_CROSS_5: {
-    code: 'EMA_CROSS_5', 
-    label: 'EMA пересечение ценой (период 5)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_CROSS_10: {
-    code: 'EMA_CROSS_10', 
-    label: 'EMA пересечение ценой (период 10)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_CROSS_20: {
-    code: 'EMA_CROSS_20', 
-    label: 'EMA пересечение ценой (период 20)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_CROSS_30: {
-    code: 'EMA_CROSS_30', 
-    label: 'EMA пересечение ценой (период 30)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_CROSS_50: {
-    code: 'EMA_CROSS_50', 
-    label: 'EMA пересечение ценой (период 50)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  EMA_CROSS_100: {
-    code: 'EMA_CROSS_100', 
-    label: 'EMA пересечение ценой (период 100)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  EMA_CROSS: {
+    code: 'EMA_CROSS',
+    label: 'EMA пересечение ценой',
+    settings: {
+      hasTimeframe: true,
+      hasValue: false,
+      hasOperation: false,
+      allowBasic: true,
+      hasReverse: true,
+      periods: [5, 10, 20, 30, 50, 100]
+    }
   },
 
   MACD_CROSS_ZERO: {
@@ -371,41 +298,18 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
-  VOLUME_SPIKE_DETECTOR_7: {
-    code: 'VOLUME_SPIKE_DETECTOR_7', 
-    label: 'Детектор скачков объема (период 7)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  },  
-
-  VOLUME_SPIKE_DETECTOR_14: {
-    code: 'VOLUME_SPIKE_DETECTOR_14', 
-    label: 'Детектор скачков объема (период 14)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  }, 
-
-  VOLUME_SPIKE_DETECTOR_21: {
-    code: 'VOLUME_SPIKE_DETECTOR_21', 
-    label: 'Детектор скачков объема (период 21)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  }, 
-
-  VOLUME_SPIKE_DETECTOR_30: {
-    code: 'VOLUME_SPIKE_DETECTOR_30', 
-    label: 'Детектор скачков объема (период 30)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  }, 
-
-  VOLUME_SPIKE_DETECTOR_50: {
-    code: 'VOLUME_SPIKE_DETECTOR_50', 
-    label: 'Детектор скачков объема (период 50)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  }, 
-
-  VOLUME_SPIKE_DETECTOR_100: {
-    code: 'VOLUME_SPIKE_DETECTOR_100', 
-    label: 'Детектор скачков объема (период 100)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  }, 
+  VOLUME_SPIKE_DETECTOR: {
+    code: 'VOLUME_SPIKE_DETECTOR',
+    label: 'Детектор скачков объема',
+    settings: {
+      hasTimeframe: true,
+      hasValue: true,
+      hasOperation: true,
+      allowBasic: true,
+      hasReverse: false,
+      periods: [7, 14, 21, 30, 50, 100]
+    }
+  },
 
   BALANCE_OF_POWER: {
     code: 'BALANCE_OF_POWER', 
@@ -419,65 +323,31 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
-  CANDLES_TREND_2: {
-    code: 'CANDLES_TREND_2', 
-    label: 'Тренд свечей (период 2)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
+  CANDLES_TREND: {
+    code: 'CANDLES_TREND',
+    label: 'Тренд свечей',
+    settings: {
+      hasTimeframe: true,
+      hasValue: false,
+      hasOperation: false,
+      allowBasic: true,
+      hasReverse: true,
+      periods: [2, 3, 4, 5, 6, 7, 8, 9, 10, 15]
+    }
+  },
 
-  CANDLES_TREND_3: {
-    code: 'CANDLES_TREND_3', 
-    label: 'Тренд свечей (период 3)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_4: {
-    code: 'CANDLES_TREND_4', 
-    label: 'Тренд свечей (период 4)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_5: {
-    code: 'CANDLES_TREND_5', 
-    label: 'Тренд свечей (период 5)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_6: {
-    code: 'CANDLES_TREND_6', 
-    label: 'Тренд свечей (период 6)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_7: {
-    code: 'CANDLES_TREND_7', 
-    label: 'Тренд свечей (период 7)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_8: {
-    code: 'CANDLES_TREND_8', 
-    label: 'Тренд свечей (период 8)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_9: {
-    code: 'CANDLES_TREND_9', 
-    label: 'Тренд свечей (период 9)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_10: {
-    code: 'CANDLES_TREND_10', 
-    label: 'Тренд свечей (период 10)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
-
-  CANDLES_TREND_15: {
-    code: 'CANDLES_TREND_15', 
-    label: 'Тренд свечей (период 15)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },  
+  LIQUIDATION_HEATMAP: {
+    code: 'LIQUIDATION_HEATMAP',
+    label: 'Liquidation heatmap',
+    settings: {
+      hasTimeframe: true,
+      hasValue: false,
+      hasOperation: false,
+      allowBasic: true,
+      hasReverse: true,
+      periods: [10, 50, 75, 100, 125, 150, 175, 200]
+    }
+  },
 
   PARABOLIC_SAR: {
     code: 'PARABOLIC_SAR', 
@@ -545,40 +415,17 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
-  HMA_VOLUME_5: {
-    code: 'HMA_VOLUME_5', 
-    label: 'Скользащая объемов Халла (период 5)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  HMA_VOLUME_10: {
-    code: 'HMA_VOLUME_10', 
-    label: 'Скользащая объемов Халла (период 10)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  HMA_VOLUME_20: {
-    code: 'HMA_VOLUME_20', 
-    label: 'Скользащая объемов Халла (период 20)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  HMA_VOLUME_30: {
-    code: 'HMA_VOLUME_30', 
-    label: 'Скользащая объемов Халла (период 30)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  HMA_VOLUME_50: {
-    code: 'HMA_VOLUME_50', 
-    label: 'Скользащая объемов Халла (период 50)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
-  },
-  
-  HMA_VOLUME_100: {
-    code: 'HMA_VOLUME_100', 
-    label: 'Скользащая объемов Халла (период 100)', 
-    settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
+  HMA_VOLUME: {
+    code: 'HMA_VOLUME',
+    label: 'Скользящая объемов Халла',
+    settings: {
+      hasTimeframe: true,
+      hasValue: false,
+      hasOperation: false,
+      allowBasic: true,
+      hasReverse: true,
+      periods: [5, 10, 20, 30, 50, 100]
+    }
   },
 
   MFI_CROSS_50: {
@@ -587,40 +434,17 @@ export const FILTERS_LIBRARY: Record<string, IndicatorDef> = {
     settings: { hasTimeframe: true, hasValue: false, hasOperation: false, allowBasic: true, hasReverse: true }
   },
 
-  PRICE_CHANGE_PERIOD_5: {
-    code: 'PRICE_CHANGE_PERIOD_5', 
-    label: '% изменения цены за N свечей (период 5)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  },
-  
-  PRICE_CHANGE_PERIOD_10: {
-    code: 'PRICE_CHANGE_PERIOD_10', 
-    label: '% изменения цены за N свечей (период 10)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  },
-  
-  PRICE_CHANGE_PERIOD_20: {
-    code: 'PRICE_CHANGE_PERIOD_20', 
-    label: '% изменения цены за N свечей (период 20)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  },
-  
-  PRICE_CHANGE_PERIOD_30: {
-    code: 'PRICE_CHANGE_PERIOD_30', 
-    label: '% изменения цены за N свечей (период 30)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  },
-  
-  PRICE_CHANGE_PERIOD_50: {
-    code: 'PRICE_CHANGE_PERIOD_50', 
-    label: '% изменения цены за N свечей (период 50)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
-  },
-  
-  PRICE_CHANGE_PERIOD_100: {
-    code: 'PRICE_CHANGE_PERIOD_100', 
-    label: '% изменения цены за N свечей (период 100)', 
-    settings: { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false }
+  PRICE_CHANGE_PERIOD: {
+    code: 'PRICE_CHANGE_PERIOD',
+    label: '% изменения цены за N свечей',
+    settings: {
+      hasTimeframe: true,
+      hasValue: true,
+      hasOperation: true,
+      allowBasic: true,
+      hasReverse: false,
+      periods: [5, 10, 20, 30, 50, 100]
+    }
   },
 
 };

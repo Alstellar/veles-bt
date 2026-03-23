@@ -5,7 +5,7 @@ import type {
   ExitConfig,
   FilterSlot
 } from '../types';
-import { FILTERS_LIBRARY } from '../filtersLibrary';
+import { getIndicatorSettings, resolveIndicator } from '../utils/indicatorMapping';
 
 export interface ValidationSections {
   static: boolean;
@@ -45,19 +45,22 @@ function validateSlotsAgainstLibrary(slots: FilterSlot[]): string | null {
     for (const variant of slot.variants) {
       const indicator = variant.indicator;
       if (!indicator) return 'Индикатор не выбран.';
+      const indicatorLabel = resolveIndicator(indicator).def?.label ?? indicator;
 
-      const rules = FILTERS_LIBRARY[indicator]?.settings;
+      const rules = getIndicatorSettings(indicator);
       if (!rules) continue;
+      const forceBasic = !rules.hasValue && !rules.hasOperation;
+      const isBasic = forceBasic ? true : (rules.allowBasic ? Boolean(variant.basic) : false);
 
-      if (rules.hasValue) {
+      if (rules.hasValue && !isBasic) {
         const value = String(variant.value ?? '').replace(',', '.').trim();
         if (value === '' || !Number.isFinite(Number(value))) {
-          return `Индикатор ${indicator}: заполните корректное числовое значение.`;
+          return `Индикатор ${indicatorLabel}: заполните корректное числовое значение.`;
         }
       }
 
-      if (rules.hasOperation && variant.operation !== 'GREATER' && variant.operation !== 'LESS') {
-        return `Индикатор ${indicator}: выберите условие сравнения (> или <).`;
+      if (rules.hasOperation && !isBasic && variant.operation !== 'GREATER' && variant.operation !== 'LESS') {
+        return `Индикатор ${indicatorLabel}: выберите условие сравнения (> или <).`;
       }
     }
   }

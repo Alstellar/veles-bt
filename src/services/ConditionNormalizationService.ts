@@ -1,5 +1,5 @@
-import { FILTERS_LIBRARY } from '../filtersLibrary';
 import type { Condition, OperationType } from '../types';
+import { getIndicatorSettings, toApiIndicatorCode } from '../utils/indicatorMapping';
 
 interface IndicatorRules {
   hasTimeframe: boolean;
@@ -19,7 +19,7 @@ const DEFAULT_RULES: IndicatorRules = {
 
 function getRules(indicator?: string): IndicatorRules {
   if (!indicator) return DEFAULT_RULES;
-  return FILTERS_LIBRARY[indicator]?.settings ?? DEFAULT_RULES;
+  return getIndicatorSettings(indicator) ?? DEFAULT_RULES;
 }
 
 function normalizeOperation(value: unknown): OperationType {
@@ -28,7 +28,8 @@ function normalizeOperation(value: unknown): OperationType {
 }
 
 export function normalizeCondition(condition: Condition): Condition {
-  const indicator = condition.indicator || (condition.type === 'PRICE' ? 'PRICE' : 'RSI');
+  const rawIndicator = condition.indicator || (condition.type === 'PRICE' ? 'PRICE' : 'RSI');
+  const indicator = toApiIndicatorCode(rawIndicator);
   const rules = getRules(indicator);
   const forceBasic = !rules.hasValue && !rules.hasOperation;
   const basic = forceBasic ? true : (rules.allowBasic ? Boolean(condition.basic) : true);
@@ -46,4 +47,3 @@ export function normalizeCondition(condition: Condition): Condition {
     closed: condition.closed !== undefined ? condition.closed : true
   };
 }
-

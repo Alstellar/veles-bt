@@ -11,6 +11,7 @@ import { STOP_LOSS_OPTIONS, CONDITIONAL_OPTIONS } from '../../utils/profitGen';
 import type { IndicatorDef } from '../../filtersLibrary';
 import type { StopLossConfig, FilterSlot, Condition, IntervalType, OperationType } from '../../types';
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
+import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
 
 interface Props {
   config: StopLossConfig;
@@ -228,16 +229,20 @@ export function StopLoss({ config, onChange }: Props) {
                                 )}
 
                                 {slot.variants.map((variant, vIndex) => {
-                                    const def = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
-                                    const settings = def?.settings || { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false };
+                                    const resolvedIndicator = resolveIndicator(variant.indicator);
+                                    const settings = resolvedIndicator.settings || { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false };
+                                    const periodOptions = resolvedIndicator.periods.map((period) => ({ value: String(period), label: String(period) }));
+                                    const showPeriodSelector = periodOptions.length > 0;
+                                    const selectedPeriodValue = resolvedIndicator.period ? String(resolvedIndicator.period) : null;
                                     const showInputs = (!variant.basic || !settings.allowBasic) && (settings.hasValue || settings.hasOperation);
 
                                     return (
                                         <Paper key={variant.id} withBorder p="xs" radius="sm" bg="white">
                                             <Group align="center" wrap="nowrap" gap="xs">
                                                 <Text fw={700} c="dimmed" size="xs" w={NUMBER_WIDTH} ta="center">{vIndex + 1}</Text>
-                                                <Select placeholder="Индикатор" data={indicatorOptions} value={variant.indicator} onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', v)} searchable allowDeselect={false} style={{ flex: 1 }} size="xs" />
+                                                <Select placeholder="Индикатор" data={indicatorOptions} value={resolvedIndicator.baseCode} onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(v || undefined))} searchable allowDeselect={false} style={{ flex: 1 }} size="xs" />
                                                 {settings.hasTimeframe && <Select placeholder="ТФ" data={intervalOptions} value={variant.interval} onChange={(v) => updateVariant(slot.id, variant.id!, 'interval', v)} allowDeselect={false} w={80} size="xs" />}
+                                                {showPeriodSelector && <Select placeholder="Период" data={periodOptions} value={selectedPeriodValue} onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(resolvedIndicator.baseCode, v ? Number(v) : null))} allowDeselect={false} w={88} size="xs" />}
                                                 <Group gap={4}>
                                                     {settings.hasReverse && <Tooltip label="Реверс"><ActionIcon variant={variant.reverse ? "filled" : "light"} color={variant.reverse ? "orange" : "gray"} size="md" onClick={() => updateVariant(slot.id, variant.id!, 'reverse', !variant.reverse)}><IconArrowsRightLeft size={14}/></ActionIcon></Tooltip>}
                                                     {settings.allowBasic && (settings.hasValue || settings.hasOperation) && <Tooltip label="Настройка"><ActionIcon variant={!variant.basic ? "filled" : "light"} color="blue" size="md" onClick={() => updateVariant(slot.id, variant.id!, 'basic', !variant.basic)}><IconPencil size={14}/></ActionIcon></Tooltip>}

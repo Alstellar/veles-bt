@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 
-import { FILTERS_LIBRARY } from '../filtersLibrary';
 import { parseVelesShareLink } from '../config/velesDomains';
 import { normalizeCondition } from './ConditionNormalizationService';
+import { isSupportedIndicator, toApiIndicatorCode } from '../utils/indicatorMapping';
 import type {
   StaticConfig,
   EntryConfig,
@@ -115,11 +115,6 @@ const cleanNamePrefix = (name: string): string => {
     .trim();
 };
 
-const isSupportedIndicator = (indicator?: string): boolean => {
-  if (!indicator) return false;
-  return Boolean(FILTERS_LIBRARY[indicator]);
-};
-
 const mapCondition = (raw: RawCondition, warnings: string[], scope: string): Condition | null => {
   const indicator = raw.indicator ?? (raw.type === 'PRICE' ? 'PRICE' : undefined);
   if (!isSupportedIndicator(indicator)) {
@@ -130,7 +125,7 @@ const mapCondition = (raw: RawCondition, warnings: string[], scope: string): Con
   return normalizeCondition({
     id: randomId(),
     type: raw.type ?? 'INDICATOR',
-    indicator,
+    indicator: toApiIndicatorCode(indicator),
     interval: (raw.interval as Condition['interval']) ?? 'FIVE_MINUTES',
     basic: raw.basic ?? true,
     value: raw.value === null || raw.value === undefined ? '' : asString(raw.value),

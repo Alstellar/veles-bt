@@ -8,6 +8,7 @@ import { PNL_OPTIONS } from '../../utils/profitGen';
 import type { IndicatorDef } from '../../filtersLibrary';
 import type { Condition, FilterSlot, ProfitSignalConfig, IntervalType, OperationType } from '../../types';
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
+import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
 
 interface Props {
   config: ProfitSignalConfig;
@@ -173,8 +174,14 @@ export function ProfitSignal({ config, onChange }: Props) {
                     )}
 
                     {slot.variants.map((variant, vIndex) => {
-                          const def = (variant.indicator && safeLibrary[variant.indicator]) ? safeLibrary[variant.indicator] : null;
-                          const settings = def?.settings || { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false };
+                          const resolvedIndicator = resolveIndicator(variant.indicator);
+                          const settings = resolvedIndicator.settings || { hasTimeframe: true, hasValue: true, hasOperation: true, allowBasic: true, hasReverse: false };
+                          const periodOptions = resolvedIndicator.periods.map((period) => ({
+                            value: String(period),
+                            label: String(period)
+                          }));
+                          const showPeriodSelector = periodOptions.length > 0;
+                          const selectedPeriodValue = resolvedIndicator.period ? String(resolvedIndicator.period) : null;
                           
                           const showTimeframe = settings.hasTimeframe;
                           const showBasicToggle = settings.allowBasic && (settings.hasValue || settings.hasOperation);
@@ -193,8 +200,8 @@ export function ProfitSignal({ config, onChange }: Props) {
                                     <Select
                                         placeholder="Индикатор"
                                         data={indicatorOptions}
-                                        value={variant.indicator}
-                                        onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', v)}
+                                        value={resolvedIndicator.baseCode}
+                                        onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(v || undefined))}
                                         searchable allowDeselect={false} style={{ flex: 1 }} size="xs"
                                     />
 
@@ -205,6 +212,18 @@ export function ProfitSignal({ config, onChange }: Props) {
                                             value={variant.interval}
                                             onChange={(v) => updateVariant(slot.id, variant.id!, 'interval', v)}
                                             allowDeselect={false} w={80} size="xs"
+                                        />
+                                    )}
+
+                                    {showPeriodSelector && (
+                                        <Select
+                                            placeholder="Период"
+                                            data={periodOptions}
+                                            value={selectedPeriodValue}
+                                            onChange={(v) => updateVariant(slot.id, variant.id!, 'indicator', toApiIndicatorCode(resolvedIndicator.baseCode, v ? Number(v) : null))}
+                                            allowDeselect={false}
+                                            w={88}
+                                            size="xs"
                                         />
                                     )}
 
