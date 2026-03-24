@@ -11,6 +11,27 @@ export interface VelesCondition {
   reverse: boolean;
 }
 
+export interface VelesPriceCondition {
+  type: 'PRICE';
+  value: number;
+  operation: 'GREATER' | 'LESS';
+}
+
+export type VelesEntryCondition = VelesCondition | VelesPriceCondition;
+
+export interface VelesEntriesCountPayload {
+  type: 'OPEN' | 'CLOSE';
+  algorithm: 'LONG' | 'SHORT';
+  exchange: string;
+  symbol: string;
+  conditions: VelesEntryCondition[];
+}
+
+export interface VelesEntriesCountResponse {
+  count: number;
+  entries?: string[];
+}
+
 export interface VelesOrder {
   indent: number;
   volume: number;

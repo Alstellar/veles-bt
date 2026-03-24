@@ -62,6 +62,7 @@ import {
   type MatrixPairError
 } from '../../services/BacktestsMatrixService';
 import { makeBatchId } from '../../utils/batchId';
+import { configHash } from '../../utils/configHash';
 import styles from './BacktestsView.module.css';
 
 interface BacktestsViewProps {
@@ -119,6 +120,30 @@ const normalizeDateToIso = (value: string | null | undefined): string | null => 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
+};
+
+const fnv1a32 = (input: string): number => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+  return hash >>> 0;
+};
+
+const buildQueueFingerprint = (items: QueueItem[]): string => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    const payload = `${i}|${configHash(item.config)}|${item.sourceTemplateUrl ?? ''};`;
+    hash = fnv1a32(`${hash}:${payload}`);
+  }
+  return `${items.length}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 };
 
 const compareNullableNumber = (a: number | null, b: number | null, dir: AssetsSortDir): number => {
@@ -634,12 +659,59 @@ export function BacktestsView({
         return;
       }
 
-      const nextIndex = Math.max(0, Math.min(runtime.nextIndex, regenerated.items.length));
-      const preparedItems: QueueItem[] = regenerated.items.map((item, index) => (
-        index < nextIndex
-          ? { ...item, status: 'FINISHED' }
-          : item
-      ));
+      let preparedItems: QueueItem[] = regenerated.items;
+      const runOptions: Parameters<typeof run>[2] = {};
+      const regeneratedFingerprint = buildQueueFingerprint(regenerated.items);
+      const runtimeFingerprint = runtime.fingerprint;
+      const canRestoreRuntimeState =
+        runtime.version === 2 &&
+        !!runtimeFingerprint &&
+        runtimeFingerprint === regeneratedFingerprint &&
+        runtime.items &&
+        runtime.items.length === regenerated.items.length;
+
+      if (runtime.version === 2 && runtimeFingerprint && runtimeFingerprint !== regeneratedFingerprint) {
+        preparedItems = regenerated.items;
+      } else if (canRestoreRuntimeState) {
+        const activeIndices = new Set((runtime.activeRuns ?? []).map((item) => item.index));
+        preparedItems = regenerated.items.map((item, index) => {
+          const runtimeItem = runtime.items?.[index];
+          if (!runtimeItem) return item;
+
+          const runtimeStatus = runtimeItem.status;
+          const status: QueueItem['status'] =
+            runtimeStatus === 'RUNNING' ||
+            runtimeStatus === 'FINISHED' ||
+            runtimeStatus === 'ERROR' ||
+            runtimeStatus === 'TIMEOUT'
+              ? runtimeStatus
+              : 'PENDING';
+
+          const normalizedStatus = status === 'RUNNING' && !activeIndices.has(index)
+            ? 'PENDING'
+            : status;
+
+          return {
+            ...item,
+            status: normalizedStatus,
+            error: runtimeItem.error,
+            resultId: runtimeItem.resultId,
+            sourceTemplateUrl: item.sourceTemplateUrl ?? runtimeItem.sourceTemplateUrl
+          };
+        });
+
+        runOptions.resumeActiveRuns = runtime.activeRuns ?? [];
+        runOptions.resumeLastLaunchAt = runtime.lastLaunchAt ?? 0;
+        runOptions.resumeFingerprint = runtimeFingerprint;
+      } else {
+        const nextIndex = Math.max(0, Math.min(runtime.nextIndex, regenerated.items.length));
+        preparedItems = regenerated.items.map((item, index) => (
+          index < nextIndex
+            ? { ...item, status: 'FINISHED' }
+            : item
+        ));
+        runOptions.resumeFrom = nextIndex;
+      }
 
       setExchange(source.exchange);
       setDateFrom(new Date(source.dateFrom));
@@ -669,7 +741,7 @@ export function BacktestsView({
       });
 
       onOpenLiveResultsModal(`${batch.namePrefix} (${batch.id})`);
-      run(batchId, preparedItems, { resumeFrom: nextIndex });
+      run(batchId, preparedItems, runOptions);
     },
     [run, onOpenLiveResultsModal]
   );

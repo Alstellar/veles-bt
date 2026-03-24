@@ -1,13 +1,26 @@
 import { Tabs, Text, ThemeIcon, Group, Paper, Select } from '@mantine/core';
 import { IconAbacus } from '@tabler/icons-react';
 import type { OrderState, GridMode } from '../../types';
+import type { Condition } from '../../types';
 import { SimpleMode } from './SimpleMode';
 import { SignalMode } from './SignalMode';
 import { CustomMode } from './CustomMode';
+import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
 
 interface Props {
   state: OrderState;
   onChange: (newState: OrderState) => void;
+  resolveSignalProbeState?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => SignalProbeViewState;
+  onSignalProbeRequest?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => void;
+  onSignalProbeDirty?: (scope: string, variantId: string) => void;
 }
 
 // Генератор пресетов
@@ -26,7 +39,13 @@ const PULL_UP_PRESETS = [
 ].map(val => ({ value: val, label: `${val}%` })); // <--- ИСПРАВЛЕНО: Value чистое, Label с %
 
 
-export function OrderSettings({ state, onChange }: Props) {
+export function OrderSettings({
+  state,
+  onChange,
+  resolveSignalProbeState,
+  onSignalProbeRequest,
+  onSignalProbeDirty
+}: Props) {
   
   const handleTabChange = (val: string | null) => {
     if (val) onChange({ ...state, mode: val as GridMode });
@@ -97,7 +116,10 @@ export function OrderSettings({ state, onChange }: Props) {
         <Tabs.Panel value="SIGNAL" pt="xs">
           <SignalMode 
             config={state.signal} 
-            onChange={(newSignal) => onChange({ ...state, signal: newSignal })} 
+            onChange={(newSignal) => onChange({ ...state, signal: newSignal })}
+            resolveSignalProbeState={resolveSignalProbeState}
+            onSignalProbeRequest={onSignalProbeRequest}
+            onSignalProbeDirty={onSignalProbeDirty}
           />
         </Tabs.Panel>
       </Tabs>

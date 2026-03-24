@@ -1,5 +1,5 @@
 // src/components/views/BacktesterView.tsx
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Container, Title, Button, Stack, Group, Paper
 } from '@mantine/core';
@@ -17,8 +17,18 @@ import { ConfigGenerator } from '../../services/ConfigGenerator';
 import { ValidatorService } from '../../services/ValidatorService';
 import { StorageService } from '../../services/StorageService';
 import { fetchLimitations } from '../../services/apiService';
+import { ConnectionService } from '../../services/ConnectionService';
+import { VelesService } from '../../services/VelesService';
+import {
+  buildSignalProbeFingerprint,
+  buildSignalProbePayload,
+  normalizeSignalProbeSymbol,
+  type SignalProbeRequestType,
+  type SignalProbeStoredState,
+  type SignalProbeViewState
+} from '../../services/SignalProbeService';
 import type { BacktestQueueController, QueueItem } from '../../hooks/useBacktestQueue';
-import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolLimitation } from '../../types';
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolLimitation, Condition } from '../../types';
 import { makeBatchId } from '../../utils/batchId';
 import styles from './BacktesterView.module.css';
 
@@ -153,6 +163,11 @@ function hasSymbolInLimitations(limitations: SymbolLimitation[], userSymbol: str
   });
 }
 
+function makeProbeKey(scope: string, variantId?: string): string | null {
+  if (!variantId) return null;
+  return `${scope}:${variantId}`;
+}
+
 export function BacktesterView({
   staticConfig, setStaticConfig,
   entryConfig, setEntryConfig,
@@ -175,6 +190,169 @@ export function BacktesterView({
 
   const [activeSection, setActiveSection] = useState<string>('cfg-static');
   const [isSymbolValid, setIsSymbolValid] = useState<boolean | null>(null);
+  const [signalProbeStates, setSignalProbeStates] = useState<Record<string, SignalProbeStoredState>>({});
+
+  const resolveSignalProbeState = useCallback(
+    (
+      scope: string,
+      variant: Condition,
+      requestType: SignalProbeRequestType
+    ): SignalProbeViewState => {
+      const key = makeProbeKey(scope, variant.id);
+      if (!key) return { status: 'idle' };
+
+      const symbol = String(staticConfig.symbol || '').trim();
+      if (!symbol) return { status: 'idle' };
+
+      const fingerprint = buildSignalProbeFingerprint({
+        requestType,
+        algorithm: staticConfig.algo,
+        exchange: staticConfig.exchange,
+        symbol,
+        condition: variant
+      });
+      const state = signalProbeStates[key];
+
+      if (!state || state.fingerprint !== fingerprint) {
+        return { status: 'idle' };
+      }
+
+      if (state.status === 'loading') {
+        return { status: 'loading' };
+      }
+
+      if (state.status === 'ready' && typeof state.count === 'number') {
+        return { status: 'ready', count: state.count };
+      }
+
+      return { status: 'error', error: state.error || 'Ошибка запроса' };
+    },
+    [signalProbeStates, staticConfig.algo, staticConfig.exchange, staticConfig.symbol]
+  );
+
+  const markSignalProbeDirty = useCallback((scope: string, variantId: string) => {
+    const key = makeProbeKey(scope, variantId);
+    if (!key) return;
+
+    setSignalProbeStates((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  const requestSignalProbe = useCallback(
+    async (
+      scope: string,
+      variant: Condition,
+      requestType: SignalProbeRequestType
+    ) => {
+      const key = makeProbeKey(scope, variant.id);
+      if (!key) return;
+
+      const symbol = normalizeSignalProbeSymbol(String(staticConfig.symbol || '').trim());
+      const fingerprint = buildSignalProbeFingerprint({
+        requestType,
+        algorithm: staticConfig.algo,
+        exchange: staticConfig.exchange,
+        symbol,
+        condition: variant
+      });
+
+      setSignalProbeStates((prev) => ({
+        ...prev,
+        [key]: {
+          status: 'loading',
+          fingerprint,
+          updatedAt: Date.now()
+        }
+      }));
+
+      if (!symbol) {
+        setSignalProbeStates((prev) => {
+          const current = prev[key];
+          if (!current || current.status !== 'loading' || current.fingerprint !== fingerprint) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [key]: {
+              status: 'error',
+              fingerprint,
+              error: 'Укажите тикер',
+              updatedAt: Date.now()
+            }
+          };
+        });
+        return;
+      }
+
+      const connection = await ConnectionService.getConnection({ force: true });
+      if (!connection.success) {
+        const message = ConnectionService.reasonToMessage(connection.reason);
+        setSignalProbeStates((prev) => {
+          const current = prev[key];
+          if (!current || current.status !== 'loading' || current.fingerprint !== fingerprint) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [key]: {
+              status: 'error',
+              fingerprint,
+              error: message,
+              updatedAt: Date.now()
+            }
+          };
+        });
+        return;
+      }
+
+      const payload = buildSignalProbePayload({
+        requestType,
+        algorithm: staticConfig.algo,
+        exchange: staticConfig.exchange,
+        symbol,
+        condition: variant
+      });
+      const response = await VelesService.countEntries(
+        connection.connection.tabId,
+        connection.connection.token,
+        payload
+      );
+
+      setSignalProbeStates((prev) => {
+        const current = prev[key];
+        if (!current || current.status !== 'loading' || current.fingerprint !== fingerprint) {
+          return prev;
+        }
+
+        if (response.success && typeof response.count === 'number') {
+          return {
+            ...prev,
+            [key]: {
+              status: 'ready',
+              fingerprint,
+              count: response.count,
+              updatedAt: Date.now()
+            }
+          };
+        }
+
+        return {
+          ...prev,
+          [key]: {
+            status: 'error',
+            fingerprint,
+            error: response.error || 'Не удалось получить количество сигналов',
+            updatedAt: Date.now()
+          }
+        };
+      });
+    },
+    [staticConfig.algo, staticConfig.exchange, staticConfig.symbol]
+  );
 
   useEffect(() => {
     if (!resumeBatchId) return;
@@ -432,13 +610,32 @@ export function BacktesterView({
               <StaticSettings config={staticConfig} onChange={setStaticConfig} />
             </div>
             <div id="cfg-entry" className={styles.sectionGlass}>
-              <EntrySettings config={entryConfig} onChange={setEntryConfig} />
+              <EntrySettings
+                config={entryConfig}
+                onChange={setEntryConfig}
+                probeScope="entry"
+                resolveSignalProbeState={resolveSignalProbeState}
+                onSignalProbeRequest={requestSignalProbe}
+                onSignalProbeDirty={markSignalProbeDirty}
+              />
             </div>
             <div id="cfg-order" className={styles.sectionGlass}>
-              <OrderSettings state={orderState} onChange={setOrderState} />
+              <OrderSettings
+                state={orderState}
+                onChange={setOrderState}
+                resolveSignalProbeState={resolveSignalProbeState}
+                onSignalProbeRequest={requestSignalProbe}
+                onSignalProbeDirty={markSignalProbeDirty}
+              />
             </div>
             <div id="cfg-exit" className={styles.sectionGlass}>
-              <ExitSettings config={exitConfig} onChange={setExitConfig} />
+              <ExitSettings
+                config={exitConfig}
+                onChange={setExitConfig}
+                resolveSignalProbeState={resolveSignalProbeState}
+                onSignalProbeRequest={requestSignalProbe}
+                onSignalProbeDirty={markSignalProbeDirty}
+              />
             </div>
 
             <div id="cfg-run" className={styles.sectionGlass}>

@@ -4,14 +4,32 @@ import { ProfitSingle } from './ProfitSingle';
 import { ProfitCustom } from './ProfitCustom';
 import { ProfitSignal } from './ProfitSignal';
 import { StopLoss } from './StopLoss';
-import type { ExitConfig, ProfitMode } from '../../types';
+import type { ExitConfig, ProfitMode, Condition } from '../../types';
+import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
 
 interface Props {
   config: ExitConfig;
   onChange: (cfg: ExitConfig) => void;
+  resolveSignalProbeState?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => SignalProbeViewState;
+  onSignalProbeRequest?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => void;
+  onSignalProbeDirty?: (scope: string, variantId: string) => void;
 }
 
-export function ExitSettings({ config, onChange }: Props) {
+export function ExitSettings({
+  config,
+  onChange,
+  resolveSignalProbeState,
+  onSignalProbeRequest,
+  onSignalProbeDirty
+}: Props) {
   const handleModeChange = (val: string | null) => {
     if (!val) return;
     onChange({ ...config, profitMode: val as ProfitMode });
@@ -58,6 +76,10 @@ export function ExitSettings({ config, onChange }: Props) {
                 <ProfitSignal
                   config={config.profitSignal}
                   onChange={(signal) => onChange({ ...config, profitSignal: signal })}
+                  probeScope="profit_signal"
+                  resolveSignalProbeState={resolveSignalProbeState}
+                  onSignalProbeRequest={onSignalProbeRequest}
+                  onSignalProbeDirty={onSignalProbeDirty}
                 />
               )}
             </div>
@@ -66,6 +88,10 @@ export function ExitSettings({ config, onChange }: Props) {
           <StopLoss
             config={config.stopLoss}
             onChange={(sl) => onChange({ ...config, stopLoss: sl })}
+            probeScope="stop_loss"
+            resolveSignalProbeState={resolveSignalProbeState}
+            onSignalProbeRequest={onSignalProbeRequest}
+            onSignalProbeDirty={onSignalProbeDirty}
           />
         </Stack>
       </Paper>

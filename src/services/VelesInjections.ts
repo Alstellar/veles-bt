@@ -76,3 +76,28 @@ export async function injectedGetStatisticsPage(page: number, size: number) {
     return { success: false, error: response.status };
   } catch (e: any) { return { success: false, error: e.message }; }
 }
+
+export async function injectedCountEntries(payload: any, token: string) {
+  try {
+    const response = await fetch('/api/bots/entries', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'x-csrf-token': token,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify(payload)
+    });
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text };
+    }
+    return { success: response.ok, status: response.status, body: json };
+  } catch (err: any) {
+    return { success: false, status: 0, error: err?.message || 'Failed to fetch' };
+  }
+}

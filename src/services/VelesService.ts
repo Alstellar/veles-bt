@@ -3,7 +3,9 @@ import type {
   VelesConfigPayload,
   BacktestStatusResponse,
   BacktestStats,
-  UserProfile
+  UserProfile,
+  VelesEntriesCountPayload,
+  VelesEntriesCountResponse
 } from '../types/veles';
 import { VELES_HOST_PATTERNS, getVelesOriginFromUrl } from '../config/velesDomains';
 
@@ -12,7 +14,8 @@ import {
   injectedCheckStatus,
   injectedGetStats,
   injectedGetProfile,
-  injectedGetStatisticsPage
+  injectedGetStatisticsPage,
+  injectedCountEntries
 } from './VelesInjections';
 
 export class VelesService {
@@ -130,5 +133,30 @@ export class VelesService {
     }
 
     return [];
+  }
+
+  static async countEntries(
+    tabId: number,
+    token: string,
+    payload: VelesEntriesCountPayload
+  ): Promise<{ success: boolean; status: number; count?: number; error?: string }> {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: injectedCountEntries,
+      args: [payload, token]
+    });
+
+    const res = result[0]?.result;
+    const body = res?.body as VelesEntriesCountResponse | undefined;
+    if (res?.success && typeof body?.count === 'number') {
+      return { success: true, status: res.status, count: body.count };
+    }
+
+    const bodyError = typeof body === 'object' && body !== null ? JSON.stringify(body) : undefined;
+    return {
+      success: false,
+      status: res?.status || 0,
+      error: res?.error || bodyError || 'Failed to count entries'
+    };
   }
 }

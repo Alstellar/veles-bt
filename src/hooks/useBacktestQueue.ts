@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { VelesService } from '../services/VelesService';
 import type { VelesConfigPayload } from '../types/veles';
-import type { BatchResumeSource, BatchStopReason, StaticConfig } from '../types';
+import type { BatchResumeSource, BatchRuntimeActiveRun, BatchStopReason, StaticConfig } from '../types';
 import { StorageService } from '../services/StorageService';
 import { DatabaseService } from '../services/DatabaseService';
 import type { BacktestResultItem } from '../types';
@@ -25,16 +25,41 @@ interface ExecutionContext {
   token: string;
 }
 
+interface ActiveRunState extends BatchRuntimeActiveRun {
+  testName: string;
+}
+
 interface RunOptions {
   resumeFrom?: number;
+  resumeActiveRuns?: BatchRuntimeActiveRun[];
+  resumeLastLaunchAt?: number;
+  resumeFingerprint?: string;
+}
+
+type LaunchRetryReason = 'RATE_LIMIT_429' | 'QUEUE_LIMIT_412' | 'NETWORK_FAILED_FETCH';
+
+interface LaunchRetryState {
+  index: number;
+  reason: LaunchRetryReason;
+  attempts: number;
+  nextRetryAt: number;
+  waitForActiveBelow: number | null;
 }
 
 const RETRY_WAIT_MS = 60000;
 const RETRY_MAX_ATTEMPTS = 3;
 const MIN_TEST_INTERVAL_MS = 31000;
+const RETRY_429_COOLDOWN_MS = 35000;
+const NETWORK_RETRY_WAIT_MS = 60000;
+const NETWORK_MAX_RETRY_ATTEMPTS = 10;
+const STATUS_POLL_INTERVAL_MS = 5000;
+const MAX_TEST_DURATION_MINUTES = 60;
+const MAX_TEST_DURATION_MS = MAX_TEST_DURATION_MINUTES * 60 * 1000;
+const MAX_CONCURRENT_TESTS = 5;
 const WAIT_CHUNK_MS = 250;
 const LOCK_HEARTBEAT_MS = 2000;
 const FREEZE_WARN_THRESHOLD_MS = 60000;
+const RUNTIME_VERSION = 2;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,6 +73,53 @@ function isNoTabError(error: unknown): boolean {
 function isUnauthorizedError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   return msg.includes('Unauthorized') || msg.includes('"status":401') || msg.includes('401');
+}
+
+function hasHttpStatus(rawMessage: string, code: number): boolean {
+  if (new RegExp(`"status"\\s*:\\s*${code}`).test(rawMessage)) return true;
+  if (new RegExp(`\\(${code}\\)`).test(rawMessage)) return true;
+  return false;
+}
+
+function isRateLimit429(rawMessage: string): boolean {
+  const normalized = rawMessage.toLowerCase();
+  return (
+    hasHttpStatus(rawMessage, 429) ||
+    normalized.includes('too many requests')
+  );
+}
+
+function isQueueLimit412(rawMessage: string): boolean {
+  const normalized = rawMessage.toLowerCase();
+  return (
+    hasHttpStatus(rawMessage, 412) ||
+    normalized.includes('precondition failed') ||
+    normalized.includes('достигнут лимит')
+  );
+}
+
+function isFailedToFetchError(rawMessage: string): boolean {
+  const normalized = rawMessage.toLowerCase();
+  return (
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror') ||
+    normalized.includes('network request failed')
+  );
+}
+
+function isTerminalStatus(status: QueueItem['status']): boolean {
+  return status === 'FINISHED' || status === 'ERROR' || status === 'TIMEOUT';
+}
+
+function calculateCompletedTests(items: QueueItem[]): number {
+  return items.reduce((acc, item) => (isTerminalStatus(item.status) ? acc + 1 : acc), 0);
+}
+
+function normalizeQueueStatus(status: unknown): QueueItem['status'] {
+  if (status === 'RUNNING' || status === 'FINISHED' || status === 'ERROR' || status === 'TIMEOUT') {
+    return status;
+  }
+  return 'PENDING';
 }
 
 function buildResumeQueue(batchId: string, resumeSource: BatchResumeSource): QueueItem[] {
@@ -72,55 +144,11 @@ function buildResumeQueue(batchId: string, resumeSource: BatchResumeSource): Que
   }));
 }
 
-const LOG_PREFIXES = ['🚀', '⏳', '📊', '✅', '⚠️', '⛔', '❌', '🛑', '🔐', '🔄'] as const;
+const LOG_PREFIXES = ['??', '?', '??', '?', '??', '?', '?', '??', '??', '??'] as const;
 
 function decorateQueueLogMessage(message: string): string {
   if (LOG_PREFIXES.some((prefix) => message.startsWith(`${prefix} `))) {
     return message;
-  }
-
-  const text = message.trim();
-
-  if (
-    /^Запуск очереди:/u.test(text) ||
-    /^Тест \d+\/\d+: запуск/u.test(text) ||
-    /^Продолжаю выполнение задачи/u.test(text) ||
-    /^Останавливаю активную задачу/u.test(text) ||
-    /^Предыдущая задача остановлена/u.test(text)
-  ) {
-    return `🚀 ${message}`;
-  }
-
-  if (
-    /выполняется \(ID:/u.test(text) ||
-    /^Пауза \d+с/u.test(text) ||
-    /через \d+с/u.test(text)
-  ) {
-    return `⏳ ${message}`;
-  }
-
-  if (/сбор статистики/u.test(text) || /повторный запрос статистики/u.test(text)) {
-    return `📊 ${message}`;
-  }
-
-  if (/^Очередь завершена\./u.test(text) || /: готово$/u.test(text)) {
-    return `✅ ${message}`;
-  }
-
-  if (/Потеря авторизации/u.test(text)) {
-    return `🔐 ${message}`;
-  }
-
-  if (/Подключение восстановлено/u.test(text) || /Повторяю запуск/u.test(text)) {
-    return `🔄 ${message}`;
-  }
-
-  if (/остановлен/u.test(text) || /Остановлено/u.test(text) || /команда остановки/u.test(text)) {
-    return `🛑 ${message}`;
-  }
-
-  if (/^Ошибка:/u.test(text) || /^Критическая ошибка:/u.test(text) || /^Не удалось/u.test(text)) {
-    return `❌ ${message}`;
   }
 
   return message;
@@ -136,6 +164,42 @@ function buildTestLaunchLogMessage(testName: string, item: QueueItem): string {
   return templateLink
     ? `${testName}: запуск ${safeSymbol} на шаблоне ${templateLink}...`
     : `${testName}: запуск ${safeSymbol}...`;
+}
+
+function toRuntimeItem(item: QueueItem) {
+  return {
+    id: item.id,
+    status: item.status,
+    error: item.error,
+    resultId: item.resultId,
+    sourceTemplateUrl: item.sourceTemplateUrl
+  };
+}
+
+function fnv1a32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+  return hash >>> 0;
+}
+
+function buildQueueFingerprint(items: QueueItem[]): string {
+  let hash = 0x811c9dc5;
+
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    const payload = `${i}|${configHash(item.config)}|${item.sourceTemplateUrl ?? ''};`;
+    hash = fnv1a32(`${hash}:${payload}`);
+  }
+
+  return `${items.length}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 export function useBacktestQueue() {
@@ -154,6 +218,8 @@ export function useBacktestQueue() {
   const originalTitleRef = useRef(document.title);
   const ownerIdRef = useRef(`runner_${crypto.randomUUID()}`);
   const currentBatchIdRef = useRef<string | null>(null);
+  const lastLogTimestampRef = useRef<string>(new Date().toLocaleTimeString('ru-RU', { hour12: false }));
+  const statusSnapshotRef = useRef<{ items: QueueItem[]; activeCount: number } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -162,8 +228,17 @@ export function useBacktestQueue() {
     };
   }, []);
 
+  const buildQueueStatusMessage = useCallback((ts: string, items: QueueItem[], activeCount: number): string => {
+    const completed = calculateCompletedTests(items);
+    const total = items.length;
+    const errors = items.reduce((acc, item) => (item.status === 'ERROR' ? acc + 1 : acc), 0);
+    const queueBusy = Math.max(0, Math.min(activeCount, MAX_CONCURRENT_TESTS));
+    return `[${ts}] Завершено ${completed}/${total} | Очередь ${queueBusy}/${MAX_CONCURRENT_TESTS} | Ошибки ${errors}`;
+  }, []);
+
   const addLog = useCallback((msg: string) => {
     const ts = new Date().toLocaleTimeString('ru-RU', { hour12: false });
+    lastLogTimestampRef.current = ts;
     const decorated = decorateQueueLogMessage(msg);
     const line = `[${ts}] ${decorated}`;
 
@@ -173,8 +248,22 @@ export function useBacktestQueue() {
       return next.slice(next.length - MAX_LOGS);
     });
 
-    setStatusMessage(line);
-  }, []);
+    const snapshot = statusSnapshotRef.current;
+    if (snapshot) {
+      setStatusMessage(buildQueueStatusMessage(ts, snapshot.items, snapshot.activeCount));
+    } else {
+      setStatusMessage(line);
+    }
+  }, [buildQueueStatusMessage]);
+
+  const setLiveQueueStatus = useCallback((items: QueueItem[], activeCount: number) => {
+    const ts = lastLogTimestampRef.current;
+    statusSnapshotRef.current = {
+      items: items.map((item) => ({ ...item })),
+      activeCount
+    };
+    setStatusMessage(buildQueueStatusMessage(ts, items, activeCount));
+  }, [buildQueueStatusMessage]);
 
   const addItems = useCallback((items: QueueItem[]) => {
     setQueue((prev) => [...prev, ...items]);
@@ -185,6 +274,7 @@ export function useBacktestQueue() {
     setProgress({ current: 0, total: 0 });
     setCurrentBatchIds([]);
     setStatusMessage('');
+    statusSnapshotRef.current = null;
     setLogs([]);
     document.title = originalTitleRef.current;
   }, []);
@@ -205,12 +295,28 @@ export function useBacktestQueue() {
   };
 
   const saveRuntimeCheckpoint = useCallback(
-    async (batchId: string, nextIndex: number, total: number, status: 'RUN' | 'STOP') => {
+    async (
+      batchId: string,
+      items: QueueItem[],
+      activeRuns: Map<number, ActiveRunState>,
+      status: 'RUN' | 'STOP',
+      lastLaunchAt: number
+    ) => {
       await StorageService.saveBatchRuntime({
         batchId,
-        nextIndex,
-        total,
+        version: RUNTIME_VERSION,
+        items: items.map(toRuntimeItem),
+        nextIndex: calculateCompletedTests(items),
+        total: items.length,
         status,
+        fingerprint: buildQueueFingerprint(items),
+        activeRuns: Array.from(activeRuns.values()).map((run) => ({
+          index: run.index,
+          velesId: run.velesId,
+          launchedAt: run.launchedAt,
+          launchAttemptStartedAt: run.launchAttemptStartedAt
+        })),
+        lastLaunchAt,
         updatedAt: Date.now()
       });
     },
@@ -252,8 +358,8 @@ export function useBacktestQueue() {
           attempts: RETRY_MAX_ATTEMPTS
         }, batchId);
 
-          return { context: null, reason };
-        }
+        return { context: null, reason };
+      }
 
       return { context: null, reason: 'unauthorized' };
     },
@@ -396,9 +502,9 @@ export function useBacktestQueue() {
         if (currentBatchIdRef.current === batchId) {
           addLog(`Продолжаю выполнение задачи ${batchId}.`);
           return;
-        } else {
-          addLog('Уже выполняется другой запуск. Параллельный запуск заблокирован.');
         }
+
+        addLog('Уже выполняется другой запуск. Параллельный запуск заблокирован.');
         await StorageService.updateBatchRunState(batchId, 'STOP', {
           stopReason: 'lock_busy'
         });
@@ -410,12 +516,13 @@ export function useBacktestQueue() {
       stopRef.current = false;
       currentBatchIdRef.current = batchId;
       setCurrentBatchId(batchId);
+      statusSnapshotRef.current = null;
       setLogs([]);
       setCurrentBatchIds([]);
       originalTitleRef.current = document.title;
       await QueueLockService.clearStopRequest(batchId);
 
-      let itemsToRun = initialItems || queue;
+      let itemsToRun = (initialItems || queue).map((item) => ({ ...item }));
       if (itemsToRun.length === 0) {
         addLog('Очередь пуста.');
         await QueueLockService.release(ownerIdRef.current, batchId);
@@ -423,12 +530,16 @@ export function useBacktestQueue() {
         return;
       }
 
-      if (initialItems) {
-        setQueue(initialItems);
+      const resumeFrom = Math.max(0, Math.min(options?.resumeFrom ?? 0, itemsToRun.length));
+      if (resumeFrom > 0) {
+        itemsToRun = itemsToRun.map((item, index) => {
+          if (index >= resumeFrom || isTerminalStatus(item.status)) return item;
+          return { ...item, status: 'FINISHED' as const, error: undefined };
+        });
       }
+      const queueFingerprint = buildQueueFingerprint(itemsToRun);
 
-      const startIndex = Math.max(0, Math.min(options?.resumeFrom ?? 0, itemsToRun.length));
-      let nextIndex = startIndex;
+      setQueue([...itemsToRun]);
 
       try {
         const ensureLockOwnership = async (): Promise<boolean> => {
@@ -461,38 +572,35 @@ export function useBacktestQueue() {
                 ? 'Токен Veles не найден'
                 : 'Авторизация в Veles не подтверждена';
 
+          const completedOnFail = calculateCompletedTests(itemsToRun);
           await StorageService.updateBatchRunState(batchId, 'STOP', {
             stopReason: resolved.reason,
-            completedTests: Math.max(startIndex, batchMeta?.completedTests ?? 0),
+            completedTests: Math.max(completedOnFail, batchMeta?.completedTests ?? 0),
             lastError: connectionError
           });
 
-          await saveRuntimeCheckpoint(batchId, startIndex, itemsToRun.length, 'STOP');
+          await saveRuntimeCheckpoint(batchId, itemsToRun, new Map<number, ActiveRunState>(), 'STOP', 0);
           addLog('Выполнение остановлено: откройте Veles и продолжите запуск из истории.');
           return;
         }
 
         const runContextRef = { current: resolved.context };
-
-        await StorageService.updateBatchRunState(batchId, 'RUN', {
-          completedTests: startIndex,
-          stopReason: undefined,
-          lastError: undefined
-        });
-
-        await saveRuntimeCheckpoint(batchId, startIndex, itemsToRun.length, 'RUN');
-
         const total = itemsToRun.length;
-        setProgress({ current: startIndex, total });
-        addLog(`Запуск очереди: ${startIndex}/${total}`);
-
+        const activeRuns = new Map<number, ActiveRunState>();
+        const pendingIndices: number[] = [];
         let forcedStopReason: BatchStopReason | null = null;
         let forcedStopMessage: string | undefined;
+        let launchRetryState: LaunchRetryState | null = null;
+        const launchNetworkRetryAttempts = new Map<number, number>();
+        const statusNetworkRetryAttempts = new Map<number, number>();
+        const statusNetworkRetryAt = new Map<number, number>();
+
         const markLockLost = () => {
           if (forcedStopReason) return;
           forcedStopReason = 'lock_lost';
           forcedStopMessage = 'Тестирование остановлено: потерян lock очереди (вкладка была неактивна или запущен другой процесс).';
         };
+
         const waitWithLockHeartbeat = async (ms: number): Promise<boolean> => {
           const completed = await waitInterruptible(ms, {
             onHeartbeat: touchLock,
@@ -509,14 +617,256 @@ export function useBacktestQueue() {
           return completed;
         };
 
-        for (let i = startIndex; i < total; i++) {
+        const commitQueueState = () => {
+          setQueue([...itemsToRun]);
+        };
+
+        const setQueueItem = (index: number, patch: Partial<QueueItem>) => {
+          const current = itemsToRun[index];
+          if (!current) return;
+          itemsToRun[index] = { ...current, ...patch };
+          commitQueueState();
+        };
+
+        const refreshProgressUi = () => {
+          const completed = calculateCompletedTests(itemsToRun);
+          const percent = Math.round((completed / total) * 100);
+          document.title = `[${percent}%] Тесты ${completed}/${total}`;
+          setProgress({ current: completed, total });
+        };
+
+        const refreshLiveQueueStatus = () => {
+          setLiveQueueStatus(itemsToRun, activeRuns.size);
+        };
+
+        const queueContains = (target: number): boolean => pendingIndices.includes(target);
+
+        const movePendingToFront = (index: number) => {
+          const pos = pendingIndices.indexOf(index);
+          if (pos > -1) {
+            pendingIndices.splice(pos, 1);
+          }
+          pendingIndices.unshift(index);
+        };
+
+        const enqueuePending = (index: number, front = false) => {
+          if (activeRuns.has(index)) return;
+          if (isTerminalStatus(itemsToRun[index]?.status ?? 'PENDING')) return;
+          if (queueContains(index)) return;
+          if (front) pendingIndices.unshift(index);
+          else pendingIndices.push(index);
+        };
+
+        const clearLaunchRetryState = () => {
+          launchRetryState = null;
+        };
+
+        const clearStatusNetworkRetry = (index: number) => {
+          statusNetworkRetryAttempts.delete(index);
+          statusNetworkRetryAt.delete(index);
+        };
+
+        const scheduleLaunchRetry = (
+          index: number,
+          reason: LaunchRetryReason,
+          attempts: number,
+          nextRetryAt: number,
+          waitForActiveBelow: number | null
+        ) => {
+          launchRetryState = {
+            index,
+            reason,
+            attempts,
+            nextRetryAt,
+            waitForActiveBelow
+          };
+          movePendingToFront(index);
+        };
+
+        const isLaunchRetryBlocked = (nowTs: number): boolean => {
+          if (!launchRetryState) return false;
+
+          const item = itemsToRun[launchRetryState.index];
+          if (!item || item.status !== 'PENDING' || isTerminalStatus(item.status)) {
+            clearLaunchRetryState();
+            return false;
+          }
+
+          movePendingToFront(launchRetryState.index);
+
+          if (launchRetryState.waitForActiveBelow !== null && activeRuns.size >= launchRetryState.waitForActiveBelow) {
+            return true;
+          }
+
+          if (nowTs < launchRetryState.nextRetryAt) {
+            return true;
+          }
+
+          return false;
+        };
+
+        const resumeFingerprintsMatch =
+          !!options?.resumeFingerprint &&
+          options.resumeFingerprint === queueFingerprint;
+        const restoreActiveRuns = resumeFingerprintsMatch
+          ? (options?.resumeActiveRuns ?? [])
+          : [];
+        if (!resumeFingerprintsMatch && (options?.resumeActiveRuns?.length ?? 0) > 0) {
+          addLog('Resume guard: active runs skipped because runtime fingerprint does not match current queue.');
+        }
+        for (const runState of restoreActiveRuns) {
+          const index = runState.index;
+          if (index < 0 || index >= total) continue;
+          if (!Number.isFinite(runState.velesId) || runState.velesId <= 0) continue;
+          if (isTerminalStatus(itemsToRun[index].status)) continue;
+
+          const testName = `Тест ${index + 1}/${total}`;
+          activeRuns.set(index, {
+            ...runState,
+            testName,
+            launchedAt: runState.launchedAt || Date.now(),
+            launchAttemptStartedAt: runState.launchAttemptStartedAt || runState.launchedAt || Date.now()
+          });
+          itemsToRun[index] = { ...itemsToRun[index], status: 'RUNNING', error: undefined };
+        }
+
+        if (activeRuns.size > 0) {
+          const oldestLaunchAt = Math.min(...Array.from(activeRuns.values()).map((run) => run.launchedAt || Date.now()));
+          const restoredAgeMinutes = Math.max(0, Math.floor((Date.now() - oldestLaunchAt) / 60000));
+          addLog(`Resume: restored ${activeRuns.size} active run(s), oldest age ~${restoredAgeMinutes} min.`);
+        }
+
+        for (let i = 0; i < total; i++) {
+          if (itemsToRun[i].status === 'RUNNING' && !activeRuns.has(i)) {
+            itemsToRun[i] = { ...itemsToRun[i], status: 'PENDING', error: undefined };
+          }
+        }
+
+        for (let i = 0; i < total; i++) {
+          if (itemsToRun[i].status === 'PENDING') {
+            pendingIndices.push(i);
+          }
+        }
+
+        let lastLaunchAt = Math.max(0, options?.resumeLastLaunchAt ?? 0);
+        let lastPollAt = 0;
+
+        commitQueueState();
+        refreshProgressUi();
+        refreshLiveQueueStatus();
+
+        await StorageService.updateBatchRunState(batchId, 'RUN', {
+          completedTests: calculateCompletedTests(itemsToRun),
+          stopReason: undefined,
+          lastError: undefined
+        });
+
+        await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+        addLog(`Запуск очереди: ${calculateCompletedTests(itemsToRun)}/${total}`);
+
+        const syncRunningProgress = async () => {
+          const completed = calculateCompletedTests(itemsToRun);
+          await StorageService.updateBatchRunState(batchId, 'RUN', {
+            completedTests: completed
+          });
+          await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+          refreshProgressUi();
+          refreshLiveQueueStatus();
+        };
+
+        const finalizeActiveRun = async (index: number, runState: ActiveRunState): Promise<boolean> => {
+          const item = itemsToRun[index];
+          if (!item) {
+            activeRuns.delete(index);
+            clearStatusNetworkRetry(index);
+            return true;
+          }
+
+          addLog(`${runState.testName}: сбор статистики...`);
+
+          let statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
+            VelesService.getStats(ctx.tabId, runState.velesId)
+          );
+
+          if (!statsRes.success || !statsRes.stats) {
+            addLog(`${runState.testName}: повторный запрос статистики через 10с...`);
+            if (!(await waitWithLockHeartbeat(10000))) {
+              return false;
+            }
+
+            statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
+              VelesService.getStats(ctx.tabId, runState.velesId)
+            );
+          }
+
+          if (!statsRes.success || !statsRes.stats) {
+            throw new Error(statsRes.error || 'Не удалось получить статистику');
+          }
+
+          const stats = statsRes.stats;
+          const actualFrom = typeof stats.from === 'string' && !Number.isNaN(Date.parse(stats.from))
+            ? stats.from
+            : item.config.from;
+          const actualTo = typeof stats.to === 'string' && !Number.isNaN(Date.parse(stats.to))
+            ? stats.to
+            : item.config.to;
+
+          const resultItem: BacktestResultItem = {
+            id: runState.velesId,
+            name: item.config.name,
+            date: new Date().toISOString(),
+            from: actualFrom,
+            to: actualTo,
+            symbol: item.config.symbol,
+            algorithm: item.config.algorithm,
+            exchange: item.config.exchange,
+            profitQuote: stats.profitQuote,
+            profitBase: null,
+            netQuote: stats.netQuote,
+            netQuotePerDay: stats.netQuotePerDay ?? null,
+            maePercent: stats.maePercent,
+            maeAbsolute: stats.maeAbsolute ?? null,
+            mfePercent: stats.mfePercent,
+            mfeAbsolute: stats.mfeAbsolute ?? null,
+            totalDeals: stats.totalDeals,
+            profits: stats.profits ?? 0,
+            losses: stats.losses ?? 0,
+            breakevens: stats.breakevens ?? 0,
+            duration: null,
+            maxDuration: stats.maxDuration ?? null,
+            avgDuration: stats.avgDuration,
+            sourceTemplateUrl: item.sourceTemplateUrl
+          };
+
+          await DatabaseService.saveTests([resultItem]);
+          await StorageService.addTestIdToBatch(batchId, runState.velesId);
+          setCurrentBatchIds((prev) => (prev.includes(runState.velesId) ? prev : [...prev, runState.velesId]));
+
+          activeRuns.delete(index);
+          clearStatusNetworkRetry(index);
+          if (launchRetryState?.index === index) {
+            clearLaunchRetryState();
+          }
+          setQueueItem(index, { status: 'FINISHED', resultId: runState.velesId, error: undefined });
+
+          addLog(`${runState.testName}: готово`);
+          await LogService.info('queue', 'test.finished', {
+            batchId,
+            index: index + 1,
+            velesId: runState.velesId,
+            configHash: configHash(item.config)
+          }, batchId);
+
+          return true;
+        };
+
+        while (calculateCompletedTests(itemsToRun) < total) {
           if (!(await touchLock())) {
             markLockLost();
             break;
           }
 
           await pullExternalStop(batchId);
-
           if (stopRef.current) {
             if (!forcedStopReason) {
               forcedStopReason = 'manual_stop';
@@ -525,281 +875,322 @@ export function useBacktestQueue() {
             break;
           }
 
-          const currentTestNum = i + 1;
-          const item = itemsToRun[i];
+          let didWork = false;
+          const now = Date.now();
+          const launchBlockedByRetry = isLaunchRetryBlocked(now);
 
-          if (item.status === 'FINISHED') {
-            nextIndex = i + 1;
-            setProgress({ current: currentTestNum, total });
-            continue;
+          if (
+            pendingIndices.length > 0 &&
+            activeRuns.size < MAX_CONCURRENT_TESTS &&
+            !launchBlockedByRetry &&
+            (lastLaunchAt === 0 || now - lastLaunchAt >= MIN_TEST_INTERVAL_MS)
+          ) {
+            const index = pendingIndices.shift();
+            if (index !== undefined && itemsToRun[index] && itemsToRun[index].status === 'PENDING') {
+              const item = itemsToRun[index];
+              const testName = `Тест ${index + 1}/${total}`;
+              setQueueItem(index, { status: 'RUNNING', error: undefined });
+              addLog(buildTestLaunchLogMessage(testName, item));
+
+              const launchAttemptStartedAt = Date.now();
+              lastLaunchAt = launchAttemptStartedAt;
+              didWork = true;
+
+              await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+
+              try {
+                const runRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
+                  VelesService.runTest(ctx.tabId, ctx.token, item.config)
+                );
+
+                if (!runRes.success || !runRes.id) {
+                  throw new Error(runRes.error || `Ошибка запуска (${runRes.status})`);
+                }
+
+                clearLaunchRetryState();
+                launchNetworkRetryAttempts.delete(index);
+                const velesId = runRes.id;
+                activeRuns.set(index, {
+                  index,
+                  velesId,
+                  launchedAt: Date.now(),
+                  launchAttemptStartedAt,
+                  testName
+                });
+
+                addLog(`${testName}: выполняется (ID: ${velesId})...`);
+                refreshLiveQueueStatus();
+                await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+              } catch (error) {
+                const rawMsg = extractErrorMessage(error);
+
+                if (rawMsg.startsWith('QUEUE_STOP:')) {
+                  const reason = rawMsg.includes('no_token')
+                    ? 'no_token'
+                    : rawMsg.includes('unauthorized')
+                      ? 'unauthorized'
+                      : 'no_tab';
+
+                  forcedStopReason = reason;
+                  forcedStopMessage = ConnectionService.reasonToMessage(reason);
+                  clearLaunchRetryState();
+                  launchNetworkRetryAttempts.delete(index);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  enqueuePending(index, true);
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                  break;
+                }
+
+                if (isUnauthorizedError(rawMsg)) {
+                  ConnectionService.invalidate();
+                  addLog('Потеря авторизации (401). Ожидание восстановления подключения...');
+                  const recovered = await resolveExecutionContext(batchId);
+
+                  if (recovered.context) {
+                    runContextRef.current = recovered.context;
+                    addLog('Подключение восстановлено. Повторяю запуск текущего теста...');
+                    setQueueItem(index, { status: 'PENDING', error: undefined });
+                    enqueuePending(index, true);
+                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                    continue;
+                  }
+
+                  forcedStopReason = recovered.reason;
+                  forcedStopMessage = ConnectionService.reasonToMessage(recovered.reason);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  enqueuePending(index, true);
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                  break;
+                }
+
+                if (isRateLimit429(rawMsg)) {
+                  launchNetworkRetryAttempts.delete(index);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  scheduleLaunchRetry(index, 'RATE_LIMIT_429', 1, Date.now() + RETRY_429_COOLDOWN_MS, null);
+                  refreshLiveQueueStatus();
+                  addLog(`Ошибка: ${rawMsg}`);
+                  addLog('Пауза 35с после 429. Повторяю запуск текущего теста...');
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                  continue;
+                }
+
+                if (isQueueLimit412(rawMsg)) {
+                  const waitForActiveBelow = activeRuns.size > 0 ? activeRuns.size : null;
+                  launchNetworkRetryAttempts.delete(index);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  scheduleLaunchRetry(index, 'QUEUE_LIMIT_412', 1, Date.now() + RETRY_429_COOLDOWN_MS, waitForActiveBelow);
+                  refreshLiveQueueStatus();
+                  addLog(`Ошибка: ${rawMsg}`);
+                  addLog('Очередь Veles заполнена (412). Жду освобождения слота и повторяю текущий тест...');
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                  continue;
+                }
+
+                if (isFailedToFetchError(rawMsg)) {
+                  const previousAttempts = launchNetworkRetryAttempts.get(index) ?? 0;
+                  const attempts = previousAttempts + 1;
+
+                  if (attempts >= NETWORK_MAX_RETRY_ATTEMPTS) {
+                    forcedStopReason = 'runtime_error';
+                    forcedStopMessage = 'Сеть не доступна более 10 мин.';
+                    launchNetworkRetryAttempts.delete(index);
+                    setQueueItem(index, { status: 'PENDING', error: undefined });
+                    scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
+                    addLog(`Ошибка: ${rawMsg}`);
+                    addLog(`Ошибка: ${forcedStopMessage}`);
+                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                    break;
+                  }
+
+                  launchNetworkRetryAttempts.set(index, attempts);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
+                  refreshLiveQueueStatus();
+                  addLog(`Ошибка: ${rawMsg}`);
+                  addLog(`Сеть недоступна. Повтор запуска текущего теста через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                  continue;
+                }
+
+                const status: QueueItem['status'] = rawMsg.includes('TIMEOUT') ? 'TIMEOUT' : 'ERROR';
+                clearLaunchRetryState();
+                launchNetworkRetryAttempts.delete(index);
+                setQueueItem(index, { status, error: rawMsg });
+
+                addLog(`Ошибка: ${rawMsg}`);
+                await LogService.error('queue', 'test.failed', error, {
+                  batchId,
+                  index: index + 1,
+                  status,
+                  configHash: configHash(item.config)
+                }, batchId);
+
+                await syncRunningProgress();
+              }
+            }
           }
 
-          const percent = Math.round((currentTestNum / total) * 100);
-          document.title = `[${percent}%] Тест ${currentTestNum}/${total}`;
-          setProgress({ current: currentTestNum, total });
+          if (forcedStopReason) {
+            break;
+          }
 
-          setQueue((prev) => {
-            const next = [...prev];
-            if (next[i]) next[i] = { ...next[i], status: 'RUNNING', error: undefined };
-            itemsToRun = next;
-            return next;
-          });
+          if (activeRuns.size > 0 && (Date.now() - lastPollAt >= STATUS_POLL_INTERVAL_MS || didWork)) {
+            lastPollAt = Date.now();
+            didWork = true;
 
-          await saveRuntimeCheckpoint(batchId, i, itemsToRun.length, 'RUN');
+            for (const [index, runState] of Array.from(activeRuns.entries())) {
+              if (forcedStopReason || stopRef.current) break;
 
-          const testName = `Тест ${currentTestNum}/${total}`;
-          addLog(buildTestLaunchLogMessage(testName, item));
 
-          let launchAttemptStartedAt = Date.now();
-          let retryCurrentItem = false;
-          try {
-            const runRes = await withContextRecovery(batchId, runContextRef, (ctx) => {
-              launchAttemptStartedAt = Date.now();
-              return VelesService.runTest(ctx.tabId, ctx.token, item.config);
-            });
+              const item = itemsToRun[index];
+              if (!item) {
+                activeRuns.delete(index);
+                clearStatusNetworkRetry(index);
+                continue;
+              }
 
-            if (!runRes.success || !runRes.id) {
-              throw new Error(runRes.error || `Ошибка запуска (${runRes.status})`);
-            }
+              const now = Date.now();
+              const statusRetryAt = statusNetworkRetryAt.get(index) ?? 0;
+              if (statusRetryAt > 0 && now < statusRetryAt) {
+                continue;
+              }
 
-            const velesId = runRes.id;
-            addLog(`${testName}: выполняется (ID: ${velesId})...`);
+              try {
+                const check = await withContextRecovery(batchId, runContextRef, (ctx) =>
+                  VelesService.checkStatus(ctx.tabId, ctx.token, runState.velesId)
+                );
 
-            const pollingStart = Date.now();
-            const maxPollingTime = 5 * 60 * 1000;
-            let isFinished = false;
-
-            while (!isFinished) {
-              await pullExternalStop(batchId);
-
-              if (stopRef.current) {
-                if (!forcedStopReason) {
-                  forcedStopReason = 'manual_stop';
-                  forcedStopMessage = 'Остановлено пользователем';
+                if (!check.success) {
+                  throw new Error(`Ошибка проверки статуса: ${String(check.error)}`);
                 }
-                break;
-              }
 
-              if (Date.now() - pollingStart > maxPollingTime) {
-                throw new Error('TIMEOUT: тест не завершился за 5 минут');
-              }
+                clearStatusNetworkRetry(index);
 
-              if (!(await touchLock())) {
-                markLockLost();
-                break;
-              }
+                if (!check.data) {
+                  continue;
+                }
 
-              if (!(await waitWithLockHeartbeat(1000))) {
-                break;
-              }
-
-              const check = await withContextRecovery(batchId, runContextRef, (ctx) =>
-                VelesService.checkStatus(ctx.tabId, ctx.token, velesId)
-              );
-
-              if (!check.success) {
-                throw new Error(`Ошибка проверки статуса: ${String(check.error)}`);
-              }
-
-              if (check.data) {
                 const status = check.data.status;
                 if (status === 'FINISHED') {
-                  isFinished = true;
+                  const completed = await finalizeActiveRun(index, runState);
+                  if (!completed) {
+                    break;
+                  }
+                  continue;
                 }
+
                 if (status === 'ERROR' || status === 'FAILED') {
                   throw new Error(check.data.error || 'Тест завершился с ошибкой');
                 }
+              } catch (error) {
+                const rawMsg = extractErrorMessage(error);
+
+                if (rawMsg.startsWith('QUEUE_STOP:')) {
+                  const reason = rawMsg.includes('no_token')
+                    ? 'no_token'
+                    : rawMsg.includes('unauthorized')
+                      ? 'unauthorized'
+                      : 'no_tab';
+                  forcedStopReason = reason;
+                  forcedStopMessage = ConnectionService.reasonToMessage(reason);
+                  break;
+                }
+
+                if (isUnauthorizedError(rawMsg)) {
+                  ConnectionService.invalidate();
+                  addLog('Потеря авторизации (401). Ожидание восстановления подключения...');
+                  const recovered = await resolveExecutionContext(batchId);
+
+                  if (recovered.context) {
+                    runContextRef.current = recovered.context;
+                    addLog('Подключение восстановлено. Продолжаю ожидание по текущему тесту...');
+                    continue;
+                  }
+
+                  forcedStopReason = recovered.reason;
+                  forcedStopMessage = ConnectionService.reasonToMessage(recovered.reason);
+                  break;
+                }
+
+                if (isFailedToFetchError(rawMsg)) {
+                  const attempts = (statusNetworkRetryAttempts.get(index) ?? 0) + 1;
+                  statusNetworkRetryAttempts.set(index, attempts);
+
+                  if (attempts >= NETWORK_MAX_RETRY_ATTEMPTS) {
+                    forcedStopReason = 'runtime_error';
+                    forcedStopMessage = 'Сеть не доступна более 10 мин.';
+                    addLog(`Ошибка: ${rawMsg}`);
+                    addLog(`Ошибка: ${forcedStopMessage}`);
+                    break;
+                  }
+
+                  statusNetworkRetryAt.set(index, Date.now() + NETWORK_RETRY_WAIT_MS);
+                  addLog(`Ошибка: ${rawMsg}`);
+                  addLog(`${runState.testName}: повторная проверка статуса через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
+                  continue;
+                }
+
+                activeRuns.delete(index);
+                clearStatusNetworkRetry(index);
+                setQueueItem(index, { status: 'ERROR', error: rawMsg });
+
+                addLog(`Ошибка: ${rawMsg}`);
+                refreshLiveQueueStatus();
+                await LogService.error('queue', 'test.failed', error, {
+                  batchId,
+                  index: index + 1,
+                  status: 'ERROR',
+                  configHash: configHash(item.config)
+                }, batchId);
               }
-            }
 
-            if (forcedStopReason) {
-              setQueue((prev) => {
-                const next = [...prev];
-                if (next[i]) next[i] = { ...next[i], status: 'PENDING', error: undefined };
-                itemsToRun = next;
-                return next;
-              });
-              break;
-            }
-
-            addLog(`${testName}: сбор статистики...`);
-            if (!(await touchLock())) {
-              markLockLost();
-              break;
-            }
-            if (!(await waitWithLockHeartbeat(5000))) {
-              break;
-            }
-
-            let statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
-              VelesService.getStats(ctx.tabId, velesId)
-            );
-
-            if (!statsRes.success || !statsRes.stats) {
-              addLog(`${testName}: повторный запрос статистики через 10с...`);
-              if (!(await waitWithLockHeartbeat(10000))) {
-                break;
-              }
-              statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
-                VelesService.getStats(ctx.tabId, velesId)
-              );
-            }
-
-            if (!statsRes.success || !statsRes.stats) {
-              throw new Error(statsRes.error || 'Не удалось получить статистику');
-            }
-
-            const stats = statsRes.stats;
-            const actualFrom = typeof stats.from === 'string' && !Number.isNaN(Date.parse(stats.from))
-              ? stats.from
-              : item.config.from;
-            const actualTo = typeof stats.to === 'string' && !Number.isNaN(Date.parse(stats.to))
-              ? stats.to
-              : item.config.to;
-            const resultItem: BacktestResultItem = {
-              id: velesId,
-              name: item.config.name,
-              date: new Date().toISOString(),
-              from: actualFrom,
-              to: actualTo,
-              symbol: item.config.symbol,
-              algorithm: item.config.algorithm,
-              exchange: item.config.exchange,
-              profitQuote: stats.profitQuote,
-              profitBase: null,
-              netQuote: stats.netQuote,
-              netQuotePerDay: stats.netQuotePerDay ?? null,
-              maePercent: stats.maePercent,
-              maeAbsolute: stats.maeAbsolute ?? null,
-              mfePercent: stats.mfePercent,
-              mfeAbsolute: stats.mfeAbsolute ?? null,
-              totalDeals: stats.totalDeals,
-              profits: stats.profits ?? 0,
-              losses: stats.losses ?? 0,
-              breakevens: stats.breakevens ?? 0,
-              duration: null,
-              maxDuration: stats.maxDuration ?? null,
-              avgDuration: stats.avgDuration,
-              sourceTemplateUrl: item.sourceTemplateUrl
-            };
-
-            await DatabaseService.saveTests([resultItem]);
-            await StorageService.addTestIdToBatch(batchId, velesId);
-            setCurrentBatchIds((prev) => (prev.includes(velesId) ? prev : [...prev, velesId]));
-
-            setQueue((prev) => {
-              const next = [...prev];
-              if (next[i]) next[i] = { ...next[i], status: 'FINISHED', resultId: velesId };
-              itemsToRun = next;
-              return next;
-            });
-
-            nextIndex = i + 1;
-            await StorageService.updateBatchRunState(batchId, 'RUN', {
-              completedTests: nextIndex
-            });
-            await saveRuntimeCheckpoint(batchId, nextIndex, itemsToRun.length, 'RUN');
-
-            addLog(`${testName}: готово`);
-            await LogService.info('queue', 'test.finished', {
-              batchId,
-              index: currentTestNum,
-              velesId,
-              configHash: configHash(item.config)
-            }, batchId);
-          } catch (error) {
-            const rawMsg = extractErrorMessage(error);
-
-            if (rawMsg.startsWith('QUEUE_STOP:')) {
-              const reason = rawMsg.includes('no_token')
-                ? 'no_token'
-                : rawMsg.includes('unauthorized')
-                  ? 'unauthorized'
-                  : 'no_tab';
-              forcedStopReason = reason;
-              forcedStopMessage = ConnectionService.reasonToMessage(reason);
-
-              await saveRuntimeCheckpoint(batchId, i, itemsToRun.length, 'STOP');
-              break;
-            }
-
-            if (isUnauthorizedError(rawMsg)) {
-              ConnectionService.invalidate();
-              addLog('Потеря авторизации (401). Ожидание восстановления подключения...');
-              const recovered = await resolveExecutionContext(batchId);
-
-              if (recovered.context) {
-                runContextRef.current = recovered.context;
-                addLog('Подключение восстановлено. Повторяю запуск текущего теста...');
-                retryCurrentItem = true;
+              if (!activeRuns.has(index)) {
                 continue;
               }
 
-              forcedStopReason = recovered.reason;
-              forcedStopMessage = ConnectionService.reasonToMessage(recovered.reason);
-              await saveRuntimeCheckpoint(batchId, i, itemsToRun.length, 'STOP');
-              break;
-            }
-
-            const status: QueueItem['status'] = rawMsg.includes('TIMEOUT') ? 'TIMEOUT' : 'ERROR';
-
-            setQueue((prev) => {
-              const next = [...prev];
-              if (next[i]) next[i] = { ...next[i], status, error: rawMsg };
-              itemsToRun = next;
-              return next;
-            });
-
-            addLog(`Ошибка: ${rawMsg}`);
-            await LogService.error('queue', 'test.failed', error, {
-              batchId,
-              index: currentTestNum,
-              status,
-              configHash: configHash(item.config)
-            }, batchId);
-          } finally {
-            const lockStillOwned = await touchLock();
-            if (!lockStillOwned) {
-              markLockLost();
-            }
-            if (retryCurrentItem) {
-              if (forcedStopReason) {
-                stopRef.current = true;
-              } else {
-                i -= 1;
-                continue;
+              if (Date.now() - runState.launchedAt > MAX_TEST_DURATION_MS) {
+                const timeoutMessage = `TIMEOUT: тест не завершился за ${MAX_TEST_DURATION_MINUTES} минут`;
+                activeRuns.delete(index);
+                clearStatusNetworkRetry(index);
+                setQueueItem(index, { status: 'TIMEOUT', error: timeoutMessage });
+                addLog(`Ошибка: ${timeoutMessage}`);
+                refreshLiveQueueStatus();
               }
             }
-            const elapsed = Date.now() - launchAttemptStartedAt;
-            const remaining = MIN_TEST_INTERVAL_MS - elapsed;
-            if (remaining > 0 && !stopRef.current && i < total - 1) {
-              const waitSec = Math.ceil(remaining / 1000);
-              addLog(`Пауза ${waitSec}с перед следующим тестом...`);
-              const fullWaitCompleted = await waitWithLockHeartbeat(remaining);
-              if (!fullWaitCompleted) {
-                stopRef.current = true;
-              }
+
+            await syncRunningProgress();
+          }
+
+          if (forcedStopReason) {
+            break;
+          }
+
+          if (!didWork) {
+            const fullWaitCompleted = await waitWithLockHeartbeat(WAIT_CHUNK_MS);
+            if (!fullWaitCompleted && !forcedStopReason) {
+              stopRef.current = true;
             }
           }
         }
 
         if (forcedStopReason || stopRef.current) {
           const reason = forcedStopReason ?? 'manual_stop';
-          const nextIndexForStop = Math.min(nextIndex, itemsToRun.length);
+          const completed = calculateCompletedTests(itemsToRun);
 
           await StorageService.updateBatchRunState(batchId, 'STOP', {
-            completedTests: nextIndexForStop,
+            completedTests: completed,
             stopReason: reason,
             lastError: forcedStopMessage
           });
 
-          await saveRuntimeCheckpoint(batchId, nextIndexForStop, itemsToRun.length, 'STOP');
+          await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+
           const stopMessage = forcedStopMessage || 'Остановлено. Продолжите запуск из истории.';
           const isConnectionStop =
             reason === 'no_tab' ||
             reason === 'no_token' ||
             reason === 'unauthorized';
-          addLog(isConnectionStop ? `❌ ${stopMessage}` : stopMessage);
+          addLog(isConnectionStop ? `вќЊ ${stopMessage}` : stopMessage);
         } else {
           await StorageService.updateBatchRunState(batchId, 'DONE', {
             completedTests: itemsToRun.length,
@@ -816,18 +1207,21 @@ export function useBacktestQueue() {
         const message = extractErrorMessage(error);
         addLog(`Критическая ошибка: ${message}`);
 
+        const activeRuns = new Map<number, ActiveRunState>();
         await StorageService.updateBatchRunState(batchId, 'STOP', {
+          completedTests: calculateCompletedTests(itemsToRun),
           stopReason: 'runtime_error',
           lastError: message
         });
 
-        await saveRuntimeCheckpoint(batchId, Math.min(nextIndex, itemsToRun.length), itemsToRun.length, 'STOP');
+        await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', 0);
         await LogService.critical('queue', 'queue.crashed', error, { batchId }, batchId);
       } finally {
         setIsRunning(false);
         document.title = originalTitleRef.current;
         currentBatchIdRef.current = null;
         setCurrentBatchId(null);
+        statusSnapshotRef.current = null;
         await QueueLockService.release(ownerIdRef.current, batchId);
       }
     },
@@ -857,15 +1251,6 @@ export function useBacktestQueue() {
         return;
       }
 
-      if (runtime.items && runtime.items.length > 0) {
-        addLog('Не удалось продолжить: обнаружен устаревший формат состояния запуска.');
-        await StorageService.updateBatchRunState(batchId, 'STOP', {
-          stopReason: 'runtime_error',
-          lastError: 'Legacy runtime format is not supported'
-        });
-        return;
-      }
-
       const batch = await StorageService.getBatchById(batchId);
       if (!batch || !batch.resumeSource) {
         addLog('Нет исходной конфигурации для продолжения этого запуска.');
@@ -873,6 +1258,7 @@ export function useBacktestQueue() {
       }
 
       const regenerated = buildResumeQueue(batchId, batch.resumeSource);
+      const regeneratedFingerprint = buildQueueFingerprint(regenerated);
       const expectedTotal = runtime.total || regenerated.length;
       if (regenerated.length !== expectedTotal) {
         addLog('Не удалось продолжить: изменился набор комбинаций (порядок или количество).');
@@ -881,6 +1267,53 @@ export function useBacktestQueue() {
           lastError: 'Resume mismatch: generated combinations count differs'
         });
         return;
+      }
+
+      const runtimeFingerprint = runtime.fingerprint;
+      const canRestoreRuntimeState =
+        runtime.version === RUNTIME_VERSION &&
+        !!runtimeFingerprint &&
+        runtimeFingerprint === regeneratedFingerprint &&
+        runtime.items &&
+        runtime.items.length === regenerated.length;
+
+      if (runtime.version === RUNTIME_VERSION && runtimeFingerprint && runtimeFingerprint !== regeneratedFingerprint) {
+        addLog('Resume guard: runtime state belongs to another queue snapshot. Starting from scratch.');
+        await run(batchId, regenerated);
+        return;
+      }
+
+      if (canRestoreRuntimeState) {
+        const activeIndices = new Set((runtime.activeRuns ?? []).map((item) => item.index));
+
+        const prepared = regenerated.map((item, idx) => {
+          const runtimeItem = runtime.items?.[idx];
+          if (!runtimeItem) return item;
+
+          const runtimeStatus = normalizeQueueStatus(runtimeItem.status);
+          const status = runtimeStatus === 'RUNNING' && !activeIndices.has(idx)
+            ? 'PENDING'
+            : runtimeStatus;
+
+          return {
+            ...item,
+            status,
+            error: runtimeItem.error,
+            resultId: runtimeItem.resultId,
+            sourceTemplateUrl: item.sourceTemplateUrl ?? runtimeItem.sourceTemplateUrl
+          };
+        });
+
+        await run(batchId, prepared, {
+          resumeActiveRuns: runtime.activeRuns ?? [],
+          resumeLastLaunchAt: runtime.lastLaunchAt ?? 0,
+          resumeFingerprint: runtimeFingerprint
+        });
+        return;
+      }
+
+      if (runtime.version === RUNTIME_VERSION && !runtimeFingerprint) {
+        addLog('Resume guard: runtime fingerprint missing, resuming without active run restore.');
       }
 
       const nextIndex = Math.max(0, Math.min(runtime.nextIndex, regenerated.length));

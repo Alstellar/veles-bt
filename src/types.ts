@@ -266,10 +266,17 @@ export type BatchStopReason =
 
 export interface QueueRuntimeItem {
   id: string;
-  config: VelesConfigPayload;
   status: 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'TIMEOUT';
   error?: string;
   resultId?: number;
+  sourceTemplateUrl?: string;
+}
+
+export interface BatchRuntimeActiveRun {
+  index: number;
+  velesId: number;
+  launchedAt: number;
+  launchAttemptStartedAt: number;
 }
 
 export interface BatchResumeSource {
@@ -309,11 +316,15 @@ export interface BacktestsResumeSource {
 
 export interface BatchRuntimeState {
   batchId: string;
-  // Legacy field: old versions persisted full queue payloads here.
+  version?: 1 | 2;
+  // Legacy field: old versions persisted full queue payloads with config payloads here.
   items?: QueueRuntimeItem[];
   nextIndex: number;
   total: number;
   status: BatchRunStatus;
+  fingerprint?: string;
+  activeRuns?: BatchRuntimeActiveRun[];
+  lastLaunchAt?: number;
   updatedAt: number;
 }
 

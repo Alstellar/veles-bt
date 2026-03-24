@@ -10,15 +10,34 @@ import { IconPlus, IconTrash, IconFilter, IconCalculator, IconCopy } from '@tabl
 import { MultiInput } from '../MultiInput';
 import { FiltersModal } from './FiltersModal';
 import type { OrderSignalConfig, SignalOrderLine, FilterSlot } from '../../types';
+import type { Condition } from '../../types';
+import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
 interface Props {
   config: OrderSignalConfig;
   onChange: (cfg: OrderSignalConfig) => void;
+  resolveSignalProbeState?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => SignalProbeViewState;
+  onSignalProbeRequest?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => void;
+  onSignalProbeDirty?: (scope: string, variantId: string) => void;
 }
 
-export function SignalMode({ config, onChange }: Props) {
+export function SignalMode({
+  config,
+  onChange,
+  resolveSignalProbeState,
+  onSignalProbeRequest,
+  onSignalProbeDirty
+}: Props) {
   
   const [calcMartingale, setCalcMartingale] = useState<number>(5);
   
@@ -326,6 +345,10 @@ export function SignalMode({ config, onChange }: Props) {
         title="Настройка фильтров"
         initialSlots={currentSlots}
         onSave={saveFilters}
+        probeScope={`order_signal:${activeOrderId ?? 'none'}`}
+        resolveSignalProbeState={resolveSignalProbeState}
+        onSignalProbeRequest={onSignalProbeRequest}
+        onSignalProbeDirty={onSignalProbeDirty}
       />
 
     </Paper>

@@ -4,11 +4,13 @@ import {
   Stack, TextInput, Collapse, Badge, Tooltip 
 } from '@mantine/core';
 import { IconTrash, IconPlus, IconPencil, IconCheck, IconArrowsRightLeft } from '@tabler/icons-react';
+import { SignalProbeAction } from '../SignalProbeAction';
 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
 import type { IndicatorDef } from '../../filtersLibrary';
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
 import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
+import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
 
 import type { Condition, FilterSlot, IntervalType, OperationType } from '../../types';
 
@@ -18,13 +20,40 @@ interface Props {
   title: string;
   initialSlots: FilterSlot[]; 
   onSave: (slots: FilterSlot[]) => void;
+  probeScope?: string;
+  resolveSignalProbeState?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => SignalProbeViewState;
+  onSignalProbeRequest?: (
+    scope: string,
+    variant: Condition,
+    requestType: SignalProbeRequestType
+  ) => void;
+  onSignalProbeDirty?: (scope: string, variantId: string) => void;
 }
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
-export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: Props) {
+export function FiltersModal({
+  opened,
+  onClose,
+  title,
+  initialSlots,
+  onSave,
+  probeScope = 'order_signal',
+  resolveSignalProbeState,
+  onSignalProbeRequest,
+  onSignalProbeDirty
+}: Props) {
   
   const [slots, setSlots] = useState<FilterSlot[]>([]);
+
+  const markVariantDirty = (variantId?: string) => {
+    if (!variantId) return;
+    onSignalProbeDirty?.(probeScope, variantId);
+  };
 
   // 1. Инициализация
   useEffect(() => {
@@ -62,6 +91,8 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
   };
 
   const removeSlot = (slotId: string) => {
+    const slot = slots.find((s) => s.id === slotId);
+    slot?.variants.forEach((variant) => markVariantDirty(variant.id));
     setSlots(slots.filter(s => s.id !== slotId));
   };
 
@@ -89,6 +120,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
   };
 
   const removeVariant = (slotId: string, variantId: string) => {
+    markVariantDirty(variantId);
     setSlots(slots.map(slot => {
         if (slot.id === slotId) {
             return { ...slot, variants: slot.variants.filter(v => v.id !== variantId) };
@@ -98,6 +130,7 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
   };
 
   const updateVariant = (slotId: string, variantId: string, field: keyof Condition, value: any) => {
+    markVariantDirty(variantId);
     setSlots(slots.map(slot => {
         if (slot.id === slotId) {
             const newVariants = slot.variants.map(v => {
@@ -211,6 +244,9 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                           const showInputs = !variant.basic && (settings?.hasValue || settings?.hasOperation);
                           
                           const stringValue = typeof variant.value === 'string' ? variant.value : '';
+                          const probeState = resolveSignalProbeState
+                            ? resolveSignalProbeState(probeScope, variant, 'OPEN')
+                            : { status: 'idle' as const };
 
                           return (
                             <Paper key={variant.id} withBorder p="xs" radius="sm" bg="white">
@@ -282,6 +318,15 @@ export function FiltersModal({ opened, onClose, title, initialSlots, onSave }: P
                                                     </ActionIcon>
                                                 </Tooltip>
                                             )}
+
+                                            <SignalProbeAction
+                                                state={probeState}
+                                                onRequest={() => {
+                                                  if (!variant.id) return;
+                                                  onSignalProbeRequest?.(probeScope, variant, 'OPEN');
+                                                }}
+                                                size="md"
+                                            />
 
                                             <ActionIcon 
                                                 variant="light" 
