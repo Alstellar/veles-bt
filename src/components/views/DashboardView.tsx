@@ -52,6 +52,30 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
 
   const releases = useMemo<ReleaseSlide[]>(() => ([
     {
+      version: 'v1.6.0',
+      title: 'Что нового',
+      badge: 'NEW',
+      color: 'green',
+      points: [
+        {
+          icon: <IconRocket size={16} />,
+          text: 'Реализована многопоточная работа: запуск до 5 параллельных тестов.'
+        },
+        {
+          icon: <IconAdjustments size={16} />,
+          text: 'В Конфигураторе для каждого индикатора добавлена проверка количества сигналов за последние 30 дней.'
+        },
+        {
+          icon: <IconTable size={16} />,
+          text: 'Во вкладке Бектесты добавлены поля Депозит и Плечо: значения применяются ко всем введенным шаблонам.'
+        },
+        {
+          icon: <IconHistory size={16} />,
+          text: 'Улучшена обработка ошибок: очередь не теряется, а неудачные попытки запуска автоматически повторяются.'
+        }
+      ]
+    },
+    {
       version: 'v1.5.1',
       title: 'Что нового',
       badge: 'NEW',

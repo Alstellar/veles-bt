@@ -5,6 +5,7 @@ import type {
   ExchangeType,
   SymbolLimitation
 } from '../types';
+import { isSpot } from '../types';
 import type { VelesConfigPayload, VelesCondition } from '../types/veles';
 import { parseImportLink } from './ImportSettingsService';
 
@@ -49,6 +50,8 @@ type NameContext = {
 const DEFAULT_FROM_ISO = '2019-01-01T00:00:00.000Z';
 const DEFAULT_MAKER_FEE = '0.02';
 const DEFAULT_TAKER_FEE = '0.055';
+const DEFAULT_DEPOSIT_AMOUNT = 50;
+const DEFAULT_DEPOSIT_LEVERAGE = 10;
 
 const clonePayload = (payload: VelesConfigPayload): VelesConfigPayload => {
   if (typeof structuredClone === 'function') {
@@ -404,6 +407,12 @@ export const buildQueueItemsFromBacktestsSource = (
   items: QueueItem[];
   skipped: MatrixPairError[];
 } => {
+  const isSpotExchange = isSpot(source.exchange);
+  const sourceDeposit = Number(source.deposit);
+  const hasSourceDeposit = Number.isFinite(sourceDeposit) && sourceDeposit > 0;
+  const sourceLeverage = Number(source.leverage);
+  const hasSourceLeverage = Number.isFinite(sourceLeverage) && sourceLeverage >= 1;
+
   const validPairs: Array<{
     template: BacktestsResumeTemplate;
     symbol: string;
@@ -411,10 +420,12 @@ export const buildQueueItemsFromBacktestsSource = (
   const skipped: MatrixPairError[] = [];
 
   source.templates.forEach((template) => {
-    const requestedLeverage = Number(template.config.deposit?.leverage ?? 0);
+    const templateLeverage = Number(template.config.deposit?.leverage ?? 0);
+    const requestedLeverage = hasSourceLeverage ? sourceLeverage : templateLeverage;
     source.symbols.forEach((symbol) => {
       const maxLeverage = source.symbolMaxLeverage[symbol];
       if (
+        !isSpotExchange &&
         Number.isFinite(requestedLeverage) &&
         Number.isFinite(maxLeverage ?? NaN) &&
         requestedLeverage > (maxLeverage as number)
@@ -443,6 +454,23 @@ export const buildQueueItemsFromBacktestsSource = (
     config.symbols = [symbolPair];
     config.from = new Date(source.dateFrom).toISOString();
     config.to = new Date(source.dateTo).toISOString();
+    const templateDepositAmount = Number(config.deposit?.amount);
+    const templateLeverage = Number(config.deposit?.leverage);
+    const resolvedDepositAmount = hasSourceDeposit
+      ? sourceDeposit
+      : (Number.isFinite(templateDepositAmount) && templateDepositAmount > 0
+        ? templateDepositAmount
+        : DEFAULT_DEPOSIT_AMOUNT);
+    const resolvedLeverage = !isSpotExchange && hasSourceLeverage
+      ? sourceLeverage
+      : (Number.isFinite(templateLeverage) && templateLeverage >= 1
+        ? templateLeverage
+        : DEFAULT_DEPOSIT_LEVERAGE);
+    config.deposit = {
+      amount: resolvedDepositAmount,
+      leverage: resolvedLeverage,
+      marginType: config.deposit?.marginType === 'ISOLATED' ? 'ISOLATED' : 'CROSS'
+    };
     config.commissions = {
       maker: source.makerFee && source.makerFee.trim()
         ? source.makerFee

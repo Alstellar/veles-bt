@@ -301,6 +301,8 @@ export interface BacktestsResumeSource {
   exchange: ExchangeType;
   dateFrom: string;
   dateTo: string;
+  deposit?: number;
+  leverage?: number;
   nameTemplate: string;
   makerFee?: string;
   takerFee?: string;

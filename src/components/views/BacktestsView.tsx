@@ -50,6 +50,7 @@ import type {
   SymbolAvailability,
   SymbolLimitation
 } from '../../types';
+import { isSpot } from '../../types';
 import {
   DEFAULT_BACKTESTS_NAME_TEMPLATE,
   buildQueueItemsFromBacktestsSource,
@@ -172,6 +173,8 @@ const toDateValue = (value: string | Date | null): Date | null => {
 
 const DEFAULT_MAKER_FEE = '0.02';
 const DEFAULT_TAKER_FEE = '0.055';
+const DEFAULT_DEPOSIT_AMOUNT = 50;
+const DEFAULT_DEPOSIT_LEVERAGE = 10;
 
 const normalizeFeeInput = (value: string): string => value.trim().replace(',', '.');
 
@@ -181,6 +184,26 @@ const parseFeeValue = (value: string): number | null => {
   const parsed = Number(normalized);
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return parsed;
+};
+
+const resolveResumeDeposit = (source: BacktestsResumeSource): number => {
+  const sourceDeposit = Number(source.deposit);
+  if (Number.isFinite(sourceDeposit) && sourceDeposit > 0) return sourceDeposit;
+
+  const templateDeposit = Number(source.templates[0]?.config.deposit?.amount);
+  if (Number.isFinite(templateDeposit) && templateDeposit > 0) return templateDeposit;
+
+  return DEFAULT_DEPOSIT_AMOUNT;
+};
+
+const resolveResumeLeverage = (source: BacktestsResumeSource): number => {
+  const sourceLeverage = Number(source.leverage);
+  if (Number.isFinite(sourceLeverage) && sourceLeverage >= 1) return sourceLeverage;
+
+  const templateLeverage = Number(source.templates[0]?.config.deposit?.leverage);
+  if (Number.isFinite(templateLeverage) && templateLeverage >= 1) return templateLeverage;
+
+  return DEFAULT_DEPOSIT_LEVERAGE;
 };
 
 export function BacktestsView({
@@ -202,6 +225,8 @@ export function BacktestsView({
   const [dateTo, setDateTo] = useState<Date | null>(new Date());
   const [makerFee, setMakerFee] = useState(DEFAULT_MAKER_FEE);
   const [takerFee, setTakerFee] = useState(DEFAULT_TAKER_FEE);
+  const [depositAmount, setDepositAmount] = useState<number | ''>(DEFAULT_DEPOSIT_AMOUNT);
+  const [depositLeverage, setDepositLeverage] = useState<number | ''>(DEFAULT_DEPOSIT_LEVERAGE);
   const [isPublic, setIsPublic] = useState(true);
   const [useWicks, setUseWicks] = useState(true);
 
@@ -227,6 +252,7 @@ export function BacktestsView({
 
   const [isValidating, setIsValidating] = useState(false);
   const [validationReport, setValidationReport] = useState<MatrixValidationResult | null>(null);
+  const isSpotExchange = useMemo(() => isSpot(exchange), [exchange]);
 
   useEffect(() => {
     let mounted = true;
@@ -425,12 +451,20 @@ export function BacktestsView({
     const invalidLinks = parsedTemplateLinks.invalidLines;
     const parsedMakerFee = parseFeeValue(makerFee);
     const parsedTakerFee = parseFeeValue(takerFee);
+    const parsedDepositAmount = parseOptionalNumber(depositAmount);
+    const parsedDepositLeverage = parseOptionalNumber(depositLeverage);
 
     if (parsedMakerFee === null) {
       errors.push('Maker Fee (%) должен быть неотрицательным числом.');
     }
     if (parsedTakerFee === null) {
       errors.push('Taker Fee (%) должен быть неотрицательным числом.');
+    }
+    if (parsedDepositAmount === null || parsedDepositAmount <= 0) {
+      errors.push('Депозит должен быть числом больше 0.');
+    }
+    if (!isSpotExchange && (parsedDepositLeverage === null || parsedDepositLeverage < 1)) {
+      errors.push('Плечо должно быть числом не меньше 1.');
     }
 
     if (!exchange) errors.push('Выберите биржу.');
@@ -512,6 +546,8 @@ export function BacktestsView({
       exchange,
       dateFrom: toIsoDateString(dateFrom),
       dateTo: toIsoDateString(dateTo),
+      deposit: parsedDepositAmount ?? DEFAULT_DEPOSIT_AMOUNT,
+      leverage: isSpotExchange ? undefined : (parsedDepositLeverage ?? DEFAULT_DEPOSIT_LEVERAGE),
       nameTemplate: nameTemplate.trim() || DEFAULT_BACKTESTS_NAME_TEMPLATE,
       makerFee: normalizeFeeInput(makerFee) || DEFAULT_MAKER_FEE,
       takerFee: normalizeFeeInput(takerFee) || DEFAULT_TAKER_FEE,
@@ -553,7 +589,10 @@ export function BacktestsView({
     nameTemplate,
     makerFee,
     takerFee,
+    depositAmount,
+    depositLeverage,
     isPublic,
+    isSpotExchange,
     useWicks,
     parsedTemplateLinks.invalidLines,
     parsedTemplateLinks.links,
@@ -575,7 +614,11 @@ export function BacktestsView({
         `Шаблонов: ${result.templatesCount}`,
         `Активов: ${result.symbolsCount}`,
         `К запуску: ${result.queueSize}`,
-        `Пропущено (плечо): ${result.skippedPairs.length}`
+        `Пропущено (плечо): ${result.skippedPairs.length}`,
+        `Депозит: ${result.source?.deposit ?? '-'}`,
+        isSpot(result.source?.exchange ?? exchange)
+          ? 'Плечо: не используется (SPOT)'
+          : `Плечо: x${result.source?.leverage ?? '-'}`
       ];
       alert(`Валидация пройдена:\n${reportLines.join('\n')}`);
     } finally {
@@ -606,6 +649,10 @@ export function BacktestsView({
         [
           `Комбинаций к запуску: ${built.items.length}`,
           `Пропущено по плечу: ${built.skipped.length}`,
+          `Депозит: ${result.source.deposit ?? '-'}`,
+          isSpot(result.source.exchange)
+            ? 'Плечо: не используется (SPOT)'
+            : `Плечо: x${result.source.leverage ?? '-'}`,
           '',
           'Запустить бектесты?'
         ].join('\n')
@@ -719,6 +766,8 @@ export function BacktestsView({
       setNameTemplate(source.nameTemplate);
       setMakerFee(source.makerFee ?? DEFAULT_MAKER_FEE);
       setTakerFee(source.takerFee ?? DEFAULT_TAKER_FEE);
+      setDepositAmount(toNumberInputValue(resolveResumeDeposit(source)));
+      setDepositLeverage(toNumberInputValue(resolveResumeLeverage(source)));
       setIsPublic(source.isPublic ?? true);
       setUseWicks(source.useWicks ?? true);
       setLinksText(source.linksText);
@@ -758,6 +807,8 @@ export function BacktestsView({
   const summaryInvalidLinks = validationReport?.invalidLinks.length ?? parsedTemplateLinks.invalidLines.length;
   const summaryUnreadableLinks = validationReport?.unreadableLinks.length ?? 0;
   const summaryMissingSymbols = validationReport?.missingSymbols.length ?? previewMissingSymbolsCount;
+  const summaryDeposit = parseOptionalNumber(depositAmount);
+  const summaryLeverage = parseOptionalNumber(depositLeverage);
 
   return (
     <Container size="xl" py="xl" pb={100} className={styles.viewRoot}>
@@ -810,6 +861,26 @@ export function BacktestsView({
                 />
               </SimpleGrid>
             </Paper>
+
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+              <NumberInput
+                label="Депозит (USDT)"
+                value={depositAmount}
+                onChange={(value) => setDepositAmount(toNumberInputValue(value))}
+                min={0}
+                allowNegative={false}
+              />
+              {!isSpotExchange && (
+                <NumberInput
+                  label="Плечо (x)"
+                  value={depositLeverage}
+                  onChange={(value) => setDepositLeverage(toNumberInputValue(value))}
+                  min={1}
+                  allowNegative={false}
+                />
+              )}
+              {isSpotExchange && <div />}
+            </SimpleGrid>
 
             <Divider label="Дополнительно" labelPosition="center" />
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -1094,6 +1165,8 @@ export function BacktestsView({
                 <div className={styles.kv}><span>Режим активов</span><strong>{assetsSource === 'manual' ? 'Ручной' : 'Фильтр биржи'}</strong></div>
                 <div className={styles.kv}><span>Период</span><strong>{dateFrom && dateTo ? `${dayjs(dateFrom).format('DD.MM.YYYY')} - ${dayjs(dateTo).format('DD.MM.YYYY')}` : '-'}</strong></div>
                 <div className={styles.kv}><span>Биржа</span><strong>{exchange}</strong></div>
+                <div className={styles.kv}><span>Депозит</span><strong>{summaryDeposit ?? '-'}</strong></div>
+                <div className={styles.kv}><span>Плечо</span><strong>{isSpotExchange ? 'SPOT' : `x${summaryLeverage ?? '-'}`}</strong></div>
               </div>
             </div>
 

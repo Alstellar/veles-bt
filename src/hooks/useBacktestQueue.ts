@@ -36,7 +36,7 @@ interface RunOptions {
   resumeFingerprint?: string;
 }
 
-type LaunchRetryReason = 'RATE_LIMIT_429' | 'QUEUE_LIMIT_412' | 'NETWORK_FAILED_FETCH';
+type LaunchRetryReason = 'RATE_LIMIT_429' | 'QUEUE_LIMIT_412' | 'NETWORK_FAILED_FETCH' | 'SERVER_5XX';
 
 interface LaunchRetryState {
   index: number;
@@ -61,6 +61,15 @@ const LOCK_HEARTBEAT_MS = 2000;
 const FREEZE_WARN_THRESHOLD_MS = 60000;
 const RUNTIME_VERSION = 2;
 
+interface ParsedApiError {
+  raw: string;
+  normalized: string;
+  status: number | null;
+  message: string;
+  error: string;
+  path: string;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -75,27 +84,62 @@ function isUnauthorizedError(error: unknown): boolean {
   return msg.includes('Unauthorized') || msg.includes('"status":401') || msg.includes('401');
 }
 
-function hasHttpStatus(rawMessage: string, code: number): boolean {
-  if (new RegExp(`"status"\\s*:\\s*${code}`).test(rawMessage)) return true;
-  if (new RegExp(`\\(${code}\\)`).test(rawMessage)) return true;
-  return false;
+function parseApiError(rawMessage: string): ParsedApiError {
+  const raw = String(rawMessage ?? '');
+  let status: number | null = null;
+  let message = '';
+  let error = '';
+  let path = '';
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      status?: unknown;
+      message?: unknown;
+      error?: unknown;
+      path?: unknown;
+    };
+    const parsedStatus = Number(parsed.status);
+    if (Number.isFinite(parsedStatus)) status = parsedStatus;
+    if (typeof parsed.message === 'string') message = parsed.message;
+    if (typeof parsed.error === 'string') error = parsed.error;
+    if (typeof parsed.path === 'string') path = parsed.path;
+  } catch {
+    const jsonStatusMatch = raw.match(/"status"\s*:\s*(\d{3})/);
+    const parenStatusMatch = raw.match(/\((\d{3})\)/);
+    const numericStatusMatch = raw.match(/\b([45]\d{2})\b/);
+    const statusCandidate = jsonStatusMatch?.[1] || parenStatusMatch?.[1] || numericStatusMatch?.[1];
+    if (statusCandidate) {
+      const parsedStatus = Number(statusCandidate);
+      if (Number.isFinite(parsedStatus)) status = parsedStatus;
+    }
+  }
+
+  const normalized = `${raw} ${error} ${message}`.toLowerCase();
+  return { raw, normalized, status, message, error, path };
 }
 
-function isRateLimit429(rawMessage: string): boolean {
-  const normalized = rawMessage.toLowerCase();
+function isRateLimit429(parsed: ParsedApiError): boolean {
+  return parsed.status === 429 || parsed.normalized.includes('too many requests');
+}
+
+function isQueueLimit412(parsed: ParsedApiError): boolean {
+  if (parsed.status !== 412) return false;
+
   return (
-    hasHttpStatus(rawMessage, 429) ||
-    normalized.includes('too many requests')
+    parsed.normalized.includes('достигнут лимит') ||
+    parsed.normalized.includes('пожалуйста, попробуйте позже') ||
+    parsed.normalized.includes('queue is full') ||
+    parsed.normalized.includes('queue limit') ||
+    parsed.normalized.includes('limit reached')
   );
 }
 
-function isQueueLimit412(rawMessage: string): boolean {
-  const normalized = rawMessage.toLowerCase();
-  return (
-    hasHttpStatus(rawMessage, 412) ||
-    normalized.includes('precondition failed') ||
-    normalized.includes('достигнут лимит')
-  );
+function isValidation412(parsed: ParsedApiError): boolean {
+  return parsed.status === 412 && !isQueueLimit412(parsed);
+}
+
+function isServer5xx(parsed: ParsedApiError): boolean {
+  return parsed.status !== null && parsed.status >= 500 && parsed.status < 600;
 }
 
 function isFailedToFetchError(rawMessage: string): boolean {
@@ -591,7 +635,7 @@ export function useBacktestQueue() {
         let forcedStopReason: BatchStopReason | null = null;
         let forcedStopMessage: string | undefined;
         let launchRetryState: LaunchRetryState | null = null;
-        const launchNetworkRetryAttempts = new Map<number, number>();
+        const launchTransientRetryAttempts = new Map<number, number>();
         const statusNetworkRetryAttempts = new Map<number, number>();
         const statusNetworkRetryAt = new Map<number, number>();
 
@@ -749,6 +793,7 @@ export function useBacktestQueue() {
         }
 
         let lastLaunchAt = Math.max(0, options?.resumeLastLaunchAt ?? 0);
+        let lastIntervalPauseLogTargetAt = 0;
         let lastPollAt = 0;
 
         commitQueueState();
@@ -782,14 +827,11 @@ export function useBacktestQueue() {
             return true;
           }
 
-          addLog(`${runState.testName}: сбор статистики...`);
-
           let statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
             VelesService.getStats(ctx.tabId, runState.velesId)
           );
 
           if (!statsRes.success || !statsRes.stats) {
-            addLog(`${runState.testName}: повторный запрос статистики через 10с...`);
             if (!(await waitWithLockHeartbeat(10000))) {
               return false;
             }
@@ -802,6 +844,8 @@ export function useBacktestQueue() {
           if (!statsRes.success || !statsRes.stats) {
             throw new Error(statsRes.error || 'Не удалось получить статистику');
           }
+
+          addLog(`${runState.testName}: сбор статистики завершен`);
 
           const stats = statsRes.stats;
           const actualFrom = typeof stats.from === 'string' && !Number.isNaN(Date.parse(stats.from))
@@ -878,6 +922,19 @@ export function useBacktestQueue() {
           let didWork = false;
           const now = Date.now();
           const launchBlockedByRetry = isLaunchRetryBlocked(now);
+          const canLaunchByCapacity =
+            pendingIndices.length > 0 &&
+            activeRuns.size < MAX_CONCURRENT_TESTS &&
+            !launchBlockedByRetry;
+          const nextAllowedLaunchAt = lastLaunchAt > 0 ? lastLaunchAt + MIN_TEST_INTERVAL_MS : 0;
+          const launchIntervalRemainingMs = canLaunchByCapacity && nextAllowedLaunchAt > now
+            ? nextAllowedLaunchAt - now
+            : 0;
+
+          if (launchIntervalRemainingMs > 0 && nextAllowedLaunchAt !== lastIntervalPauseLogTargetAt) {
+            lastIntervalPauseLogTargetAt = nextAllowedLaunchAt;
+            addLog(`Пауза ${Math.ceil(launchIntervalRemainingMs / 1000)}с перед следующим тестом...`);
+          }
 
           if (
             pendingIndices.length > 0 &&
@@ -894,6 +951,7 @@ export function useBacktestQueue() {
 
               const launchAttemptStartedAt = Date.now();
               lastLaunchAt = launchAttemptStartedAt;
+              lastIntervalPauseLogTargetAt = 0;
               didWork = true;
 
               await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
@@ -908,7 +966,7 @@ export function useBacktestQueue() {
                 }
 
                 clearLaunchRetryState();
-                launchNetworkRetryAttempts.delete(index);
+                launchTransientRetryAttempts.delete(index);
                 const velesId = runRes.id;
                 activeRuns.set(index, {
                   index,
@@ -923,6 +981,7 @@ export function useBacktestQueue() {
                 await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
               } catch (error) {
                 const rawMsg = extractErrorMessage(error);
+                const parsedLaunchError = parseApiError(rawMsg);
 
                 if (rawMsg.startsWith('QUEUE_STOP:')) {
                   const reason = rawMsg.includes('no_token')
@@ -934,7 +993,7 @@ export function useBacktestQueue() {
                   forcedStopReason = reason;
                   forcedStopMessage = ConnectionService.reasonToMessage(reason);
                   clearLaunchRetryState();
-                  launchNetworkRetryAttempts.delete(index);
+                  launchTransientRetryAttempts.delete(index);
                   setQueueItem(index, { status: 'PENDING', error: undefined });
                   enqueuePending(index, true);
                   await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
@@ -963,8 +1022,8 @@ export function useBacktestQueue() {
                   break;
                 }
 
-                if (isRateLimit429(rawMsg)) {
-                  launchNetworkRetryAttempts.delete(index);
+                if (isRateLimit429(parsedLaunchError)) {
+                  launchTransientRetryAttempts.delete(index);
                   setQueueItem(index, { status: 'PENDING', error: undefined });
                   scheduleLaunchRetry(index, 'RATE_LIMIT_429', 1, Date.now() + RETRY_429_COOLDOWN_MS, null);
                   refreshLiveQueueStatus();
@@ -974,9 +1033,9 @@ export function useBacktestQueue() {
                   continue;
                 }
 
-                if (isQueueLimit412(rawMsg)) {
+                if (isQueueLimit412(parsedLaunchError)) {
                   const waitForActiveBelow = activeRuns.size > 0 ? activeRuns.size : null;
-                  launchNetworkRetryAttempts.delete(index);
+                  launchTransientRetryAttempts.delete(index);
                   setQueueItem(index, { status: 'PENDING', error: undefined });
                   scheduleLaunchRetry(index, 'QUEUE_LIMIT_412', 1, Date.now() + RETRY_429_COOLDOWN_MS, waitForActiveBelow);
                   refreshLiveQueueStatus();
@@ -986,14 +1045,29 @@ export function useBacktestQueue() {
                   continue;
                 }
 
+                if (isValidation412(parsedLaunchError)) {
+                  clearLaunchRetryState();
+                  launchTransientRetryAttempts.delete(index);
+                  setQueueItem(index, { status: 'ERROR', error: rawMsg });
+                  addLog(`Ошибка: ${rawMsg}`);
+                  await LogService.error('queue', 'test.failed', error, {
+                    batchId,
+                    index: index + 1,
+                    status: 'ERROR',
+                    configHash: configHash(item.config)
+                  }, batchId);
+                  await syncRunningProgress();
+                  continue;
+                }
+
                 if (isFailedToFetchError(rawMsg)) {
-                  const previousAttempts = launchNetworkRetryAttempts.get(index) ?? 0;
+                  const previousAttempts = launchTransientRetryAttempts.get(index) ?? 0;
                   const attempts = previousAttempts + 1;
 
                   if (attempts >= NETWORK_MAX_RETRY_ATTEMPTS) {
                     forcedStopReason = 'runtime_error';
                     forcedStopMessage = 'Сеть не доступна более 10 мин.';
-                    launchNetworkRetryAttempts.delete(index);
+                    launchTransientRetryAttempts.delete(index);
                     setQueueItem(index, { status: 'PENDING', error: undefined });
                     scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
                     addLog(`Ошибка: ${rawMsg}`);
@@ -1002,7 +1076,7 @@ export function useBacktestQueue() {
                     break;
                   }
 
-                  launchNetworkRetryAttempts.set(index, attempts);
+                  launchTransientRetryAttempts.set(index, attempts);
                   setQueueItem(index, { status: 'PENDING', error: undefined });
                   scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
                   refreshLiveQueueStatus();
@@ -1012,9 +1086,35 @@ export function useBacktestQueue() {
                   continue;
                 }
 
+                if (isServer5xx(parsedLaunchError)) {
+                  const previousAttempts = launchTransientRetryAttempts.get(index) ?? 0;
+                  const attempts = previousAttempts + 1;
+
+                  if (attempts >= NETWORK_MAX_RETRY_ATTEMPTS) {
+                    forcedStopReason = 'runtime_error';
+                    forcedStopMessage = 'Сервер Veles недоступен более 10 мин.';
+                    launchTransientRetryAttempts.delete(index);
+                    setQueueItem(index, { status: 'PENDING', error: undefined });
+                    scheduleLaunchRetry(index, 'SERVER_5XX', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
+                    addLog(`Ошибка: ${rawMsg}`);
+                    addLog(`Ошибка: ${forcedStopMessage}`);
+                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                    break;
+                  }
+
+                  launchTransientRetryAttempts.set(index, attempts);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  scheduleLaunchRetry(index, 'SERVER_5XX', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
+                  refreshLiveQueueStatus();
+                  addLog(`Ошибка: ${rawMsg}`);
+                  addLog(`Сервер Veles временно недоступен. Повтор запуска текущего теста через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                  continue;
+                }
+
                 const status: QueueItem['status'] = rawMsg.includes('TIMEOUT') ? 'TIMEOUT' : 'ERROR';
                 clearLaunchRetryState();
-                launchNetworkRetryAttempts.delete(index);
+                launchTransientRetryAttempts.delete(index);
                 setQueueItem(index, { status, error: rawMsg });
 
                 addLog(`Ошибка: ${rawMsg}`);
