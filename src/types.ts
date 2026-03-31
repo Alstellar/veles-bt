@@ -297,10 +297,11 @@ export interface BacktestsResumeTemplate {
 }
 
 export interface BacktestsResumeSource {
-  version: 1;
+  version: 1 | 2;
   exchange: ExchangeType;
   dateFrom: string;
   dateTo: string;
+  periodMode?: 'RANGE' | 'WHOLE_PERIOD';
   deposit?: number;
   leverage?: number;
   nameTemplate: string;
@@ -312,6 +313,7 @@ export interface BacktestsResumeSource {
   assetsInputText: string;
   assetsSource: 'manual' | 'exchange_filtered';
   symbols: string[];
+  symbolAvailableFrom?: Record<string, string | null>;
   symbolMaxLeverage: Record<string, number | null>;
   templates: BacktestsResumeTemplate[];
 }

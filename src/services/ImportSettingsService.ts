@@ -317,7 +317,7 @@ export function mapImportedPayload(
     exitConfig.stopLoss = {
       ...current.exitConfig.stopLoss,
       enabledSimple: hasSimple,
-      indent: hasSimple ? [String(Math.abs(Number(stopLoss.indent)))] : [],
+      indent: hasSimple ? [String(-Math.abs(Number(stopLoss.indent)))] : [],
       enabledSignal: hasSignal,
       conditionalIndent: hasConditional
         ? [String(-1 * Number(stopLoss.conditionalIndent))]

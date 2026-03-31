@@ -223,6 +223,7 @@ export function BacktestsView({
   const [nameTemplate, setNameTemplate] = useState(DEFAULT_BACKTESTS_NAME_TEMPLATE);
   const [dateFrom, setDateFrom] = useState<Date | null>(dayjs().subtract(1, 'year').toDate());
   const [dateTo, setDateTo] = useState<Date | null>(new Date());
+  const [periodMode, setPeriodMode] = useState<'RANGE' | 'WHOLE_PERIOD'>('RANGE');
   const [makerFee, setMakerFee] = useState(DEFAULT_MAKER_FEE);
   const [takerFee, setTakerFee] = useState(DEFAULT_TAKER_FEE);
   const [depositAmount, setDepositAmount] = useState<number | ''>(DEFAULT_DEPOSIT_AMOUNT);
@@ -439,10 +440,12 @@ export function BacktestsView({
 
   const applyPeriodMonths = (months: number) => {
     const to = dateTo ?? new Date();
+    setPeriodMode('RANGE');
     setDateFrom(dayjs(to).subtract(months, 'month').toDate());
   };
 
   const applyWholePeriod = () => {
+    setPeriodMode('WHOLE_PERIOD');
     setDateFrom(dayjs('2018-01-01').toDate());
   };
 
@@ -541,11 +544,17 @@ export function BacktestsView({
       };
     }
 
+    const symbolAvailableFrom = symbols.reduce<Record<string, string | null>>((acc, symbol) => {
+      acc[symbol] = availabilityMap[symbol] ?? null;
+      return acc;
+    }, {});
+
     const source: BacktestsResumeSource = {
-      version: 1,
+      version: 2,
       exchange,
       dateFrom: toIsoDateString(dateFrom),
       dateTo: toIsoDateString(dateTo),
+      periodMode,
       deposit: parsedDepositAmount ?? DEFAULT_DEPOSIT_AMOUNT,
       leverage: isSpotExchange ? undefined : (parsedDepositLeverage ?? DEFAULT_DEPOSIT_LEVERAGE),
       nameTemplate: nameTemplate.trim() || DEFAULT_BACKTESTS_NAME_TEMPLATE,
@@ -557,6 +566,7 @@ export function BacktestsView({
       assetsInputText,
       assetsSource,
       symbols,
+      symbolAvailableFrom,
       symbolMaxLeverage: buildSymbolMaxLeverageMap(limitations),
       templates
     };
@@ -578,6 +588,7 @@ export function BacktestsView({
   }, [
     assetsInputText,
     assetsSource,
+    availabilityMap,
     dateFrom,
     dateTo,
     exchange,
@@ -589,6 +600,7 @@ export function BacktestsView({
     nameTemplate,
     makerFee,
     takerFee,
+    periodMode,
     depositAmount,
     depositLeverage,
     isPublic,
@@ -614,7 +626,7 @@ export function BacktestsView({
         `Шаблонов: ${result.templatesCount}`,
         `Активов: ${result.symbolsCount}`,
         `К запуску: ${result.queueSize}`,
-        `Пропущено (плечо): ${result.skippedPairs.length}`,
+        `Пропущено (ограничения): ${result.skippedPairs.length}`,
         `Депозит: ${result.source?.deposit ?? '-'}`,
         isSpot(result.source?.exchange ?? exchange)
           ? 'Плечо: не используется (SPOT)'
@@ -648,7 +660,7 @@ export function BacktestsView({
       const confirmed = window.confirm(
         [
           `Комбинаций к запуску: ${built.items.length}`,
-          `Пропущено по плечу: ${built.skipped.length}`,
+          `Пропущено (ограничения): ${built.skipped.length}`,
           `Депозит: ${result.source.deposit ?? '-'}`,
           isSpot(result.source.exchange)
             ? 'Плечо: не используется (SPOT)'
@@ -763,6 +775,7 @@ export function BacktestsView({
       setExchange(source.exchange);
       setDateFrom(new Date(source.dateFrom));
       setDateTo(new Date(source.dateTo));
+      setPeriodMode(source.periodMode === 'WHOLE_PERIOD' ? 'WHOLE_PERIOD' : 'RANGE');
       setNameTemplate(source.nameTemplate);
       setMakerFee(source.makerFee ?? DEFAULT_MAKER_FEE);
       setTakerFee(source.takerFee ?? DEFAULT_TAKER_FEE);
@@ -809,6 +822,9 @@ export function BacktestsView({
   const summaryMissingSymbols = validationReport?.missingSymbols.length ?? previewMissingSymbolsCount;
   const summaryDeposit = parseOptionalNumber(depositAmount);
   const summaryLeverage = parseOptionalNumber(depositLeverage);
+  const summaryPeriod = periodMode === 'WHOLE_PERIOD'
+    ? 'Весь период (по дате актива)'
+    : (dateFrom && dateTo ? `${dayjs(dateFrom).format('DD.MM.YYYY')} - ${dayjs(dateTo).format('DD.MM.YYYY')}` : '-');
 
   return (
     <Container size="xl" py="xl" pb={100} className={styles.viewRoot}>
@@ -850,7 +866,10 @@ export function BacktestsView({
                 <DateInput
                   label="Дата начала (From)"
                   value={dateFrom}
-                  onChange={(value) => setDateFrom(toDateValue(value))}
+                  onChange={(value) => {
+                    setPeriodMode('RANGE');
+                    setDateFrom(toDateValue(value));
+                  }}
                   valueFormat="DD.MM.YYYY"
                 />
                 <DateInput
@@ -1158,12 +1177,12 @@ export function BacktestsView({
               <div className={styles.summaryBlock}>
                 <div className={styles.kv}><span>Комбинаций (черновик)</span><strong>{previewPairsCount}</strong></div>
                 <div className={styles.kv}><span>Комбинаций к запуску</span><strong>{summaryQueueSize}</strong></div>
-                <div className={styles.kv}><span>Пропуски по плечу</span><strong>{summarySkipped}</strong></div>
+                <div className={styles.kv}><span>Пропуски (ограничения)</span><strong>{summarySkipped}</strong></div>
               </div>
 
               <div className={styles.summaryBlock}>
                 <div className={styles.kv}><span>Режим активов</span><strong>{assetsSource === 'manual' ? 'Ручной' : 'Фильтр биржи'}</strong></div>
-                <div className={styles.kv}><span>Период</span><strong>{dateFrom && dateTo ? `${dayjs(dateFrom).format('DD.MM.YYYY')} - ${dayjs(dateTo).format('DD.MM.YYYY')}` : '-'}</strong></div>
+                <div className={styles.kv}><span>Период</span><strong>{summaryPeriod}</strong></div>
                 <div className={styles.kv}><span>Биржа</span><strong>{exchange}</strong></div>
                 <div className={styles.kv}><span>Депозит</span><strong>{summaryDeposit ?? '-'}</strong></div>
                 <div className={styles.kv}><span>Плечо</span><strong>{isSpotExchange ? 'SPOT' : `x${summaryLeverage ?? '-'}`}</strong></div>

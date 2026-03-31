@@ -28,13 +28,23 @@ export interface ParsedSymbolsResult {
   missingSymbols: string[];
 }
 
-export interface MatrixPairError {
-  templateUrl: string;
-  symbol: string;
-  reason: 'leverage_mismatch';
-  requestedLeverage: number;
-  maxLeverage: number;
-}
+export type MatrixPairError =
+  | {
+      templateUrl: string;
+      symbol: string;
+      reason: 'leverage_mismatch';
+      requestedLeverage: number;
+      maxLeverage: number;
+    }
+  | {
+      templateUrl: string;
+      symbol: string;
+      reason: 'date_window_empty';
+      from: string;
+      to: string;
+      effectiveFrom: string;
+      availableFrom: string | null;
+    };
 
 type RawBotPayload = Record<string, unknown>;
 
@@ -97,6 +107,20 @@ const asNumber = (value: unknown, fallback: number): number => {
 
 const asString = (value: unknown, fallback: string): string => {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+};
+
+// Converts input date string to ISO; returns fallback ISO when value is empty or invalid.
+const toIsoOrFallback = (value: string | undefined, fallbackIso: string): string => {
+  const ms = Date.parse(value ?? '');
+  if (!Number.isFinite(ms)) return fallbackIso;
+  return new Date(ms).toISOString();
+};
+
+// Parses a date-like value into unix milliseconds; returns null when parsing fails.
+const toDateMs = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
 };
 
 const toMarginType = (value: unknown): 'CROSS' | 'ISOLATED' => {
@@ -412,10 +436,18 @@ export const buildQueueItemsFromBacktestsSource = (
   const hasSourceDeposit = Number.isFinite(sourceDeposit) && sourceDeposit > 0;
   const sourceLeverage = Number(source.leverage);
   const hasSourceLeverage = Number.isFinite(sourceLeverage) && sourceLeverage >= 1;
+  const sourceFromIso = toIsoOrFallback(source.dateFrom, DEFAULT_FROM_ISO);
+  const sourceToIso = toIsoOrFallback(source.dateTo, new Date().toISOString());
+  const sourceFromMs = toDateMs(sourceFromIso) ?? toDateMs(DEFAULT_FROM_ISO) ?? Date.now();
+  const sourceToMs = toDateMs(sourceToIso) ?? Date.now();
+  const useDynamicDates = source.version === 2;
+  const periodMode = source.periodMode === 'WHOLE_PERIOD' ? 'WHOLE_PERIOD' : 'RANGE';
+  const symbolAvailableFrom = source.symbolAvailableFrom ?? {};
 
   const validPairs: Array<{
     template: BacktestsResumeTemplate;
     symbol: string;
+    effectiveFromIso: string;
   }> = [];
   const skipped: MatrixPairError[] = [];
 
@@ -423,7 +455,8 @@ export const buildQueueItemsFromBacktestsSource = (
     const templateLeverage = Number(template.config.deposit?.leverage ?? 0);
     const requestedLeverage = hasSourceLeverage ? sourceLeverage : templateLeverage;
     source.symbols.forEach((symbol) => {
-      const maxLeverage = source.symbolMaxLeverage[symbol];
+      const symbolPair = symbol.toUpperCase();
+      const maxLeverage = source.symbolMaxLeverage[symbolPair] ?? source.symbolMaxLeverage[symbol];
       if (
         !isSpotExchange &&
         Number.isFinite(requestedLeverage) &&
@@ -432,14 +465,45 @@ export const buildQueueItemsFromBacktestsSource = (
       ) {
         skipped.push({
           templateUrl: template.url,
-          symbol,
+          symbol: symbolPair,
           reason: 'leverage_mismatch',
           requestedLeverage,
           maxLeverage: maxLeverage as number
         });
         return;
       }
-      validPairs.push({ template, symbol });
+
+      let effectiveFromMs = sourceFromMs;
+      let availableFromRaw: string | null = null;
+
+      if (useDynamicDates) {
+        availableFromRaw = symbolAvailableFrom[symbolPair] ?? symbolAvailableFrom[symbol] ?? null;
+        const availableFromMs = toDateMs(availableFromRaw);
+        if (availableFromMs !== null) {
+          effectiveFromMs = periodMode === 'WHOLE_PERIOD'
+            ? availableFromMs
+            : Math.max(sourceFromMs, availableFromMs);
+        }
+
+        if (effectiveFromMs > sourceToMs) {
+          skipped.push({
+            templateUrl: template.url,
+            symbol: symbolPair,
+            reason: 'date_window_empty',
+            from: sourceFromIso,
+            to: sourceToIso,
+            effectiveFrom: new Date(effectiveFromMs).toISOString(),
+            availableFrom: availableFromRaw
+          });
+          return;
+        }
+      }
+
+      validPairs.push({
+        template,
+        symbol: symbolPair,
+        effectiveFromIso: new Date(effectiveFromMs).toISOString()
+      });
     });
   });
 
@@ -452,8 +516,8 @@ export const buildQueueItemsFromBacktestsSource = (
     config.exchange = source.exchange as ExchangeType;
     config.symbol = symbolPair;
     config.symbols = [symbolPair];
-    config.from = new Date(source.dateFrom).toISOString();
-    config.to = new Date(source.dateTo).toISOString();
+    config.from = pair.effectiveFromIso;
+    config.to = sourceToIso;
     const templateDepositAmount = Number(config.deposit?.amount);
     const templateLeverage = Number(config.deposit?.leverage);
     const resolvedDepositAmount = hasSourceDeposit
