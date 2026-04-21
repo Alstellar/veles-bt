@@ -7,11 +7,17 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+test-scripts
+errors
 node_modules
 dist
 dist-ssr
 *.local
 docs
+
+# Environment variables
+.env
+.env.local
 
 # Editor directories and files
 .vscode/*
@@ -23,3 +29,4 @@ docs
 *.njsproj
 *.sln
 *.sw?
+opencode.jsonc

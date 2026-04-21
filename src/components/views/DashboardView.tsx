@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   Container,
@@ -51,6 +51,22 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
   const error = connectionError ?? null;
 
   const releases = useMemo<ReleaseSlide[]>(() => ([
+    {
+      version: 'v1.7.0',
+      title: 'Что нового',
+      badge: 'NEW',
+      color: 'lime',
+      points: [
+        {
+          icon: <IconTestPipe size={16} />,
+          text: 'Добавлена новая вкладка "Конфигуратор 2.0" для запуска тестов через Backtests 2.0.'
+        },
+        {
+          icon: <IconAdjustments size={16} />,
+          text: 'Во вкладке "Настройки" появилась настройка интервала между стартами тестов для Конфигуратора 2.0.'
+        },
+      ]
+    },
     {
       version: 'v1.6.0',
       title: 'Что нового',

@@ -21,6 +21,8 @@ interface Props {
     requestType: SignalProbeRequestType
   ) => void;
   onSignalProbeDirty?: (scope: string, variantId: string) => void;
+  hiddenProfitModes?: ProfitMode[];
+  stopLossHideSignalMode?: boolean;
 }
 
 export function ExitSettings({
@@ -28,11 +30,24 @@ export function ExitSettings({
   onChange,
   resolveSignalProbeState,
   onSignalProbeRequest,
-  onSignalProbeDirty
+  onSignalProbeDirty,
+  hiddenProfitModes = [],
+  stopLossHideSignalMode = false
 }: Props) {
+  const allProfitModes: { value: ProfitMode; label: string }[] = [
+    { value: 'SINGLE', label: 'Простой' },
+    { value: 'MULTIPLE', label: 'Свой' },
+    { value: 'SIGNAL', label: 'Сигнал' },
+  ];
+
+  const availableProfitModes = allProfitModes.filter(m => !hiddenProfitModes.includes(m.value));
+
   const handleModeChange = (val: string | null) => {
     if (!val) return;
-    onChange({ ...config, profitMode: val as ProfitMode });
+    const mode = val as ProfitMode;
+    if (availableProfitModes.some(m => m.value === mode)) {
+      onChange({ ...config, profitMode: mode });
+    }
   };
 
   return (
@@ -49,9 +64,9 @@ export function ExitSettings({
 
             <Tabs value={config.profitMode} onChange={handleModeChange} variant="outline" radius="md">
               <Tabs.List grow>
-                <Tabs.Tab value="SINGLE">Простой</Tabs.Tab>
-                <Tabs.Tab value="MULTIPLE">Свой</Tabs.Tab>
-                <Tabs.Tab value="SIGNAL">Сигнал</Tabs.Tab>
+                {availableProfitModes.map(m => (
+                  <Tabs.Tab key={m.value} value={m.value}>{m.label}</Tabs.Tab>
+                ))}
               </Tabs.List>
             </Tabs>
 
@@ -65,14 +80,14 @@ export function ExitSettings({
                 />
               )}
 
-              {config.profitMode === 'MULTIPLE' && (
+              {config.profitMode === 'MULTIPLE' && availableProfitModes.some(m => m.value === 'MULTIPLE') && (
                 <ProfitCustom
                   config={config.profitMultiple}
                   onChange={(multiple) => onChange({ ...config, profitMultiple: multiple })}
                 />
               )}
 
-              {config.profitMode === 'SIGNAL' && (
+              {config.profitMode === 'SIGNAL' && availableProfitModes.some(m => m.value === 'SIGNAL') && (
                 <ProfitSignal
                   config={config.profitSignal}
                   onChange={(signal) => onChange({ ...config, profitSignal: signal })}
@@ -85,14 +100,15 @@ export function ExitSettings({
             </div>
           </Stack>
 
-          <StopLoss
-            config={config.stopLoss}
-            onChange={(sl) => onChange({ ...config, stopLoss: sl })}
-            probeScope="stop_loss"
-            resolveSignalProbeState={resolveSignalProbeState}
-            onSignalProbeRequest={onSignalProbeRequest}
-            onSignalProbeDirty={onSignalProbeDirty}
-          />
+            <StopLoss
+              config={config.stopLoss}
+              onChange={(sl) => onChange({ ...config, stopLoss: sl })}
+              probeScope="stop_loss"
+              resolveSignalProbeState={resolveSignalProbeState}
+              onSignalProbeRequest={onSignalProbeRequest}
+              onSignalProbeDirty={onSignalProbeDirty}
+              hideSignalMode={stopLossHideSignalMode}
+            />
         </Stack>
       </Paper>
     </Paper>

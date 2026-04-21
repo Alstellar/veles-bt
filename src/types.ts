@@ -244,6 +244,7 @@ export interface BatchInfo {
   exchange: ExchangeType;
   totalTests: number;
   velesIds: number[];
+  apiVersion?: 'v1' | 'v2';
   runStatus?: BatchRunStatus;
   completedTests?: number;
   stopReason?: BatchStopReason;
@@ -321,6 +322,8 @@ export interface BacktestsResumeSource {
 export interface BatchRuntimeState {
   batchId: string;
   version?: 1 | 2;
+  apiVersion?: 'v1' | 'v2';
+  v2IntervalSeconds?: number;
   // Legacy field: old versions persisted full queue payloads with config payloads here.
   items?: QueueRuntimeItem[];
   nextIndex: number;
@@ -336,6 +339,7 @@ export interface StorageData {
   batches: Record<string, BatchInfo>;
   templates?: Record<string, Template>;
   runtimes?: Record<string, BatchRuntimeState>;
+  v2IntervalSeconds?: number;
 }
 
 // -- Результат выполнения теста --
@@ -378,7 +382,10 @@ export interface Template {
   name: string;      // Название шаблона (вводит юзер)
   timestamp: number; // Дата создания
   description?: string; // Опциональное описание
-  
+
+  // Версия API (по умолчанию v1 для обратной совместимости)
+  apiVersion?: 'v1' | 'v2';
+
   // Полный слепок конфигурации
   config: {
     staticConfig: StaticConfig;

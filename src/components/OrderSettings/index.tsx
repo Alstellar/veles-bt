@@ -21,6 +21,7 @@ interface Props {
     requestType: SignalProbeRequestType
   ) => void;
   onSignalProbeDirty?: (scope: string, variantId: string) => void;
+  hiddenModes?: GridMode[];
 }
 
 // Генератор пресетов
@@ -44,11 +45,22 @@ export function OrderSettings({
   onChange,
   resolveSignalProbeState,
   onSignalProbeRequest,
-  onSignalProbeDirty
+  onSignalProbeDirty,
+  hiddenModes = []
 }: Props) {
-  
+
+  const allModes: { value: GridMode; label: string }[] = [
+    { value: 'SIMPLE', label: 'Простой' },
+    { value: 'CUSTOM', label: 'Свой' },
+    { value: 'SIGNAL', label: 'Сигнал' },
+  ];
+
+  const availableModes = allModes.filter(m => !hiddenModes.includes(m.value));
+
   const handleTabChange = (val: string | null) => {
-    if (val) onChange({ ...state, mode: val as GridMode });
+    if (val && availableModes.some(m => m.value === val)) {
+      onChange({ ...state, mode: val as GridMode });
+    }
   };
 
   // Хелпер для изменения поля general
@@ -86,42 +98,40 @@ export function OrderSettings({
 
       <Tabs value={state.mode} onChange={handleTabChange} variant="outline" radius="md">
         <Tabs.List grow>
-          <Tabs.Tab value="SIMPLE">
-            Простой
-          </Tabs.Tab>
-          
-          <Tabs.Tab value="CUSTOM">
-            Свой
-          </Tabs.Tab>
-          
-          <Tabs.Tab value="SIGNAL">
-            Сигнал
-          </Tabs.Tab>
+          {availableModes.map(m => (
+            <Tabs.Tab key={m.value} value={m.value}>
+              {m.label}
+            </Tabs.Tab>
+          ))}
         </Tabs.List>
 
         <Tabs.Panel value="SIMPLE" pt="xs">
-          <SimpleMode 
-            config={state.simple} 
-            onChange={(newSimple) => onChange({ ...state, simple: newSimple })} 
+          <SimpleMode
+            config={state.simple}
+            onChange={(newSimple) => onChange({ ...state, simple: newSimple })}
           />
         </Tabs.Panel>
 
-        <Tabs.Panel value="CUSTOM" pt="xs">
-           <CustomMode
-             config={state.custom}
-             onChange={(newCustom) => onChange({ ...state, custom: newCustom })}
-           />
-        </Tabs.Panel>
+        {availableModes.some(m => m.value === 'CUSTOM') && (
+          <Tabs.Panel value="CUSTOM" pt="xs">
+            <CustomMode
+              config={state.custom}
+              onChange={(newCustom) => onChange({ ...state, custom: newCustom })}
+            />
+          </Tabs.Panel>
+        )}
 
-        <Tabs.Panel value="SIGNAL" pt="xs">
-          <SignalMode 
-            config={state.signal} 
-            onChange={(newSignal) => onChange({ ...state, signal: newSignal })}
-            resolveSignalProbeState={resolveSignalProbeState}
-            onSignalProbeRequest={onSignalProbeRequest}
-            onSignalProbeDirty={onSignalProbeDirty}
-          />
-        </Tabs.Panel>
+        {availableModes.some(m => m.value === 'SIGNAL') && (
+          <Tabs.Panel value="SIGNAL" pt="xs">
+            <SignalMode
+              config={state.signal}
+              onChange={(newSignal) => onChange({ ...state, signal: newSignal })}
+              resolveSignalProbeState={resolveSignalProbeState}
+              onSignalProbeRequest={onSignalProbeRequest}
+              onSignalProbeDirty={onSignalProbeDirty}
+            />
+          </Tabs.Panel>
+        )}
       </Tabs>
     </Paper>
   );

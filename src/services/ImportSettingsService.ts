@@ -165,6 +165,31 @@ export function parseImportLink(link: string): ParsedImportLink | null {
   return null;
 }
 
+export function getV2ImportIncompatibilities(payload: RawPayload): string[] {
+  const issues: string[] = [];
+
+  if (payload.settings?.type === 'SIGNAL') {
+    issues.push('режим ордеров "Сигнал"');
+  }
+
+  if (payload.profit?.type === 'MULTIPLE') {
+    issues.push('режим тейк-профита "Свой"');
+  }
+
+  const stopLoss = payload.stopLoss;
+  const hasSignalStopLoss =
+    !!stopLoss && (
+      (Array.isArray(stopLoss.conditions) && stopLoss.conditions.length > 0) ||
+      stopLoss.conditionalIndent !== undefined && stopLoss.conditionalIndent !== null
+    );
+
+  if (hasSignalStopLoss) {
+    issues.push('сигнальный стоп-лосс');
+  }
+
+  return issues;
+}
+
 export function mapImportedPayload(
   payload: RawPayload,
   current: {

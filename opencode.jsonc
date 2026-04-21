@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest"],
+      "description": "Chrome DevTools for debugging Veles Helper Chrome extension. Enables browser automation, network inspection, and performance analysis."
+    }
+  }
+}

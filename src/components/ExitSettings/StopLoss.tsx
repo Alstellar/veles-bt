@@ -30,6 +30,7 @@ interface Props {
     requestType: SignalProbeRequestType
   ) => void;
   onSignalProbeDirty?: (scope: string, variantId: string) => void;
+  hideSignalMode?: boolean;
 }
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
@@ -40,7 +41,8 @@ export function StopLoss({
   probeScope = 'stop_loss',
   resolveSignalProbeState,
   onSignalProbeRequest,
-  onSignalProbeDirty
+  onSignalProbeDirty,
+  hideSignalMode = false
 }: Props) {
 
   // --- ЛОГИКА СЛОТОВ (ГРУПП) ---
@@ -169,6 +171,7 @@ export function StopLoss({
         {/* ========================================= */}
         {/* 2. СТОП-ЛОСС ПО СИГНАЛУ */}
         {/* ========================================= */}
+        {!hideSignalMode && (
         <Stack gap="xs">
              <SimpleGrid cols={2} spacing="md" verticalSpacing="xs">
                 
@@ -311,7 +314,7 @@ export function StopLoss({
                 </Stack>
             </Collapse>
         </Stack>
-
+        )}
     </Stack>
   );
 }

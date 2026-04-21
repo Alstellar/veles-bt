@@ -1,22 +1,18 @@
-/**
- * useBacktestQueue - React hook for managing backtest queue
- * Управление очередью бэктестов: запуск, остановка, retry, resume
- */
+// src/hooks/useBacktestQueueV2.ts
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { VelesService } from '../services/VelesService';
-import type { VelesConfigPayload } from '../types/veles';
+import { VelesServiceV2 } from '../services/VelesServiceV2';
+import type { VelesConfigPayloadV2 } from '../types/velesV2';
 import type { BatchRuntimeActiveRun, BatchStopReason } from '../types';
 import { StorageService } from '../services/StorageService';
 import { DatabaseService } from '../services/DatabaseService';
 import type { BacktestResultItem } from '../types';
 import { LogService } from '../services/LogService';
 import { QueueLockService } from '../services/QueueLockService';
-import { ConfigGenerator } from '../services/ConfigGenerator';
+import { ConfigGeneratorV2 } from '../services/ConfigGeneratorV2';
 import { ConnectionService } from '../services/ConnectionService';
 import { configHash } from '../utils/configHash';
 
-// Импорт утилит
 import {
   delay,
   isNoTabError,
@@ -31,25 +27,24 @@ import {
   buildResumeQueue,
 } from '../utils/QueueUtils';
 
-// Импорт retry policy
 import {
   RETRY_WAIT_MS,
   RETRY_MAX_ATTEMPTS,
-  MIN_TEST_INTERVAL_MS,
   RETRY_429_COOLDOWN_MS,
+  getMinTestInterval,
+  setMinTestInterval,
   NETWORK_RETRY_WAIT_MS,
   NETWORK_MAX_RETRY_ATTEMPTS,
   parseApiError,
+  isServer5xx,
+  isFailedToFetchError,
   isRateLimit429,
   isQueueLimit412,
   isValidation412,
-  isServer5xx,
-  isFailedToFetchError,
   type LaunchRetryState,
   type LaunchRetryReason,
 } from '../services/QueueRetryPolicy';
 
-// Импорт polling service
 import {
   STATUS_POLL_INTERVAL_MS,
   MAX_TEST_DURATION_MS,
@@ -58,90 +53,41 @@ import {
   WAIT_CHUNK_MS,
 } from '../services/QueuePolling';
 
-// Импорт notifications
 import { requestNotificationPermission, notifyQueueComplete } from '../services/QueueNotifications';
 
-/**
- * Queue item representing a single backtest in the queue
- */
-export interface QueueItem {
-  /** Unique identifier for the queue item */
+export interface QueueItemV2 {
   id: string;
-  /** Veles configuration payload */
-  config: VelesConfigPayload;
-  /** Current status of the queue item */
+  config: VelesConfigPayloadV2;
   status: 'PENDING' | 'RUNNING' | 'FINISHED' | 'ERROR' | 'TIMEOUT';
-  /** Error message if status is ERROR or TIMEOUT */
   error?: string;
-  /** Result ID from Veles if test completed successfully */
   resultId?: number;
-  /** Source template URL if imported from template */
   sourceTemplateUrl?: string;
 }
 
-/**
- * BacktestQueueController - interface returned by useBacktestQueue hook
- * Used by components to interact with the queue
- */
-export type BacktestQueueController = ReturnType<typeof useBacktestQueue>;
+export type BacktestQueueControllerV2 = ReturnType<typeof useBacktestQueueV2>;
 
-/**
- * Execution context for running tests
- */
 interface ExecutionContext {
-  /** Chrome tab ID where Veles is running */
   tabId: number;
-  /** Authentication token for Veles API */
   token: string;
 }
 
-/**
- * Active run state with additional metadata
- */
 interface ActiveRunState extends BatchRuntimeActiveRun {
-  /** Human-readable test name for logging */
   testName: string;
 }
 
-/**
- * Options for resuming queue execution
- */
 interface RunOptions {
-  /** Resume from this index */
   resumeFrom?: number;
-  /** Active runs to resume */
   resumeActiveRuns?: BatchRuntimeActiveRun[];
-  /** Timestamp of last launch */
   resumeLastLaunchAt?: number;
-  /** Queue fingerprint for validation */
   resumeFingerprint?: string;
 }
 
-/**
- * Lock heartbeat interval in milliseconds
- * How often we refresh the lock to keep it alive
- */
 const LOCK_HEARTBEAT_MS = 2000;
-
-/**
- * Warning threshold for detecting frozen execution (ms)
- * If a wait chunk takes longer than this, we warn about possible inactivity
- */
 const FREEZE_WARN_THRESHOLD_MS = 60000;
-
-/**
- * Runtime version for resume compatibility
- * Incremented when resume format changes
- */
 const RUNTIME_VERSION = 2;
 
-/**
- * Main hook for backtest queue management
- * Handles queue state, test execution, retry logic, and notifications
- */
-export function useBacktestQueue() {
-  // === STATE ===
-  const [queue, setQueue] = useState<QueueItem[]>([]);
+export function useBacktestQueueV2() {
+  const [queue, setQueue] = useState<QueueItemV2[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [statusMessage, setStatusMessage] = useState('');
@@ -150,17 +96,13 @@ export function useBacktestQueue() {
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // === REFS ===
   const stopRef = useRef(false);
   const originalTitleRef = useRef(document.title);
   const ownerIdRef = useRef(`runner_${crypto.randomUUID()}`);
   const currentBatchIdRef = useRef<string | null>(null);
   const lastLogTimestampRef = useRef<string>(new Date().toLocaleTimeString('ru-RU', { hour12: false }));
-  const statusSnapshotRef = useRef<{ items: QueueItem[]; activeCount: number } | null>(null);
+  const statusSnapshotRef = useRef<{ items: QueueItemV2[]; activeCount: number } | null>(null);
 
-  // === EFFECTS ===
-
-  /** Cleanup on unmount: restore title and release lock */
   useEffect(() => {
     return () => {
       document.title = originalTitleRef.current;
@@ -168,16 +110,7 @@ export function useBacktestQueue() {
     };
   }, []);
 
-  // === CALLBACKS ===
-
-  /**
-   * Builds status message for queue progress display
-   * @param ts - Timestamp for the message
-   * @param items - Current queue items
-   * @param activeCount - Number of active tests
-   * @returns Formatted status message
-   */
-  const buildQueueStatusMessage = useCallback((ts: string, items: QueueItem[], activeCount: number): string => {
+  const buildQueueStatusMessage = useCallback((ts: string, items: QueueItemV2[], activeCount: number): string => {
     const completed = calculateCompletedTests(items);
     const total = items.length;
     const errors = items.reduce((acc, item) => (item.status === 'ERROR' ? acc + 1 : acc), 0);
@@ -185,16 +118,10 @@ export function useBacktestQueue() {
     return `[${ts}] Завершено ${completed}/${total} | Очередь ${queueBusy}/${MAX_CONCURRENT_TESTS} | Ошибки ${errors}`;
   }, []);
 
-  /**
-   * Adds a log entry to the in-memory log buffer
-   * Updates both logs state and status message
-   * @param msg - Log message to add
-   */
   const addLog = useCallback((msg: string) => {
     const ts = new Date().toLocaleTimeString('ru-RU', { hour12: false });
     lastLogTimestampRef.current = ts;
-    const decorated = msg; // decorateQueueLogMessage(msg) removed
-    const line = `[${ts}] ${decorated}`;
+    const line = `[${ts}] ${msg}`;
 
     setLogs((prev) => {
       const next = [...prev, line];
@@ -210,12 +137,7 @@ export function useBacktestQueue() {
     }
   }, [buildQueueStatusMessage]);
 
-  /**
-   * Updates live queue status for UI display
-   * @param items - Current queue items
-   * @param activeCount - Number of active tests
-   */
-  const setLiveQueueStatus = useCallback((items: QueueItem[], activeCount: number) => {
+  const setLiveQueueStatus = useCallback((items: QueueItemV2[], activeCount: number) => {
     const ts = lastLogTimestampRef.current;
     statusSnapshotRef.current = {
       items: items.map((item) => ({ ...item })),
@@ -224,17 +146,10 @@ export function useBacktestQueue() {
     setStatusMessage(buildQueueStatusMessage(ts, items, activeCount));
   }, [buildQueueStatusMessage]);
 
-  /**
-   * Adds items to the queue
-   * @param items - Items to add
-   */
-  const addItems = useCallback((items: QueueItem[]) => {
+  const addItems = useCallback((items: QueueItemV2[]) => {
     setQueue((prev) => [...prev, ...items]);
   }, []);
 
-  /**
-   * Clears the queue and resets all state
-   */
   const clearQueue = useCallback(() => {
     setQueue([]);
     setProgress({ current: 0, total: 0 });
@@ -245,25 +160,20 @@ export function useBacktestQueue() {
     document.title = originalTitleRef.current;
   }, []);
 
-  /**
-   * Saves runtime checkpoint for resume functionality
-   * @param batchId - Batch identifier
-   * @param items - Current queue items
-   * @param activeRuns - Map of active run states
-   * @param status - Run status (RUN or STOP)
-   * @param lastLaunchAt - Timestamp of last launch
-   */
   const saveRuntimeCheckpoint = useCallback(
     async (
       batchId: string,
-      items: QueueItem[],
+      items: QueueItemV2[],
       activeRuns: Map<number, ActiveRunState>,
       status: 'RUN' | 'STOP',
       lastLaunchAt: number
     ) => {
+      const savedV2Interval = await StorageService.getV2IntervalSeconds();
       await StorageService.saveBatchRuntime({
         batchId,
         version: RUNTIME_VERSION,
+        apiVersion: 'v2',
+        v2IntervalSeconds: savedV2Interval,
         items: items.map(toRuntimeItem),
         nextIndex: calculateCompletedTests(items),
         total: items.length,
@@ -282,12 +192,6 @@ export function useBacktestQueue() {
     []
   );
 
-  /**
-   * Resolves execution context (tab ID and token) from connection service
-   * Retries on failure up to RETRY_MAX_ATTEMPTS
-   * @param batchId - Batch identifier for logging
-   * @returns Execution context or null with failure reason
-   */
   const resolveExecutionContext = useCallback(
     async (batchId: string): Promise<{ context: ExecutionContext | null; reason: 'no_tab' | 'no_token' | 'unauthorized' }> => {
       for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
@@ -298,7 +202,7 @@ export function useBacktestQueue() {
               tabId: connection.connection.tabId,
               token: connection.connection.token
             },
-            reason: 'no_token'
+            reason: 'no_token' as const
           };
         }
 
@@ -307,12 +211,7 @@ export function useBacktestQueue() {
         const reasonLabel = ConnectionService.reasonToMessage(reason);
 
         if (attempt < RETRY_MAX_ATTEMPTS) {
-          addLog(`${reasonLabel}. Откройте Veles, повтор через 60с (${attempt}/${RETRY_MAX_ATTEMPTS - 1})`);
-          await LogService.warn('queue', 'queue.context_retry', {
-            batchId,
-            attempt,
-            reason
-          }, batchId);
+          addLog(`${reasonLabel}. Повтор через 60с (${attempt}/${RETRY_MAX_ATTEMPTS - 1})`);
           await delay(RETRY_WAIT_MS);
           continue;
         }
@@ -331,10 +230,6 @@ export function useBacktestQueue() {
     [addLog]
   );
 
-  /**
-   * Stops the queue execution
-   * Sets stop flag and requests lock stop
-   */
   const stop = useCallback(() => {
     stopRef.current = true;
     addLog('Остановка запрошена. Завершаю текущий цикл...');
@@ -350,13 +245,6 @@ export function useBacktestQueue() {
     void LogService.warn('queue', 'queue.stop_requested');
   }, [addLog]);
 
-  /**
-   * Interruptible wait with optional heartbeat
-   * Returns false if stopped or heartbeat failed
-   * @param ms - Milliseconds to wait
-   * @param options - Heartbeat and freeze warning options
-   * @returns True if completed normally, false if interrupted
-   */
   const waitInterruptible = useCallback(
     async (
       ms: number,
@@ -383,9 +271,7 @@ export function useBacktestQueue() {
 
         if (options?.warnOnFreeze && !freezeWarned && actualSleepMs > FREEZE_WARN_THRESHOLD_MS) {
           freezeWarned = true;
-          addLog(
-            `Обнаружена длительная пауза ${Math.round(actualSleepMs / 1000)}с. Возможно, вкладка или система была неактивна.`
-          );
+          addLog(`Обнаружена длительная пауза ${Math.round(actualSleepMs / 1000)}с. Возможно, вкладка или система была неактивна.`);
         }
 
         const now = Date.now();
@@ -404,11 +290,6 @@ export function useBacktestQueue() {
     [addLog]
   );
 
-  /**
-   * Checks for external stop request from history
-   * @param batchId - Batch identifier
-   * @returns True if stop was requested externally
-   */
   const pullExternalStop = useCallback(
     async (batchId: string): Promise<boolean> => {
       const requested = await QueueLockService.isStopRequested(batchId);
@@ -422,14 +303,6 @@ export function useBacktestQueue() {
     [addLog]
   );
 
-  /**
-   * Wraps operations with automatic context recovery
-   * If tab error occurs, re-resolves context and retries once
-   * @param batchId - Batch identifier
-   * @param runRef - Ref to execution context
-   * @param operation - Operation to execute
-   * @returns Result of operation
-   */
   const withContextRecovery = useCallback(
     async <T,>(
       batchId: string,
@@ -455,15 +328,11 @@ export function useBacktestQueue() {
     [resolveExecutionContext]
   );
 
-  /**
-   * Main run function - executes all queue items
-   * Handles locking, retry, polling, and state management
-   * @param batchId - Batch identifier
-   * @param initialItems - Initial queue items (or uses current queue)
-   * @param options - Run options for resume
-   */
   const run = useCallback(
-    async (batchId: string, initialItems?: QueueItem[], options?: RunOptions) => {
+    async (batchId: string, initialItems?: QueueItemV2[], options?: RunOptions) => {
+      const v2Interval = await StorageService.getV2IntervalSeconds();
+      setMinTestInterval(v2Interval * 1000);
+
       if (isRunning) {
         if (currentBatchIdRef.current === batchId) {
           addLog(`Продолжаю выполнение задачи ${batchId}.`);
@@ -473,14 +342,11 @@ export function useBacktestQueue() {
         return;
       }
 
-      // === LOCK ACQUISITION ===
       let lockAcquired = await QueueLockService.acquire(ownerIdRef.current, batchId);
       if (!lockAcquired) {
         const activeLock = await QueueLockService.getLock();
         if (activeLock && activeLock.batchId !== batchId) {
-          const confirmed = window.confirm(
-            `Сейчас выполняется задача ${activeLock.batchId}. Остановить ее и запустить новую?`
-          );
+          const confirmed = window.confirm(`Сейчас выполняется задача ${activeLock.batchId}. Остановить ее и запустить новую?`);
           if (!confirmed) {
             addLog('Запуск отменен пользователем.');
             return;
@@ -509,7 +375,6 @@ export function useBacktestQueue() {
         return;
       }
 
-      // === INITIALIZATION ===
       setIsRunning(true);
       stopRef.current = false;
       currentBatchIdRef.current = batchId;
@@ -539,7 +404,6 @@ export function useBacktestQueue() {
       setQueue([...itemsToRun]);
 
       try {
-        // === LOCK MAINTENANCE HELPERS ===
         const ensureLockOwnership = async (): Promise<boolean> => {
           const lock = await QueueLockService.getLock();
           const owned = !!lock && lock.ownerId === ownerIdRef.current && lock.batchId === batchId;
@@ -554,7 +418,6 @@ export function useBacktestQueue() {
           return QueueLockService.refresh(ownerIdRef.current, batchId);
         };
 
-        // === NOTIFICATION SETUP ===
         if (notificationsEnabled && 'Notification' in window && Notification.permission === 'default') {
           await requestNotificationPermission();
         }
@@ -562,7 +425,6 @@ export function useBacktestQueue() {
         const batchMeta = await StorageService.getBatchById(batchId);
         setCurrentBatchIds(batchMeta?.velesIds ?? []);
 
-        // === CONTEXT RESOLUTION ===
         const resolved = await resolveExecutionContext(batchId);
         if (!resolved.context) {
           const connectionError =
@@ -584,7 +446,6 @@ export function useBacktestQueue() {
           return;
         }
 
-        // === STATE INITIALIZATION ===
         const runContextRef = { current: resolved.context };
         const total = itemsToRun.length;
         const activeRuns = new Map<number, ActiveRunState>();
@@ -598,11 +459,10 @@ export function useBacktestQueue() {
         const statusNetworkRetryAttempts = new Map<number, number>();
         const statusNetworkRetryAt = new Map<number, number>();
 
-        // === HELPER FUNCTIONS ===
         const markLockLost = () => {
           if (forcedStopReason) return;
           forcedStopReason = 'lock_lost';
-          forcedStopMessage = 'Тестирование остановлено: потерян lock очереди (вкладка была неактивна или запущен другой процесс).';
+          forcedStopMessage = 'Тестирование остановлено: потерян lock очереди.';
         };
 
         const waitWithLockHeartbeat = async (ms: number): Promise<boolean> => {
@@ -625,7 +485,7 @@ export function useBacktestQueue() {
           setQueue([...itemsToRun]);
         };
 
-        const setQueueItem = (index: number, patch: Partial<QueueItem>) => {
+        const setQueueItem = (index: number, patch: Partial<QueueItemV2>) => {
           const current = itemsToRun[index];
           if (!current) return;
           itemsToRun[index] = { ...current, ...patch };
@@ -643,7 +503,7 @@ export function useBacktestQueue() {
           setLiveQueueStatus(itemsToRun, activeRuns.size);
         };
 
-        const queueContains = (target: number): boolean => pendingIndices.includes(target);
+        const queueContains = (index: number) => pendingIndices.includes(index);
 
         const movePendingToFront = (index: number) => {
           const pos = pendingIndices.indexOf(index);
@@ -703,7 +563,6 @@ export function useBacktestQueue() {
           return false;
         };
 
-        // === RESTORE ACTIVE RUNS FROM RESUME ===
         const resumeFingerprintsMatch =
           !!options?.resumeFingerprint &&
           options.resumeFingerprint === buildQueueFingerprint(itemsToRun);
@@ -762,7 +621,7 @@ export function useBacktestQueue() {
         });
 
         await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
-        addLog(`Запуск очереди: ${calculateCompletedTests(itemsToRun)}/${total}`);
+        addLog(`Запуск очереди V2: ${calculateCompletedTests(itemsToRun)}/${total}`);
         await LogService.info('queue', 'queue.started', { batchId, total });
 
         const syncRunningProgress = async () => {
@@ -775,7 +634,6 @@ export function useBacktestQueue() {
           refreshLiveQueueStatus();
         };
 
-        // === FINALIZE ACTIVE RUN ===
         const finalizeActiveRun = async (index: number, runState: ActiveRunState): Promise<boolean> => {
           const item = itemsToRun[index];
           if (!item) {
@@ -785,7 +643,7 @@ export function useBacktestQueue() {
           }
 
           let statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
-            VelesService.getStats(ctx.tabId, runState.velesId)
+            VelesServiceV2.getStats(ctx.tabId, runState.velesId)
           );
 
           if (!statsRes.success || !statsRes.stats) {
@@ -794,7 +652,7 @@ export function useBacktestQueue() {
             }
 
             statsRes = await withContextRecovery(batchId, runContextRef, (ctx) =>
-              VelesService.getStats(ctx.tabId, runState.velesId)
+              VelesServiceV2.getStats(ctx.tabId, runState.velesId)
             );
           }
 
@@ -855,17 +713,25 @@ export function useBacktestQueue() {
             batchId,
             index: index + 1,
             velesId: runState.velesId,
-            configHash: configHash(item.config)
+            configHash: configHash(item.config as any)
           }, batchId);
 
+          await syncRunningProgress();
           return true;
         };
 
-        // === MAIN LOOP ===
-        while (calculateCompletedTests(itemsToRun) < total) {
+        const statusChecksInFlight = new Set<number>();
+        const finalizeInFlight = new Set<number>();
+
+        const shouldContinueLoops = () =>
+          !forcedStopReason &&
+          !stopRef.current &&
+          calculateCompletedTests(itemsToRun) < total;
+
+        const ensureRunCanContinue = async (): Promise<boolean> => {
           if (!(await touchLock())) {
             markLockLost();
-            break;
+            return false;
           }
 
           await pullExternalStop(batchId);
@@ -874,185 +740,99 @@ export function useBacktestQueue() {
               forcedStopReason = 'manual_stop';
               forcedStopMessage = 'Остановлено пользователем';
             }
-            break;
+            return false;
           }
 
-          let didWork = false;
-          const now = Date.now();
-          const launchBlockedByRetry = isLaunchRetryBlocked(now);
-          const canLaunchByCapacity =
-            pendingIndices.length > 0 &&
-            activeRuns.size < MAX_CONCURRENT_TESTS &&
-            !launchBlockedByRetry;
-          const nextAllowedLaunchAt = lastLaunchAt > 0 ? lastLaunchAt + MIN_TEST_INTERVAL_MS : 0;
-          const launchIntervalRemainingMs = canLaunchByCapacity && nextAllowedLaunchAt > now
-            ? nextAllowedLaunchAt - now
-            : 0;
+          return true;
+        };
 
-          if (launchIntervalRemainingMs > 0 && nextAllowedLaunchAt !== lastIntervalPauseLogTargetAt) {
-            lastIntervalPauseLogTargetAt = nextAllowedLaunchAt;
-            addLog(`Пауза ${Math.ceil(launchIntervalRemainingMs / 1000)}с перед следующим тестом...`);
-          }
+        const launchLoop = async () => {
+          while (shouldContinueLoops()) {
+            if (!(await ensureRunCanContinue())) {
+              break;
+            }
 
-          // === LAUNCH NEW TESTS ===
-          if (
-            pendingIndices.length > 0 &&
-            activeRuns.size < MAX_CONCURRENT_TESTS &&
-            !launchBlockedByRetry &&
-            (lastLaunchAt === 0 || now - lastLaunchAt >= MIN_TEST_INTERVAL_MS)
-          ) {
+            const now = Date.now();
+            const launchBlockedByRetry = isLaunchRetryBlocked(now);
+            const canLaunchByCapacity =
+              pendingIndices.length > 0 &&
+              activeRuns.size < MAX_CONCURRENT_TESTS &&
+              !launchBlockedByRetry;
+            const nextAllowedLaunchAt = lastLaunchAt > 0 ? lastLaunchAt + getMinTestInterval() : 0;
+            const launchIntervalRemainingMs = canLaunchByCapacity && nextAllowedLaunchAt > now
+              ? nextAllowedLaunchAt - now
+              : 0;
+
+            if (launchIntervalRemainingMs > 0 && nextAllowedLaunchAt !== lastIntervalPauseLogTargetAt) {
+              lastIntervalPauseLogTargetAt = nextAllowedLaunchAt;
+              addLog(`Пауза ${Math.ceil(launchIntervalRemainingMs / 1000)}с перед следующим тестом...`);
+            }
+
+            if (!canLaunchByCapacity || (lastLaunchAt !== 0 && now - lastLaunchAt < getMinTestInterval())) {
+              const fullWaitCompleted = await waitWithLockHeartbeat(WAIT_CHUNK_MS);
+              if (!fullWaitCompleted && !forcedStopReason) {
+                stopRef.current = true;
+              }
+              continue;
+            }
+
             const index = pendingIndices.shift();
-            if (index !== undefined && itemsToRun[index] && itemsToRun[index].status === 'PENDING') {
-              const item = itemsToRun[index];
-              const testName = `Тест ${index + 1}/${total}`;
-              addLog(`${testName}: запуск теста...`);
-              setQueueItem(index, { status: 'RUNNING', error: undefined });
-              await LogService.info('queue', 'test.start', {
-                batchId,
-                index: index + 1,
-                configHash: configHash(item.config)
-              }, batchId);
+            if (index === undefined || !itemsToRun[index] || itemsToRun[index].status !== 'PENDING') {
+              continue;
+            }
 
-              try {
-                const result = await withContextRecovery(batchId, runContextRef, (ctx) =>
-                  VelesService.runTest(ctx.tabId, ctx.token, item.config)
-                );
+            const item = itemsToRun[index];
+            const testName = `Тест ${index + 1}/${total}`;
+            addLog(`${testName}: запуск теста...`);
+            setQueueItem(index, { status: 'RUNNING', error: undefined });
+            await LogService.info('queue', 'test.start', {
+              batchId,
+              index: index + 1,
+              configHash: configHash(item.config as any)
+            }, batchId);
 
-                if (!result.success) {
-                  const parsed = parseApiError(result.error || '');
-                  if (isRateLimit429(parsed)) {
-                    addLog(`Ошибка: ${parsed.message}`);
-                    launchTransientRetryAttempts.delete(index);
-                    setQueueItem(index, { status: 'PENDING', error: undefined });
-                    scheduleLaunchRetry(index, 'RATE_LIMIT_429', 1, Date.now() + RETRY_429_COOLDOWN_MS, null);
-                    refreshLiveQueueStatus();
-                    addLog('Пауза 35с после 429. Повторяю запуск текущего теста...');
-                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
-                    continue;
-                  }
+            try {
+              const result = await withContextRecovery(batchId, runContextRef, (ctx) =>
+                VelesServiceV2.runTest(ctx.tabId, ctx.token, item.config)
+              );
 
-                  if (isQueueLimit412(parsed)) {
-                    addLog(`Ошибка: ${parsed.message}`);
-                    const waitForActiveBelow = activeRuns.size > 0 ? activeRuns.size : null;
-                    launchTransientRetryAttempts.delete(index);
-                    setQueueItem(index, { status: 'PENDING', error: undefined });
-                    scheduleLaunchRetry(index, 'QUEUE_LIMIT_412', 1, Date.now() + RETRY_429_COOLDOWN_MS, waitForActiveBelow);
-                    refreshLiveQueueStatus();
-                    addLog('Очередь Veles заполнена (412). Жду освобождения слота и повторяю текущий тест...');
-                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
-                    continue;
-                  }
+              if (!result.success) {
+                const parsed = parseApiError(result.error || '');
+                if (isRateLimit429(parsed)) {
+                  addLog(`Ошибка: ${parsed.message}`);
+                  launchTransientRetryAttempts.delete(index);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  scheduleLaunchRetry(index, 'RATE_LIMIT_429', 1, Date.now() + RETRY_429_COOLDOWN_MS, null);
+                  refreshLiveQueueStatus();
+                  addLog('Пауза 35с после 429. Повторяю запуск текущего теста...');
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                  continue;
+                }
 
-                  if (isValidation412(parsed)) {
-                    clearLaunchRetryState();
-                    launchTransientRetryAttempts.delete(index);
-                    setQueueItem(index, { status: 'ERROR', error: parsed.message });
-                    addLog(`Ошибка: ${parsed.message}`);
-                    await LogService.error('queue', 'test.failed', new Error(parsed.message), {
-                      batchId,
-                      index: index + 1,
-                      status: 'ERROR',
-                      configHash: configHash(item.config)
-                    }, batchId);
-                    await syncRunningProgress();
-                    continue;
-                  }
+                if (isQueueLimit412(parsed)) {
+                  addLog(`Ошибка: ${parsed.message}`);
+                  const waitForActiveBelow = activeRuns.size > 0 ? activeRuns.size : null;
+                  launchTransientRetryAttempts.delete(index);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  scheduleLaunchRetry(index, 'QUEUE_LIMIT_412', 1, Date.now() + RETRY_429_COOLDOWN_MS, waitForActiveBelow);
+                  refreshLiveQueueStatus();
+                  addLog('Очередь Veles заполнена (412). Жду освобождения слота и повторяю текущий тест...');
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                  continue;
+                }
 
-                  const status: QueueItem['status'] = parsed.status === 412 ? 'ERROR' : 'ERROR';
+                if (isValidation412(parsed)) {
                   clearLaunchRetryState();
                   launchTransientRetryAttempts.delete(index);
-                  setQueueItem(index, { status, error: parsed.message });
+                  setQueueItem(index, { status: 'ERROR', error: parsed.message });
                   addLog(`Ошибка: ${parsed.message}`);
                   await LogService.error('queue', 'test.failed', new Error(parsed.message), {
                     batchId,
                     index: index + 1,
-                    status,
-                    configHash: configHash(item.config)
+                    status: 'ERROR',
+                    configHash: configHash(item.config as any)
                   }, batchId);
                   await syncRunningProgress();
-                  continue;
-                }
-
-                lastLaunchAt = Date.now();
-                clearLaunchRetryState();
-                launchTransientRetryAttempts.delete(index);
-                const velesId = result.id!;
-                activeRuns.set(index, {
-                  velesId,
-                  index,
-                  testName,
-                  launchedAt: Date.now(),
-                  launchAttemptStartedAt: Date.now()
-                });
-                refreshLiveQueueStatus();
-                await syncRunningProgress();
-                didWork = true;
-              } catch (error) {
-                const rawMsg = extractErrorMessage(error);
-
-                if (rawMsg.startsWith('QUEUE_STOP:')) {
-                  const reason = rawMsg.includes('no_token')
-                    ? 'no_token'
-                    : rawMsg.includes('unauthorized')
-                      ? 'unauthorized'
-                      : 'no_tab';
-                  forcedStopReason = reason;
-                  forcedStopMessage = ConnectionService.reasonToMessage(reason);
-                  clearLaunchRetryState();
-                  launchTransientRetryAttempts.delete(index);
-                  setQueueItem(index, { status: 'PENDING', error: undefined });
-                  enqueuePending(index, true);
-                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
-                  break;
-                }
-
-                if (isUnauthorizedError(rawMsg)) {
-                  ConnectionService.invalidate();
-                  addLog('Потеря авторизации (401). Ожидание восстановления подключения...');
-                  const recovered = await resolveExecutionContext(batchId);
-
-                  if (recovered.context) {
-                    runContextRef.current = recovered.context;
-                    addLog('Подключение восстановлено. Повторяю запуск текущего теста...');
-                    setQueueItem(index, { status: 'PENDING', error: undefined });
-                    enqueuePending(index, true);
-                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
-                    continue;
-                  }
-
-                  forcedStopReason = recovered.reason;
-                  forcedStopMessage = ConnectionService.reasonToMessage(recovered.reason);
-                  setQueueItem(index, { status: 'PENDING', error: undefined });
-                  enqueuePending(index, true);
-                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
-                  break;
-                }
-
-                const parsed = parseApiError(rawMsg);
-
-                if (isFailedToFetchError(rawMsg)) {
-                  const previousAttempts = launchTransientRetryAttempts.get(index) ?? 0;
-                  const attempts = previousAttempts + 1;
-
-                  if (attempts >= NETWORK_MAX_RETRY_ATTEMPTS) {
-                    forcedStopReason = 'runtime_error';
-                    forcedStopMessage = 'Сеть не доступна более 10 мин.';
-                    launchTransientRetryAttempts.delete(index);
-                    setQueueItem(index, { status: 'PENDING', error: undefined });
-                    scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
-                    addLog(`Ошибка: ${rawMsg}`);
-                    addLog(`Ошибка: ${forcedStopMessage}`);
-                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
-                    break;
-                  }
-
-                  launchTransientRetryAttempts.set(index, attempts);
-                  setQueueItem(index, { status: 'PENDING', error: undefined });
-                  scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
-                  refreshLiveQueueStatus();
-                  addLog(`Ошибка: ${rawMsg}`);
-                  addLog(`Сеть недоступна. Повтор запуска текущего теста через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
-                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
                   continue;
                 }
 
@@ -1068,62 +848,171 @@ export function useBacktestQueue() {
                     break;
                   }
 
-                  launchTransientRetryAttempts.set(index, attempts);
                   setQueueItem(index, { status: 'PENDING', error: undefined });
                   scheduleLaunchRetry(index, 'SERVER_5XX', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
                   refreshLiveQueueStatus();
-                  addLog(`Ошибка: ${rawMsg}`);
-                  addLog(`Сервер Veles временно недоступен. Повтор запуска текущего теста через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
+                  addLog(`Сервер Veles временно недоступен. Повтор через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
                   await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
                   continue;
                 }
 
-                const status: QueueItem['status'] = rawMsg.includes('TIMEOUT') ? 'TIMEOUT' : 'ERROR';
+                const status: QueueItemV2['status'] = 'ERROR';
                 clearLaunchRetryState();
                 launchTransientRetryAttempts.delete(index);
-                setQueueItem(index, { status, error: rawMsg });
-
-                addLog(`Ошибка: ${rawMsg}`);
-                await LogService.error('queue', 'test.failed', error, {
+                setQueueItem(index, { status, error: parsed.message });
+                addLog(`Ошибка: ${parsed.message}`);
+                await LogService.error('queue', 'test.failed', new Error(parsed.message), {
                   batchId,
                   index: index + 1,
                   status,
-                  configHash: configHash(item.config)
+                  configHash: configHash(item.config as any)
                 }, batchId);
-
                 await syncRunningProgress();
+                continue;
               }
+
+              const launchedAt = Date.now();
+              lastLaunchAt = launchedAt;
+              clearLaunchRetryState();
+              launchTransientRetryAttempts.delete(index);
+              const velesId = result.id!;
+              activeRuns.set(index, {
+                velesId,
+                index,
+                testName,
+                launchedAt,
+                launchAttemptStartedAt: launchedAt
+              });
+              refreshLiveQueueStatus();
+              await syncRunningProgress();
+            } catch (error) {
+              const rawMsg = extractErrorMessage(error);
+
+              if (rawMsg.startsWith('QUEUE_STOP:')) {
+                const reason = rawMsg.includes('no_token')
+                  ? 'no_token'
+                  : rawMsg.includes('unauthorized')
+                    ? 'unauthorized'
+                    : 'no_tab';
+                forcedStopReason = reason;
+                forcedStopMessage = ConnectionService.reasonToMessage(reason);
+                clearLaunchRetryState();
+                launchTransientRetryAttempts.delete(index);
+                setQueueItem(index, { status: 'PENDING', error: undefined });
+                enqueuePending(index, true);
+                await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                break;
+              }
+
+              if (isUnauthorizedError(rawMsg)) {
+                ConnectionService.invalidate();
+                addLog('Потеря авторизации (401). Ожидание восстановления подключения...');
+                const recovered = await resolveExecutionContext(batchId);
+
+                if (recovered.context) {
+                  runContextRef.current = recovered.context;
+                  addLog('Подключение восстановлено. Повторяю запуск текущего теста...');
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  enqueuePending(index, true);
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                  continue;
+                }
+
+                forcedStopReason = recovered.reason;
+                forcedStopMessage = ConnectionService.reasonToMessage(recovered.reason);
+                setQueueItem(index, { status: 'PENDING', error: undefined });
+                enqueuePending(index, true);
+                await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                break;
+              }
+
+              if (isFailedToFetchError(rawMsg)) {
+                const previousAttempts = launchTransientRetryAttempts.get(index) ?? 0;
+                const attempts = previousAttempts + 1;
+
+                if (attempts >= NETWORK_MAX_RETRY_ATTEMPTS) {
+                  forcedStopReason = 'runtime_error';
+                  forcedStopMessage = 'Сеть не доступна более 10 мин.';
+                  launchTransientRetryAttempts.delete(index);
+                  setQueueItem(index, { status: 'PENDING', error: undefined });
+                  scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
+                  addLog(`Ошибка: ${rawMsg}`);
+                  addLog(`Ошибка: ${forcedStopMessage}`);
+                  await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                  break;
+                }
+
+                launchTransientRetryAttempts.set(index, attempts);
+                setQueueItem(index, { status: 'PENDING', error: undefined });
+                scheduleLaunchRetry(index, 'NETWORK_FAILED_FETCH', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
+                refreshLiveQueueStatus();
+                addLog(`Ошибка: ${rawMsg}`);
+                addLog(`Сеть недоступна. Повтор запуска через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
+                await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
+                continue;
+              }
+
+              const status: QueueItemV2['status'] = rawMsg.includes('TIMEOUT') ? 'TIMEOUT' : 'ERROR';
+              clearLaunchRetryState();
+              launchTransientRetryAttempts.delete(index);
+              setQueueItem(index, { status, error: rawMsg });
+
+              addLog(`Ошибка: ${rawMsg}`);
+              await LogService.error('queue', 'test.failed', error, {
+                batchId,
+                index: index + 1,
+                status,
+                configHash: configHash(item.config as any)
+              }, batchId);
+
+              await syncRunningProgress();
             }
           }
+        };
 
-          // === POLL ACTIVE RUNS ===
-          if (forcedStopReason) {
-            break;
-          }
+        const pollLoop = async () => {
+          while (shouldContinueLoops()) {
+            if (activeRuns.size === 0) {
+              await delay(WAIT_CHUNK_MS);
+              continue;
+            }
 
-          if (activeRuns.size > 0 && (Date.now() - lastPollAt >= STATUS_POLL_INTERVAL_MS || didWork)) {
+            const waitForPollMs = Math.max(0, STATUS_POLL_INTERVAL_MS - (Date.now() - lastPollAt));
+            if (waitForPollMs > 0) {
+              await delay(Math.min(WAIT_CHUNK_MS, waitForPollMs));
+              continue;
+            }
+
             lastPollAt = Date.now();
-            didWork = true;
 
-            for (const [index, runState] of Array.from(activeRuns.entries())) {
-              if (forcedStopReason || stopRef.current) break;
+            const tasks = Array.from(activeRuns.entries()).map(async ([index, runState]) => {
+              if (
+                forcedStopReason ||
+                stopRef.current ||
+                statusChecksInFlight.has(index) ||
+                finalizeInFlight.has(index)
+              ) {
+                return;
+              }
 
               const item = itemsToRun[index];
               if (!item) {
                 activeRuns.delete(index);
                 clearStatusNetworkRetry(index);
-                continue;
+                return;
               }
 
               const now = Date.now();
               const statusRetryAt = statusNetworkRetryAt.get(index) ?? 0;
               if (statusRetryAt > 0 && now < statusRetryAt) {
-                continue;
+                return;
               }
+
+              statusChecksInFlight.add(index);
 
               try {
                 const check = await withContextRecovery(batchId, runContextRef, (ctx) =>
-                  VelesService.checkStatus(ctx.tabId, ctx.token, runState.velesId)
+                  VelesServiceV2.checkStatus(ctx.tabId, ctx.token, runState.velesId)
                 );
 
                 if (!check.success) {
@@ -1133,20 +1022,36 @@ export function useBacktestQueue() {
                 clearStatusNetworkRetry(index);
 
                 if (!check.data) {
-                  continue;
+                  return;
                 }
 
                 const status = check.data.status;
                 if (status === 'FINISHED') {
-                  const completed = await finalizeActiveRun(index, runState);
-                  if (!completed) {
-                    break;
+                  statusChecksInFlight.delete(index);
+                  finalizeInFlight.add(index);
+                  try {
+                    const completed = await finalizeActiveRun(index, runState);
+                    if (!completed && !forcedStopReason) {
+                      stopRef.current = true;
+                    }
+                  } finally {
+                    finalizeInFlight.delete(index);
                   }
-                  continue;
+                  return;
                 }
 
                 if (status === 'ERROR' || status === 'FAILED') {
                   throw new Error(check.data.error || 'Тест завершился с ошибкой');
+                }
+
+                if (Date.now() - runState.launchedAt > MAX_TEST_DURATION_MS) {
+                  const timeoutMessage = `TIMEOUT: тест не завершился за ${MAX_TEST_DURATION_MINUTES} минут`;
+                  activeRuns.delete(index);
+                  clearStatusNetworkRetry(index);
+                  setQueueItem(index, { status: 'TIMEOUT', error: timeoutMessage });
+                  addLog(`Ошибка: ${timeoutMessage}`);
+                  refreshLiveQueueStatus();
+                  await syncRunningProgress();
                 }
               } catch (error) {
                 const rawMsg = extractErrorMessage(error);
@@ -1159,7 +1064,7 @@ export function useBacktestQueue() {
                       : 'no_tab';
                   forcedStopReason = reason;
                   forcedStopMessage = ConnectionService.reasonToMessage(reason);
-                  break;
+                  return;
                 }
 
                 if (isUnauthorizedError(error)) {
@@ -1169,13 +1074,13 @@ export function useBacktestQueue() {
 
                   if (recovered.context) {
                     runContextRef.current = recovered.context;
-                    addLog('Подключение восстановлено. Продолжаю ожидание по текущему тесту...');
-                    continue;
+                    addLog('Подключение восстановлено. Продолжаю ожидание...');
+                    return;
                   }
 
                   forcedStopReason = recovered.reason;
                   forcedStopMessage = ConnectionService.reasonToMessage(recovered.reason);
-                  break;
+                  return;
                 }
 
                 if (isFailedToFetchError(rawMsg)) {
@@ -1187,13 +1092,13 @@ export function useBacktestQueue() {
                     forcedStopMessage = 'Сеть не доступна более 10 мин.';
                     addLog(`Ошибка: ${rawMsg}`);
                     addLog(`Ошибка: ${forcedStopMessage}`);
-                    break;
+                    return;
                   }
 
                   statusNetworkRetryAt.set(index, Date.now() + NETWORK_RETRY_WAIT_MS);
                   addLog(`Ошибка: ${rawMsg}`);
                   addLog(`${runState.testName}: повторная проверка статуса через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
-                  continue;
+                  return;
                 }
 
                 activeRuns.delete(index);
@@ -1206,43 +1111,23 @@ export function useBacktestQueue() {
                   batchId,
                   index: index + 1,
                   status: 'ERROR',
-                  configHash: configHash(item.config)
+                  configHash: configHash(item.config as any)
                 }, batchId);
+                await syncRunningProgress();
+              } finally {
+                statusChecksInFlight.delete(index);
               }
+            });
 
-              if (!activeRuns.has(index)) {
-                continue;
-              }
-
-              // === TIMEOUT CHECK ===
-              if (Date.now() - runState.launchedAt > MAX_TEST_DURATION_MS) {
-                const timeoutMessage = `TIMEOUT: тест не завершился за ${MAX_TEST_DURATION_MINUTES} минут`;
-                activeRuns.delete(index);
-                clearStatusNetworkRetry(index);
-                setQueueItem(index, { status: 'TIMEOUT', error: timeoutMessage });
-                addLog(`Ошибка: ${timeoutMessage}`);
-                refreshLiveQueueStatus();
-              }
-            }
-
-            await syncRunningProgress();
-          }
-
-          if (forcedStopReason) {
-            break;
-          }
-
-          if (!didWork) {
-            const fullWaitCompleted = await waitWithLockHeartbeat(WAIT_CHUNK_MS);
-            if (!fullWaitCompleted && !forcedStopReason) {
-              stopRef.current = true;
+            if (tasks.length > 0) {
+              await Promise.allSettled(tasks);
             }
           }
-        }
+        };
 
-        // === CLEANUP ===
+        await Promise.all([launchLoop(), pollLoop()]);
         if (forcedStopReason || stopRef.current) {
-          const reason = forcedStopReason ?? 'manual_stop';
+          const reason: BatchStopReason = forcedStopReason ?? 'manual_stop';
           const completed = calculateCompletedTests(itemsToRun);
 
           await StorageService.updateBatchRunState(batchId, 'STOP', {
@@ -1254,11 +1139,8 @@ export function useBacktestQueue() {
           await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
 
           const stopMessage = forcedStopMessage || 'Остановлено. Продолжите запуск из истории.';
-          const isConnectionStop =
-            reason === 'no_tab' ||
-            reason === 'no_token' ||
-            reason === 'unauthorized';
-          addLog(isConnectionStop ? `вќЊ ${stopMessage}` : stopMessage);
+          const isConnectionStop = ['no_tab', 'no_token', 'unauthorized'].includes(reason);
+          addLog(isConnectionStop ? `Остановка: ${stopMessage}` : stopMessage);
         } else {
           await StorageService.updateBatchRunState(batchId, 'DONE', {
             completedTests: itemsToRun.length,
@@ -1307,11 +1189,6 @@ export function useBacktestQueue() {
     ]
   );
 
-  /**
-   * Resumes queue execution from saved state
-   * Uses BatchInfo.resumeSource to regenerate configs, then merges with saved runtime state
-   * @param batchId - Batch identifier to resume
-   */
   const resume = useCallback(
     async (batchId: string) => {
       const runtime = await StorageService.getBatchRuntime(batchId);
@@ -1331,7 +1208,15 @@ export function useBacktestQueue() {
         return;
       }
 
-      const regenerated = buildResumeQueue(batchId, batch.resumeSource, ConfigGenerator as unknown as { generate: (staticConfig: unknown, entry: unknown, orders: unknown, exits: unknown, temp: string) => { configs: Array<Record<string, unknown>> } });
+      if (runtime.apiVersion !== 'v2') {
+        addLog('Этот запуск был создан на старом API V1 и не может быть продолжен в Конфигураторе 2.0.');
+        return;
+      }
+
+      const v2Interval = await StorageService.getV2IntervalSeconds();
+      setMinTestInterval(v2Interval * 1000);
+
+      const regenerated = buildResumeQueue(batchId, batch.resumeSource, ConfigGeneratorV2 as unknown as { generate: (staticConfig: unknown, entry: unknown, orders: unknown, exits: unknown, temp: string) => { configs: Array<Record<string, unknown>> } });
       const regeneratedFingerprint = buildQueueFingerprint(regenerated);
       const expectedTotal = runtime.total || regenerated.length;
       if (regenerated.length !== expectedTotal) {
@@ -1353,7 +1238,7 @@ export function useBacktestQueue() {
 
       if (runtime.version === RUNTIME_VERSION && runtimeFingerprint && runtimeFingerprint !== regeneratedFingerprint) {
         addLog('Конфигурация изменилась. Запуск сначала.');
-        await run(batchId, regenerated as QueueItem[]);
+        await run(batchId, regenerated as QueueItemV2[]);
         return;
       }
 
@@ -1385,23 +1270,17 @@ export function useBacktestQueue() {
           resumeFingerprint: runtime.fingerprint
         };
 
-        await run(batchId, prepared as QueueItem[], resumeOptions);
+        await run(batchId, prepared as QueueItemV2[], resumeOptions);
       } else {
         addLog(`Восстановление состояния: 0/${runtime.total}`);
-        await run(batchId, regenerated as QueueItem[]);
+        await run(batchId, regenerated as QueueItemV2[]);
       }
     },
     [addLog, run]
   );
 
-  /**
-   * Returns current queue items (read-only copy)
-   */
   const getQueue = useCallback(() => queue, [queue]);
 
-  /**
-   * Toggles notifications enabled state
-   */
   const toggleNotifications = useCallback((enabled: boolean) => {
     setNotificationsEnabled(enabled);
   }, []);

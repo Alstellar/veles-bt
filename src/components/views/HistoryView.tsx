@@ -30,14 +30,13 @@ import { ConnectionService } from '../../services/ConnectionService';
 import { DatabaseService } from '../../services/DatabaseService';
 import { ResultsModal } from '../ResultsModal';
 import { QueueLockService } from '../../services/QueueLockService';
-import type { BacktestQueueController } from '../../hooks/useBacktestQueue';
 import type { BatchInfo, BatchRunStatus } from '../../types';
 import styles from './HistoryView.module.css';
 import { ConnectionAlert } from '../ConnectionAlert';
 
 interface HistoryViewProps {
-  onResumeBatch?: (batch: BatchInfo) => void;
-  queueController: BacktestQueueController;
+  onResumeBatch?: (batch: BatchInfo) => void | Promise<void>;
+  onStopBatch?: (batch: BatchInfo) => Promise<void>;
   connectionError?: string | null;
 }
 
@@ -47,7 +46,7 @@ function statusColor(status: BatchRunStatus): string {
   return 'green';
 }
 
-export function HistoryView({ onResumeBatch, queueController, connectionError }: HistoryViewProps) {
+export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: HistoryViewProps) {
   const [batches, setBatches] = useState<BatchInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -139,20 +138,23 @@ export function HistoryView({ onResumeBatch, queueController, connectionError }:
   };
 
   const handleStopBatch = async (batchId: string) => {
-    if (queueController.isRunning && queueController.currentBatchId === batchId) {
-      queueController.stop();
+    const batch = batches.find((item) => item.id === batchId);
+    if (!batch) return;
+
+    if (onStopBatch) {
+      await onStopBatch(batch);
     } else {
       await QueueLockService.requestStop(batchId);
     }
 
-    await StorageService.updateBatchRunState(batchId, 'STOP', {
+    await StorageService.updateBatchRunState(batch.id, 'STOP', {
       stopReason: 'manual_stop'
     });
 
-    setBatches((prev) => prev.map((batch) => (
-      batch.id === batchId
+    setBatches((prev) => prev.map((item) => (
+      item.id === batch.id
         ? {
-          ...batch,
+          ...item,
           runStatus: 'STOP',
           stopReason: 'manual_stop',
           lastError: undefined,

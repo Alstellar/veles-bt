@@ -145,8 +145,27 @@ export function StaticSettings({ config, onChange }: Props) {
 
   // --- ХЕЛПЕРЫ UI ---
 
-  const update = (key: keyof StaticConfig, value: any) => {
-    onChange({ ...config, [key]: value });
+  const parseDateValue = (value: unknown): Date | null => {
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    return null;
+  };
+
+  const update = <K extends keyof StaticConfig>(key: K, value: StaticConfig[K] | unknown) => {
+    if (key === 'dateFrom' || key === 'dateTo') {
+      const normalized = parseDateValue(value) ?? config[key];
+      onChange({ ...config, [key]: normalized } as StaticConfig);
+      return;
+    }
+
+    onChange({ ...config, [key]: value as StaticConfig[K] });
   };
 
   const setPresetDate = (months: number) => {

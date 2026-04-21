@@ -1,4 +1,4 @@
-// src/components/modals/DonateModal.tsx
+﻿// src/components/modals/DonateModal.tsx
 import { 
     Modal, Stack, Text, Divider, List, ThemeIcon, Button, Code, Group, 
     CopyButton, Tooltip, ActionIcon, Title, Tabs // 👈 Удалили Badge
@@ -57,9 +57,31 @@ export function DonateModal({ opened, onClose }: Props) {
                 {/* 3. ВКЛАДКИ ВЫБОРА ПЛАТФОРМЫ */}
                 <Tabs defaultValue="veles" variant="outline" radius="md" mt="sm">
                     <Tabs.List grow>
+                        <Tabs.Tab value="donate" fw={700}>Донат</Tabs.Tab>
                         <Tabs.Tab value="veles" fw={700}>Veles Finance</Tabs.Tab>
                         <Tabs.Tab value="tiger" fw={700} color="orange">Tiger Broker 🐯</Tabs.Tab>
                     </Tabs.List>
+
+                    <Tabs.Panel value="donate" pt="md">
+                        <Stack gap="md">
+                            <Text size="sm">
+                                Расширение было полезно? Можете выразить свою благодарность в виде любого доната.
+                            </Text>
+                            <Text size="sm">
+                                Любая благодарность мотивирует меня на дальнейшую разработку полезных инструментов!
+                            </Text>
+                            <Button
+                                component="a"
+                                href="https://web.tribute.tg/d/J3C"
+                                target="_blank"
+                                size="md"
+                                color="pink"
+                                rightSection={<IconExternalLink size={18} />}
+                            >
+                                Поддержать донатом
+                            </Button>
+                        </Stack>
+                    </Tabs.Panel>
 
                     {/* === Вкладка VELES === */}
                     <Tabs.Panel value="veles" pt="md">

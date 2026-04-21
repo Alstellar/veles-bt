@@ -39,7 +39,8 @@ export class StorageService {
     return {
       batches,
       templates: data?.templates ?? {},
-      runtimes: data?.runtimes ?? {}
+      runtimes: data?.runtimes ?? {},
+      v2IntervalSeconds: data?.v2IntervalSeconds
     };
   }
 
@@ -257,6 +258,17 @@ export class StorageService {
       if (!data.templates?.[id]) return false;
       delete data.templates[id];
       return true;
+    });
+  }
+
+  static async getV2IntervalSeconds(): Promise<number> {
+    const data = await this.loadData();
+    return data.v2IntervalSeconds ?? 5;
+  }
+
+  static async setV2IntervalSeconds(seconds: number): Promise<void> {
+    await this.updateData((data) => {
+      data.v2IntervalSeconds = Math.max(1, seconds);
     });
   }
 }

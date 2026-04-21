@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import { DashboardView } from '../views/DashboardView';
 import { BacktestsView } from '../views/BacktestsView';
 import { BacktesterView } from '../views/BacktesterView';
+import { BacktesterViewV2 } from '../views/BacktesterViewV2';
 import { AssetsView } from '../views/AssetsView';
 import { TemplatesView } from '../views/TemplatesView';
 import { HistoryView } from '../views/HistoryView';
@@ -24,20 +25,26 @@ import { DonateModal } from '../modals/DonateModal';
 
 import { StorageService } from '../../services/StorageService';
 import { useBacktestQueue } from '../../hooks/useBacktestQueue';
+import { useBacktestQueueV2 } from '../../hooks/useBacktestQueueV2';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, BatchInfo, BatchResumeSource } from '../../types';
 import { LogService } from '../../services/LogService';
 import { getObjectDiff } from '../../utils/objectDiff';
 import { configHash } from '../../utils/configHash';
 import { fetchImportPayload } from '../../services/apiService';
-import { parseImportLink, mapImportedPayload } from '../../services/ImportSettingsService';
+import { parseImportLink, mapImportedPayload, getV2ImportIncompatibilities } from '../../services/ImportSettingsService';
 import { ConnectionService } from '../../services/ConnectionService';
+import { QueueLockService } from '../../services/QueueLockService';
+import { setMinTestInterval } from '../../services/QueueRetryPolicy';
 import type { UserProfile } from '../../types/veles';
 import styles from './MainLayout.module.css';
 
 export function MainLayout() {
   const queueController = useBacktestQueue();
+  const queueControllerV2 = useBacktestQueueV2();
   const [liveResultsOpened, setLiveResultsOpened] = useState(false);
   const [liveResultsTitle, setLiveResultsTitle] = useState('');
+  const [liveResultsOpenedV2, setLiveResultsOpenedV2] = useState(false);
+  const [liveResultsTitleV2, setLiveResultsTitleV2] = useState('');
 
   const cloneResumeSource = (source: BatchResumeSource): BatchResumeSource => {
     if (typeof structuredClone === 'function') {
@@ -51,16 +58,23 @@ export function MainLayout() {
     entryConfig: EntryConfig;
     orderState: OrderState;
     exitConfig: ExitConfig;
-  }) => ({
+  }) => {
+    const toIsoDateSafe = (value: unknown): string => {
+      const date = value instanceof Date ? value : new Date(value as Date | string | number);
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+    };
+
+    return ({
     staticConfig: {
       ...config.staticConfig,
-      dateFrom: config.staticConfig.dateFrom.toISOString(),
-      dateTo: config.staticConfig.dateTo.toISOString()
+      dateFrom: toIsoDateSafe(config.staticConfig.dateFrom),
+      dateTo: toIsoDateSafe(config.staticConfig.dateTo)
     },
     entryConfig: config.entryConfig,
     orderState: config.orderState,
     exitConfig: config.exitConfig
-  });
+    });
+  };
 
   const appVersion = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
     ? chrome.runtime.getManifest().version
@@ -68,6 +82,7 @@ export function MainLayout() {
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [resumeBatchId, setResumeBatchId] = useState<string | null>(null);
+  const [resumeBatchIdV2, setResumeBatchIdV2] = useState<string | null>(null);
   const [resumeBacktestsBatchId, setResumeBacktestsBatchId] = useState<string | null>(null);
   const [sidebarUser, setSidebarUser] = useState<UserProfile | null>(null);
   const [sidebarLoading, setSidebarLoading] = useState(true);
@@ -127,11 +142,24 @@ export function MainLayout() {
   // --- SAVE TEMPLATE LOGIC ---
   const [saveModalOpened, { open: openSaveModal, close: closeSaveModal }] = useDisclosure(false);
   const [templateName, setTemplateName] = useState('');
+  const activeTabRef = useRef(activeTab);
   const configRef = useRef({ staticConfig, entryConfig, orderState, exitConfig });
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
   useEffect(() => {
     configRef.current = { staticConfig, entryConfig, orderState, exitConfig };
   }, [staticConfig, entryConfig, orderState, exitConfig]);
+
+  useEffect(() => {
+    const initV2Interval = async () => {
+      const interval = await StorageService.getV2IntervalSeconds();
+      setMinTestInterval(interval * 1000);
+    };
+    void initV2Interval();
+  }, []);
 
   useEffect(() => {
     void LogService.info('layout', 'main_layout.opened', { tab: activeTab });
@@ -168,6 +196,12 @@ export function MainLayout() {
     }
   }, [queueController.isRunning]);
 
+  useEffect(() => {
+    if (queueControllerV2.isRunning) {
+      setLiveResultsOpenedV2(true);
+    }
+  }, [queueControllerV2.isRunning]);
+
   const openLiveResultsModal = useCallback((title?: string) => {
     if (title && title.trim()) {
       setLiveResultsTitle(title);
@@ -175,8 +209,19 @@ export function MainLayout() {
     setLiveResultsOpened(true);
   }, []);
 
+  const openLiveResultsModalV2 = useCallback((title?: string) => {
+    if (title && title.trim()) {
+      setLiveResultsTitleV2(title);
+    }
+    setLiveResultsOpenedV2(true);
+  }, []);
+
   const closeLiveResultsModal = useCallback(() => {
     setLiveResultsOpened(false);
+  }, []);
+
+  const closeLiveResultsModalV2 = useCallback(() => {
+    setLiveResultsOpenedV2(false);
   }, []);
 
   const logConfigSectionChanges = useCallback(
@@ -255,10 +300,14 @@ export function MainLayout() {
       return;
     }
 
+    const currentTab = activeTabRef.current;
+    const apiVersion = currentTab === 'backtester-v2' ? 'v2' : 'v1';
+
     const newTemplate: Template = {
         id: crypto.randomUUID(),
         name: templateName,
         timestamp: Date.now(),
+        apiVersion,
         config: {
             staticConfig,
             entryConfig,
@@ -271,7 +320,8 @@ export function MainLayout() {
     await LogService.info('templates', 'template.saved', {
       templateId: newTemplate.id,
       name: newTemplate.name,
-      configHash: configHash(newTemplate.config)
+      configHash: configHash(newTemplate.config),
+      apiVersion
     });
     closeSaveModal();
     setTemplateName('');
@@ -293,13 +343,15 @@ export function MainLayout() {
       void LogService.info('templates', 'template.loaded', {
         templateId: template.id,
         name: template.name,
-        configHash: configHash(template.config)
+        configHash: configHash(template.config),
+        apiVersion: template.apiVersion || 'v1'
       });
 
-      setActiveTab('backtester');
+      const targetTab = template.apiVersion === 'v2' ? 'backtester-v2' : 'backtester';
+      setActiveTab(targetTab);
   };
 
-  const handleResumeFromHistory = useCallback((batch: BatchInfo) => {
+  const handleResumeFromHistory = useCallback(async (batch: BatchInfo) => {
     if (batch.mode === 'BACKTESTS' || batch.backtestsSource) {
       setLiveResultsTitle(`${batch.namePrefix} (${batch.id})`);
       setResumeBacktestsBatchId(batch.id);
@@ -343,27 +395,74 @@ export function MainLayout() {
     setEntryConfig(source.entryConfig);
     setOrderState(source.orderState);
     setExitConfig(source.exitConfig);
+    const runtime = await StorageService.getBatchRuntime(batch.id);
+    const apiVersion = runtime?.apiVersion ?? batch.apiVersion ?? 'v1';
+
+    if (apiVersion === 'v2') {
+      setLiveResultsTitleV2(`${batch.namePrefix} (${batch.id})`);
+      setResumeBatchIdV2(batch.id);
+      setActiveTab('backtester-v2');
+      return;
+    }
+
     setLiveResultsTitle(`${batch.namePrefix} (${batch.id})`);
     setResumeBatchId(batch.id);
     setActiveTab('backtester');
   }, [staticConfig, entryConfig, orderState, exitConfig]);
 
+  const handleStopBatchFromHistory = useCallback(async (batch: BatchInfo) => {
+    const runtime = await StorageService.getBatchRuntime(batch.id);
+    const apiVersion = runtime?.apiVersion ?? batch.apiVersion ?? 'v1';
+
+    if (apiVersion === 'v2') {
+      if (queueControllerV2.isRunning && queueControllerV2.currentBatchId === batch.id) {
+        queueControllerV2.stop();
+        return;
+      }
+    } else if (queueController.isRunning && queueController.currentBatchId === batch.id) {
+      queueController.stop();
+      return;
+    }
+
+    await QueueLockService.requestStop(batch.id);
+  }, [queueController, queueControllerV2]);
+
   // --- GRATITUDE MODAL LOGIC ---
   const [gratitudeOpened, { open: openGratitude, close: closeGratitude }] = useDisclosure(false);
   const [importModalV2Opened, { open: openImportModalV2, close: closeImportModalV2 }] = useDisclosure(false);
+  const [importTarget, setImportTarget] = useState<'v1' | 'v2' | null>(null);
   const [importLink, setImportLink] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+
+  const openImportModalFor = useCallback((target: 'v1' | 'v2') => {
+    setImportTarget(target);
+    openImportModalV2();
+  }, [openImportModalV2]);
+
+  const closeImportModal = useCallback(() => {
+    closeImportModalV2();
+    setImportTarget(null);
+    setImportLink('');
+  }, [closeImportModalV2]);
 
   const handleImportSettings = async () => {
     const parsed = parseImportLink(importLink);
     if (!parsed) {
-      alert('Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки «Поделиться»');
+      alert('Поддерживается ссылка на бота формата https://veles.finance/share/***** из кнопки «Поделиться»');
       return;
     }
 
     setIsImporting(true);
     try {
       const payload = await fetchImportPayload(parsed.code);
+      const incompatibilities = importTarget === 'v2'
+        ? getV2ImportIncompatibilities(payload as any)
+        : [];
+      if (importTarget === 'v2' && incompatibilities.length > 0) {
+        alert(`Импорт невозможен: бот содержит параметры, которые не поддерживаются Конфигуратором 2.0:\n- ${incompatibilities.join('\n- ')}`);
+        return;
+      }
+
       const mapped = mapImportedPayload(payload as any, {
         staticConfig,
         entryConfig,
@@ -376,8 +475,7 @@ export function MainLayout() {
       setOrderState(mapped.orderState);
       setExitConfig(mapped.exitConfig);
 
-      closeImportModalV2();
-      setImportLink('');
+      closeImportModal();
 
       if (mapped.warnings.length > 0) {
         alert(`Импорт выполнен с предупреждениями:\n- ${mapped.warnings.join('\n- ')}`);
@@ -429,7 +527,7 @@ export function MainLayout() {
                     <IconPlugConnected size={14} />
                   </ThemeIcon>
                   <Stack gap={0}>
-                    <Text size="9px" c="dimmed" fw={700}>СТАТУС ПОДКЛЮЧЕНИЯ</Text>
+                    <Text size="9px" c="dimmed" fw={700}>ПОДКЛЮЧЕН АККАУНТ</Text>
                     <Text size="xs" fw={500}>Онлайн, ID: {sidebarUser?.id}</Text>
                   </Stack>
                 </Group>
@@ -465,6 +563,14 @@ export function MainLayout() {
                 leftSection={<IconTestPipe size={20} stroke={1.5} />}
                 active={activeTab === 'backtester'}
                 onClick={() => setActiveTab('backtester')}
+                variant="light"
+                className={styles.navItem}
+            />
+            <NavLink
+                label="Конфигуратор 2.0"
+                leftSection={<IconTestPipe size={20} stroke={1.5} />}
+                active={activeTab === 'backtester-v2'}
+                onClick={() => setActiveTab('backtester-v2')}
                 variant="light"
                 className={styles.navItem}
             />
@@ -516,7 +622,7 @@ export function MainLayout() {
                 leftSection={<IconHeart size={18} />}
                 className={styles.ctaButton}
              >
-                Сказать спасибо
+                Оказать спасибо
              </Button>
           </Stack>
 
@@ -553,23 +659,39 @@ export function MainLayout() {
            <DashboardView onNavigate={setActiveTab} connectionError={sidebarError} />
          )}
          
-         <div style={{ display: activeTab === 'backtester' ? 'block' : 'none' }}>
-            <BacktesterView 
-               staticConfig={staticConfig} setStaticConfig={handleStaticConfigChange}
-               entryConfig={entryConfig} setEntryConfig={handleEntryConfigChange}
-               orderState={orderState} setOrderState={handleOrderStateChange}
-               exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
-               onSaveTemplate={openSaveModal}
-               onImportSettings={openImportModalV2}
-               queueController={queueController}
-               onOpenLiveResultsModal={openLiveResultsModal}
-               resumeBatchId={resumeBatchId}
-               onResumeHandled={() => setResumeBatchId(null)}
-               connectionError={sidebarError}
-            />
-         </div>
+<div style={{ display: activeTab === 'backtester' ? 'block' : 'none' }}>
+             <BacktesterView
+                staticConfig={staticConfig} setStaticConfig={handleStaticConfigChange}
+                entryConfig={entryConfig} setEntryConfig={handleEntryConfigChange}
+                orderState={orderState} setOrderState={handleOrderStateChange}
+                exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
+                onSaveTemplate={openSaveModal}
+                onImportSettings={() => openImportModalFor('v1')}
+                queueController={queueController}
+                onOpenLiveResultsModal={openLiveResultsModal}
+                resumeBatchId={resumeBatchId}
+                onResumeHandled={() => setResumeBatchId(null)}
+                connectionError={sidebarError}
+             />
+          </div>
 
-         {activeTab === 'assets' && (
+           <div style={{ display: activeTab === 'backtester-v2' ? 'block' : 'none' }}>
+              <BacktesterViewV2
+                 staticConfig={staticConfig} setStaticConfig={handleStaticConfigChange}
+                 entryConfig={entryConfig} setEntryConfig={handleEntryConfigChange}
+                 orderState={orderState} setOrderState={handleOrderStateChange}
+                 exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
+                 onSaveTemplate={openSaveModal}
+                 onImportSettings={() => openImportModalFor('v2')}
+                 queueController={queueControllerV2}
+                 onOpenLiveResultsModal={openLiveResultsModalV2}
+                 resumeBatchId={resumeBatchIdV2}
+                 onResumeHandled={() => setResumeBatchIdV2(null)}
+                 connectionError={sidebarError}
+              />
+            </div>
+
+          {activeTab === 'assets' && (
            <AssetsView connectionError={sidebarError} />
          )}
 
@@ -593,8 +715,8 @@ export function MainLayout() {
 
          {activeTab === 'history' && (
            <HistoryView
-             queueController={queueController}
              onResumeBatch={handleResumeFromHistory}
+             onStopBatch={handleStopBatchFromHistory}
              connectionError={sidebarError}
            />
          )}
@@ -615,6 +737,20 @@ export function MainLayout() {
         onToggleNotifications={queueController.setNotificationsEnabled}
       />
 
+      <ResultsModal
+        opened={liveResultsOpenedV2}
+        onClose={closeLiveResultsModalV2}
+        title={liveResultsTitleV2 || 'Результаты V2'}
+        targetIds={queueControllerV2.currentBatchIds}
+        isLive={queueControllerV2.isRunning}
+        status={queueControllerV2.statusMessage}
+        progress={queueControllerV2.progress}
+        onStop={queueControllerV2.stop}
+        logs={queueControllerV2.logs}
+        notificationsEnabled={queueControllerV2.notificationsEnabled}
+        onToggleNotifications={queueControllerV2.setNotificationsEnabled}
+      />
+
       <Modal opened={saveModalOpened} onClose={closeSaveModal} title="Сохранить шаблон">
         <Stack>
           <TextInput
@@ -633,7 +769,7 @@ export function MainLayout() {
 
       <DonateModal opened={gratitudeOpened} onClose={closeGratitude} />
 
-      <Modal opened={importModalV2Opened} onClose={closeImportModalV2} title="Импорт настроек">
+      <Modal opened={importModalV2Opened} onClose={closeImportModal} title="Импорт настроек">
         <Stack>
           <TextInput
             label="Ссылка на бота"
@@ -643,10 +779,10 @@ export function MainLayout() {
             data-autofocus
           />
           <Text size="xs" c="dimmed">
-            Поддерживаются ссылки на бота формата https://veles.finance/share/***** из кнопки «Поделиться»
+            Поддерживается ссылка на бота формата https://veles.finance/share/***** из кнопки «Поделиться»
           </Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={closeImportModalV2} disabled={isImporting}>Отмена</Button>
+            <Button variant="default" onClick={closeImportModal} disabled={isImporting}>Отмена</Button>
             <Button onClick={handleImportSettings} loading={isImporting}>Импортировать</Button>
           </Group>
         </Stack>
