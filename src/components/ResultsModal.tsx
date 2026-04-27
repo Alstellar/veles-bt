@@ -4,7 +4,9 @@ import { IconDownload, IconColumns } from '@tabler/icons-react';
 import { ResultsStatusBlock } from './results/ResultsStatusBlock';
 import { ResultsTable } from './results/ResultsTable';
 import { useResultsData } from '../hooks/useResultsData';
-import { downloadAsCsv } from '../utils/exportUtils';
+import { downloadAsCsv, downloadBatchAsCsv } from '../utils/exportUtils';
+import type { SortKey } from '../hooks/useResultsData';
+import type { BatchTestSortKey } from '../services/DatabaseService';
 
 const COLUMN_NAMES: Record<string, string> = {
   name: 'Название',
@@ -30,23 +32,44 @@ interface Props {
   opened: boolean;
   onClose: () => void;
   title: string;
-  targetIds: number[];
-
+  batchId?: string | null;
+  targetIds?: number[];
   isLive?: boolean;
   status?: string;
   progress?: { current: number; total: number };
   onStop?: () => void;
   logs?: string[];
-
   notificationsEnabled?: boolean;
   onToggleNotifications?: (val: boolean) => void;
 }
+
+const SORT_KEY_TO_DB: Partial<Record<SortKey, BatchTestSortKey>> = {
+  date: 'date',
+  name: 'name',
+  exchange: 'exchange',
+  symbol: 'symbol',
+  sourceTemplateUrl: 'sourceTemplateUrl',
+  from: 'from',
+  netQuote: 'netQuote',
+  recoveryFactor: 'recoveryFactor',
+  netQuotePerDay: 'netQuotePerDay',
+  totalDeals: 'totalDeals',
+  dealsPerDay: 'dealsPerDay',
+  mfeAbsolute: 'mfeAbsolute',
+  mfePercent: 'mfePercent',
+  maeAbsolute: 'maeAbsolute',
+  maePercent: 'maePercent',
+  avgDuration: 'avgDuration',
+  maxDuration: 'maxDuration',
+  days: 'days'
+};
 
 export function ResultsModal({
   opened,
   onClose,
   title,
-  targetIds,
+  batchId,
+  targetIds = [],
   isLive,
   status,
   progress,
@@ -57,18 +80,34 @@ export function ResultsModal({
 }: Props) {
   const {
     data,
-    rawData,
     loading,
     sort,
     toggleSort,
     visibleColumns,
-    setVisibleColumns
-  } = useResultsData(targetIds, opened, isLive);
+    setVisibleColumns,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total
+  } = useResultsData(batchId, targetIds, opened, isLive);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const dateStr = new Date().toISOString().slice(0, 10);
     const filename = `veles_results_${dateStr}.csv`;
-    downloadAsCsv(rawData, filename);
+
+    if (batchId) {
+      await downloadBatchAsCsv({
+        batchId,
+        filename,
+        sortKey: SORT_KEY_TO_DB[sort.key] ?? 'date',
+        reversed: sort.reversed,
+        chunkSize: 1000
+      });
+      return;
+    }
+
+    downloadAsCsv(data, filename);
   };
 
   const showNotificationsToggle = Boolean(isLive && onToggleNotifications);
@@ -124,8 +163,8 @@ export function ResultsModal({
               variant="default"
               size="xs"
               leftSection={<IconDownload size={16} />}
-              onClick={handleExport}
-              disabled={data.length === 0 || loading}
+              onClick={() => void handleExport()}
+              disabled={total === 0 || loading}
             >
               Скачать CSV
             </Button>
@@ -161,6 +200,11 @@ export function ResultsModal({
           sort={sort}
           onToggleSort={toggleSort}
           visibleColumns={visibleColumns}
+          page={page}
+          onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+          total={total}
         />
       </div>
     </Modal>

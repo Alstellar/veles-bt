@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import type { VelesConfigPayload, VelesCondition, VelesOrder } from '../types/veles';
 import { getIndicatorSettings, toApiIndicatorCode } from '../utils/indicatorMapping';
+import { toIsoDateTime } from '../utils/datePolicy';
 
 // --- HELPERS ---
 
@@ -367,9 +368,8 @@ export class ConfigGenerator {
               leverage: staticCfg.leverage,
               marginType: staticCfg.marginType
           },
-          // Оборачиваем в new Date(), чтобы гарантировать, что это объект даты
-          from: new Date(staticCfg.dateFrom).toISOString(),
-          to: new Date(staticCfg.dateTo).toISOString(),
+          from: toIsoDateTime(staticCfg.dateFrom) ?? new Date().toISOString(),
+          to: toIsoDateTime(staticCfg.dateTo) ?? new Date().toISOString(),
           useWicks: staticCfg.useWicks,
           public: staticCfg.isPublic,
           conditions: conditions,

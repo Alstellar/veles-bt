@@ -15,7 +15,12 @@ export class SyncService {
    */
   static async sync(tabId: number, onProgress?: (count: number) => void): Promise<number> {
     // 1. Узнаем нижнюю границу (самый старый тест, который мы когда-либо запускали)
-    const minLocalId = await StorageService.getEarliestTestId();
+    const minTrackedId = await DatabaseService.getEarliestTrackedTestId();
+    const minLegacyId = await StorageService.getEarliestTestId();
+    const minLocalId =
+      minTrackedId === null
+        ? minLegacyId
+        : (minLegacyId === null ? minTrackedId : Math.min(minTrackedId, minLegacyId));
 
     // Если у нас нет истории, нечего синхронизировать
     if (!minLocalId) {
@@ -25,9 +30,11 @@ export class SyncService {
     
     // 2. Собираем "Белый список" ID (whitelist). 
     // Мы хотим обновлять ТОЛЬКО те тесты, которые есть в наших группах.
+    const myTestIds = await DatabaseService.getAllTrackedTestIds();
     const batches = await StorageService.getBatches();
-    const myTestIds = new Set<number>();
-    batches.forEach(b => b.velesIds?.forEach(id => myTestIds.add(id)));
+    batches.forEach((batch) => {
+      batch.velesIds?.forEach((id) => myTestIds.add(id));
+    });
 
     if (myTestIds.size === 0) return 0;
 

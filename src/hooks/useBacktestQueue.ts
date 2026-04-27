@@ -15,6 +15,7 @@ import { QueueLockService } from '../services/QueueLockService';
 import { ConfigGenerator } from '../services/ConfigGenerator';
 import { ConnectionService } from '../services/ConnectionService';
 import { configHash } from '../utils/configHash';
+import { parseDateLike, toIsoDateTime } from '../utils/datePolicy';
 
 // Импорт утилит
 import {
@@ -559,8 +560,7 @@ export function useBacktestQueue() {
           await requestNotificationPermission();
         }
 
-        const batchMeta = await StorageService.getBatchById(batchId);
-        setCurrentBatchIds(batchMeta?.velesIds ?? []);
+        setCurrentBatchIds([]);
 
         // === CONTEXT RESOLUTION ===
         const resolved = await resolveExecutionContext(batchId);
@@ -575,7 +575,7 @@ export function useBacktestQueue() {
           const completedOnFail = calculateCompletedTests(itemsToRun);
           await StorageService.updateBatchRunState(batchId, 'STOP', {
             stopReason: resolved.reason,
-            completedTests: Math.max(completedOnFail, batchMeta?.completedTests ?? 0),
+            completedTests: completedOnFail,
             lastError: connectionError
           });
 
@@ -805,12 +805,8 @@ export function useBacktestQueue() {
           addLog(`${runState.testName}: сбор статистики завершен`);
 
           const stats = statsRes.stats;
-          const actualFrom = typeof stats.from === 'string' && !Number.isNaN(Date.parse(stats.from))
-            ? stats.from
-            : item.config.from;
-          const actualTo = typeof stats.to === 'string' && !Number.isNaN(Date.parse(stats.to))
-            ? stats.to
-            : item.config.to;
+          const actualFrom = toIsoDateTime(parseDateLike(stats.from)) ?? item.config.from;
+          const actualTo = toIsoDateTime(parseDateLike(stats.to)) ?? item.config.to;
 
           const resultItem: BacktestResultItem = {
             id: runState.velesId,
@@ -839,8 +835,7 @@ export function useBacktestQueue() {
             sourceTemplateUrl: item.sourceTemplateUrl
           };
 
-          await DatabaseService.saveTests([resultItem]);
-          await StorageService.addTestIdToBatch(batchId, runState.velesId);
+          await DatabaseService.saveBatchTests(batchId, [resultItem]);
           setCurrentBatchIds((prev) => (prev.includes(runState.velesId) ? prev : [...prev, runState.velesId]));
 
           activeRuns.delete(index);

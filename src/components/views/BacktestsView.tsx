@@ -64,6 +64,7 @@ import {
 } from '../../services/BacktestsMatrixService';
 import { makeBatchId } from '../../utils/batchId';
 import { configHash } from '../../utils/configHash';
+import { parseDateLike, toIsoDateOnly } from '../../utils/datePolicy';
 import styles from './BacktestsView.module.css';
 
 interface BacktestsViewProps {
@@ -117,10 +118,7 @@ const parseOptionalNumber = (value: number | '' | null): number | null => {
 };
 
 const normalizeDateToIso = (value: string | null | undefined): string | null => {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return toIsoDateOnly(value);
 };
 
 const fnv1a32 = (input: string): number => {
@@ -165,10 +163,7 @@ const toNumberInputValue = (value: string | number): number | '' => {
 };
 
 const toDateValue = (value: string | Date | null): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseDateLike(value);
 };
 
 const DEFAULT_MAKER_FEE = '0.02';
@@ -374,8 +369,10 @@ export function BacktestsView({
       }
 
       if (assetsSortKey === 'availableFrom') {
-        const aDate = a.availableFrom ? Date.parse(a.availableFrom) : null;
-        const bDate = b.availableFrom ? Date.parse(b.availableFrom) : null;
+        const aParsed = parseDateLike(a.availableFrom);
+        const bParsed = parseDateLike(b.availableFrom);
+        const aDate = aParsed ? aParsed.getTime() : null;
+        const bDate = bParsed ? bParsed.getTime() : null;
         result = compareNullableNumber(aDate, bDate, assetsSortDir);
       }
 
@@ -773,8 +770,8 @@ export function BacktestsView({
       }
 
       setExchange(source.exchange);
-      setDateFrom(new Date(source.dateFrom));
-      setDateTo(new Date(source.dateTo));
+      setDateFrom(parseDateLike(source.dateFrom) ?? dayjs().subtract(1, 'year').toDate());
+      setDateTo(parseDateLike(source.dateTo) ?? new Date());
       setPeriodMode(source.periodMode === 'WHOLE_PERIOD' ? 'WHOLE_PERIOD' : 'RANGE');
       setNameTemplate(source.nameTemplate);
       setMakerFee(source.makerFee ?? DEFAULT_MAKER_FEE);

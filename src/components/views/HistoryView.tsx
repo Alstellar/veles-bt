@@ -52,7 +52,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
   const [syncing, setSyncing] = useState(false);
   const [syncCount, setSyncCount] = useState(0);
   const [totalSaved, setTotalSaved] = useState(0);
-  const [selectedBatch, setSelectedBatch] = useState<{ id: string; ids: number[] } | null>(null);
+  const [selectedBatch, setSelectedBatch] = useState<{ title: string; batchId: string; legacyIds: number[] } | null>(null);
 
   useEffect(() => {
     void loadHistory();
@@ -98,7 +98,9 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
     if (!confirm('Удалить этот запуск, связанные с ним конфигурации и результаты?')) return;
 
     await StorageService.removeBatch(batchId);
+    await DatabaseService.deleteBatchTests(batchId);
     setBatches((prev) => prev.filter((batch) => batch.id !== batchId));
+    await loadDbStats();
   };
 
   const handleSync = async () => {
@@ -221,7 +223,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
           {batches.map((batch) => {
             const status: BatchRunStatus = batch.runStatus ?? 'STOP';
-            const completed = batch.completedTests ?? batch.velesIds.length;
+            const completed = batch.completedTests ?? (status === 'DONE' ? batch.totalTests : batch.velesIds.length);
             const progressLabel = `${Math.min(completed, batch.totalTests)} / ${batch.totalTests}`;
 
             return (
@@ -299,7 +301,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
                         variant="white"
                         color="blue"
                         leftSection={<IconTable size={16} />}
-                        onClick={() => setSelectedBatch({ id: `${batch.namePrefix} (${batch.id})`, ids: batch.velesIds })}
+                        onClick={() => setSelectedBatch({ title: `${batch.namePrefix} (${batch.id})`, batchId: batch.id, legacyIds: batch.velesIds })}
                       >
                         Результаты
                       </Button>
@@ -315,8 +317,9 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
       <ResultsModal
         opened={!!selectedBatch}
         onClose={() => setSelectedBatch(null)}
-        title={selectedBatch?.id || ''}
-        targetIds={selectedBatch?.ids || []}
+        title={selectedBatch?.title || ''}
+        batchId={selectedBatch?.batchId || null}
+        targetIds={selectedBatch?.legacyIds || []}
       />
     </Container>
   );

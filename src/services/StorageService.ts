@@ -48,6 +48,12 @@ export class StorageService {
     return new Promise((resolve) => {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         chrome.storage.local.get([STORAGE_KEY], (result) => {
+          const error = chrome.runtime?.lastError;
+          if (error) {
+            console.error('StorageService.loadDataRaw failed:', error.message);
+            resolve(this.normalizeData(undefined));
+            return;
+          }
           resolve(this.normalizeData(result[STORAGE_KEY] as StorageData | undefined));
         });
         return;
@@ -89,9 +95,16 @@ export class StorageService {
   }
 
   private static async saveData(data: StorageData): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        chrome.storage.local.set({ [STORAGE_KEY]: data }, () => resolve());
+        chrome.storage.local.set({ [STORAGE_KEY]: data }, () => {
+          const error = chrome.runtime?.lastError;
+          if (error) {
+            reject(new Error(error.message));
+            return;
+          }
+          resolve();
+        });
       } else {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         resolve();

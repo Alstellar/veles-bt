@@ -29,6 +29,7 @@ import {
 import type { ExchangeInfo, ExchangeType, SymbolAvailability, SymbolLimitation } from '../../types';
 import { fetchAvailability, fetchExchanges, fetchLimitations, fetchTopSymbols } from '../../services/apiService';
 import { ConnectionAlert } from '../ConnectionAlert';
+import { parseDateLike, toIsoDateOnly } from '../../utils/datePolicy';
 import styles from './AssetsView.module.css';
 
 interface AssetsViewProps {
@@ -101,10 +102,7 @@ const parseOptionalNumber = (value: string): number | null => {
 };
 
 const normalizeDate = (value: string | null | undefined): string | null => {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return toIsoDateOnly(value);
 };
 
 const readState = async (): Promise<Partial<AssetsViewState>> => {
@@ -300,8 +298,10 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
       if (sortKey === 'symbol') result = a.symbol.localeCompare(b.symbol);
       if (sortKey === 'leverage') result = a.leverage - b.leverage;
       if (sortKey === 'availableFrom') {
-        const aDate = a.availableFrom ? Date.parse(a.availableFrom) : null;
-        const bDate = b.availableFrom ? Date.parse(b.availableFrom) : null;
+        const aParsed = parseDateLike(a.availableFrom);
+        const bParsed = parseDateLike(b.availableFrom);
+        const aDate = aParsed ? aParsed.getTime() : null;
+        const bDate = bParsed ? bParsed.getTime() : null;
         result = compareNullableNumber(aDate, bDate);
       }
       return sortDir === 'asc' ? result : -result;
@@ -626,7 +626,7 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
                         </Table.Td>
                         <Table.Td className={styles.metricCol}>{row.leverage}</Table.Td>
                         <Table.Td className={styles.metricCol}>
-                          {row.availableFrom ? new Date(row.availableFrom).toLocaleDateString('ru-RU') : '-'}
+                          {row.availableFrom ? row.availableFrom : '-'}
                         </Table.Td>
                       </Table.Tr>
                     ))

@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo } from 'react';
 import { 
   Paper, SimpleGrid, Select, TextInput, NumberInput, SegmentedControl, Text, Autocomplete,
-  Group, Button, Switch, Divider, LoadingOverlay, Alert, Tooltip, Stack 
+  Group, Button, Switch, Divider, LoadingOverlay, Alert, Tooltip, Stack, ThemeIcon
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
-import { IconAlertTriangle, IconCheck, IconX } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCheck, IconSettings, IconX } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import '@mantine/dates/styles.css';
 
@@ -12,10 +12,12 @@ import '@mantine/dates/styles.css';
 import type { StaticConfig, AlgoType, SymbolLimitation, SymbolAvailability, ExchangeInfo } from '../types';
 import { isSpot } from '../types';
 import { fetchLimitations, fetchAvailability, fetchExchanges } from '../services/apiService';
+import { parseDateLike } from '../utils/datePolicy';
 
 interface Props {
   config: StaticConfig;
   onChange: (newConfig: StaticConfig) => void;
+  titleVariant?: 'default' | 'section';
 }
 
 const FALLBACK_EXCHANGES: ExchangeInfo[] = [
@@ -56,7 +58,7 @@ function findSmart<T extends { symbol: string; externalId?: string }>(
     });
   }
 
-export function StaticSettings({ config, onChange }: Props) {
+export function StaticSettings({ config, onChange, titleVariant = 'default' }: Props) {
   
   const [loading, setLoading] = useState(false);
   const authError = false;
@@ -145,18 +147,7 @@ export function StaticSettings({ config, onChange }: Props) {
 
   // --- ХЕЛПЕРЫ UI ---
 
-  const parseDateValue = (value: unknown): Date | null => {
-    if (value instanceof Date) {
-      return Number.isNaN(value.getTime()) ? null : value;
-    }
-
-    if (typeof value === 'string' || typeof value === 'number') {
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    return null;
-  };
+  const parseDateValue = (value: unknown): Date | null => parseDateLike(value as Date | string | number | null | undefined);
 
   const update = <K extends keyof StaticConfig>(key: K, value: StaticConfig[K] | unknown) => {
     if (key === 'dateFrom' || key === 'dateTo') {
@@ -220,10 +211,18 @@ export function StaticSettings({ config, onChange }: Props) {
 
   return (
     <Paper p={0} bg="transparent">
-      
-      <Text size="sm" fw={700} mb="xs" c="dimmed" tt="uppercase">
-        Базовые настройки
-      </Text>
+      {titleVariant === 'section' ? (
+  <Group mb="xs">
+    <ThemeIcon variant="light" color="blue">
+      <IconSettings size={20} />
+    </ThemeIcon>
+    <Text fw={700} size="lg">Базовые настройки</Text>
+  </Group>
+) : (
+  <Text size="sm" fw={700} mb="xs" c="dimmed" tt="uppercase">
+    Базовые настройки
+  </Text>
+)}
 
       <Paper withBorder p="md" radius="md" bg="gray.0" pos="relative">
         <LoadingOverlay visible={loading} overlayProps={{ blur: 1 }} />
@@ -438,3 +437,4 @@ export function StaticSettings({ config, onChange }: Props) {
     </Paper>
   );
 }
+

@@ -30,6 +30,7 @@ import {
 import type { BacktestQueueController, QueueItem } from '../../hooks/useBacktestQueue';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolLimitation, Condition } from '../../types';
 import { makeBatchId } from '../../utils/batchId';
+import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
 import styles from './BacktesterView.module.css';
 
 export interface BacktesterProps {
@@ -477,9 +478,9 @@ export function BacktesterView({
   }, [staticConfig.exchange, staticConfig.symbol]);
 
   const periodLabel = useMemo(() => {
-    const from = new Date(staticConfig.dateFrom);
-    const to = new Date(staticConfig.dateTo);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return '-';
+    const from = parseDateLike(staticConfig.dateFrom);
+    const to = parseDateLike(staticConfig.dateTo);
+    if (!from || !to) return '-';
     const ms = to.getTime() - from.getTime();
     if (!Number.isFinite(ms)) return '-';
     return `${Math.max(0, Math.floor(ms / 86400000))} д`;
@@ -566,9 +567,9 @@ export function BacktesterView({
       };
     });
 
-    const parsedFrom = new Date(staticConfig.dateFrom as unknown as Date | string | number);
-    const parsedTo = new Date(staticConfig.dateTo as unknown as Date | string | number);
-    if (Number.isNaN(parsedFrom.getTime()) || Number.isNaN(parsedTo.getTime())) {
+    const parsedFromIso = toIsoDateTime(parseDateLike(staticConfig.dateFrom as unknown as Date | string | number));
+    const parsedToIso = toIsoDateTime(parseDateLike(staticConfig.dateTo as unknown as Date | string | number));
+    if (!parsedFromIso || !parsedToIso) {
       alert('Ошибка валидации: некорректная дата начала или окончания теста.');
       return;
     }
@@ -586,8 +587,8 @@ export function BacktesterView({
       resumeSource: {
         staticConfig: {
           ...staticConfig,
-          dateFrom: parsedFrom.toISOString(),
-          dateTo: parsedTo.toISOString()
+          dateFrom: parsedFromIso,
+          dateTo: parsedToIso
         },
         entryConfig,
         orderState,

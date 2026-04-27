@@ -6,6 +6,7 @@ import type {
   FilterSlot
 } from '../types';
 import { getIndicatorSettings, resolveIndicator } from '../utils/indicatorMapping';
+import { parseDateLike } from '../utils/datePolicy';
 
 export interface ValidationSections {
   static: boolean;
@@ -33,9 +34,7 @@ function hasNumericOrNullValues(arr: string[]): boolean {
 }
 
 function getValidDate(value: unknown): Date | null {
-  if (!value) return null;
-  const date = new Date(value as Date | string | number);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseDateLike(value as Date | string | number | null | undefined);
 }
 
 function validateSlotsAgainstLibrary(slots: FilterSlot[]): string | null {

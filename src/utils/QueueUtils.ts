@@ -4,6 +4,7 @@
  */
 
 import { configHash } from './configHash';
+import { parseDateLike } from './datePolicy';
 
 /**
  * Minimal queue item interface for utility functions
@@ -182,8 +183,8 @@ export function buildResumeQueue(batchId: string, resumeSource: {
 }, ConfigGen: { generate: (staticConfig: unknown, entry: unknown, orders: unknown, exits: unknown, temp: string) => { configs: Array<Record<string, unknown>> } }): QueueItemLike[] {
   const staticConfig = {
     ...resumeSource.staticConfig,
-    dateFrom: new Date(resumeSource.staticConfig.dateFrom),
-    dateTo: new Date(resumeSource.staticConfig.dateTo)
+    dateFrom: parseDateLike(resumeSource.staticConfig.dateFrom) ?? new Date(),
+    dateTo: parseDateLike(resumeSource.staticConfig.dateTo) ?? new Date()
   };
 
   const { configs } = ConfigGen.generate(

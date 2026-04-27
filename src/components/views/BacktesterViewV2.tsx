@@ -31,6 +31,7 @@ import type { BacktestQueueControllerV2, QueueItemV2 } from '../../hooks/useBack
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Condition } from '../../types';
 import type { SymbolLimitation } from '../../types';
 import { makeBatchId } from '../../utils/batchId';
+import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
 import styles from './BacktesterView.module.css';
 
 function hasSymbolInLimitations(limitations: SymbolLimitation[], userSymbol: string): boolean {
@@ -480,9 +481,9 @@ export function BacktesterViewV2({
   }, [validation, isSymbolValid]);
 
   const periodLabel = useMemo(() => {
-    const from = new Date(staticConfig.dateFrom);
-    const to = new Date(staticConfig.dateTo);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return '-';
+    const from = parseDateLike(staticConfig.dateFrom);
+    const to = parseDateLike(staticConfig.dateTo);
+    if (!from || !to) return '-';
     const ms = to.getTime() - from.getTime();
     if (!Number.isFinite(ms)) return '-';
     return `${Math.max(0, Math.floor(ms / 86400000))} д`;
@@ -557,9 +558,9 @@ export function BacktesterViewV2({
       };
     });
 
-    const parsedFrom = new Date(staticConfig.dateFrom as unknown as Date | string | number);
-    const parsedTo = new Date(staticConfig.dateTo as unknown as Date | string | number);
-    if (Number.isNaN(parsedFrom.getTime()) || Number.isNaN(parsedTo.getTime())) {
+    const parsedFromIso = toIsoDateTime(parseDateLike(staticConfig.dateFrom as unknown as Date | string | number));
+    const parsedToIso = toIsoDateTime(parseDateLike(staticConfig.dateTo as unknown as Date | string | number));
+    if (!parsedFromIso || !parsedToIso) {
       alert('Ошибка валидации: некорректная дата начала или окончания теста.');
       return;
     }
@@ -577,8 +578,8 @@ export function BacktesterViewV2({
       resumeSource: {
         staticConfig: {
           ...staticConfig,
-          dateFrom: parsedFrom.toISOString(),
-          dateTo: parsedTo.toISOString()
+          dateFrom: parsedFromIso,
+          dateTo: parsedToIso
         },
         entryConfig,
         orderState,

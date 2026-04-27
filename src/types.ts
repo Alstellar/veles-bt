@@ -234,6 +234,51 @@ export interface StopLossConfig {
   filterSlots: FilterSlot[];
 }
 
+export type DirectedSearchGoal = 'NET' | 'NET_MAE_ABS' | 'NET_PER_DAY';
+export type DirectedSearchParamMode = 'FIXED' | 'LIST' | 'RANGE';
+export type DirectedSearchAlgorithm = 'GENETIC';
+
+export interface DirectedSearchNumericParam {
+  mode: DirectedSearchParamMode;
+  fixedValue: string;
+  listValues: string;
+  rangeFrom: string;
+  rangeTo: string;
+  rangeStep: string;
+}
+
+export interface DirectedSearchGaSettings {
+  populationSize: string;
+  generations: string;
+  mutationRate: string;
+  eliteCount: string;
+}
+
+export interface DirectedSearchConstraints {
+  maxAvgDealDurationMinutes: string;
+  minDeals: string;
+  minNetMaeRatio: string;
+}
+
+export interface DirectedSearchParams {
+  pullUp: DirectedSearchNumericParam;
+  orders: DirectedSearchNumericParam;
+  martingale: DirectedSearchNumericParam;
+  indent: DirectedSearchNumericParam;
+  overlap: DirectedSearchNumericParam;
+  logarithmicFactor: DirectedSearchNumericParam;
+  takeProfitPercent: DirectedSearchNumericParam;
+  stopLossIndent: DirectedSearchNumericParam;
+}
+
+export interface DirectedSearchConfig {
+  algorithm: DirectedSearchAlgorithm;
+  goal: DirectedSearchGoal;
+  ga: DirectedSearchGaSettings;
+  constraints: DirectedSearchConstraints;
+  params: DirectedSearchParams;
+}
+
 // --- 8. Data Storage & History (Новое) ---
 
 export interface BatchInfo {
@@ -250,7 +295,7 @@ export interface BatchInfo {
   stopReason?: BatchStopReason;
   lastError?: string;
   updatedAt?: number;
-  mode?: 'CONFIGURATOR' | 'BACKTESTS';
+  mode?: 'CONFIGURATOR' | 'BACKTESTS' | 'DIRECTED_SEARCH';
   resumeSource?: BatchResumeSource;
   backtestsSource?: BacktestsResumeSource;
 }

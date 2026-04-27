@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Veles Helper",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Конфигуратор параметров для поиска эффективных стратегий на Veles.Finance",
   "action": {
     "default_popup": "index.html"
@@ -10,6 +10,7 @@
     "activeTab",
     "scripting",
     "storage",
+    "unlimitedStorage",
     "tabs",
     "webRequest",
     "notifications" 

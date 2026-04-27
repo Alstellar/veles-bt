@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import { parseVelesShareLink } from '../config/velesDomains';
 import { normalizeCondition } from './ConditionNormalizationService';
 import { isSupportedIndicator, toApiIndicatorCode } from '../utils/indicatorMapping';
+import { parseDateLike } from '../utils/datePolicy';
 import type {
   StaticConfig,
   EntryConfig,
@@ -204,10 +205,10 @@ export function mapImportedPayload(
   const now = new Date();
   const defaultFrom = dayjs(now).subtract(1, 'year').toDate();
 
-  const parsedFrom = payload.from ? new Date(payload.from) : null;
-  const parsedTo = payload.to ? new Date(payload.to) : null;
-  const dateFrom = parsedFrom && Number.isFinite(parsedFrom.getTime()) ? parsedFrom : defaultFrom;
-  const dateTo = parsedTo && Number.isFinite(parsedTo.getTime()) ? parsedTo : now;
+  const parsedFrom = parseDateLike(payload.from);
+  const parsedTo = parseDateLike(payload.to);
+  const dateFrom = parsedFrom ?? defaultFrom;
+  const dateTo = parsedTo ?? now;
 
   if (!payload.from || !payload.to) {
     warnings.push('Даты в источнике не найдены, установлен период за последний год.');

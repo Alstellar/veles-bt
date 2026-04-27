@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { 
-  IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate, 
+  IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate,
   IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh, IconCoins, IconList
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -14,6 +14,7 @@ import { DashboardView } from '../views/DashboardView';
 import { BacktestsView } from '../views/BacktestsView';
 import { BacktesterView } from '../views/BacktesterView';
 import { BacktesterViewV2 } from '../views/BacktesterViewV2';
+import { DirectedSearchView } from '../views/DirectedSearchView';
 import { AssetsView } from '../views/AssetsView';
 import { TemplatesView } from '../views/TemplatesView';
 import { HistoryView } from '../views/HistoryView';
@@ -24,6 +25,7 @@ import { ResultsModal } from '../ResultsModal';
 import { DonateModal } from '../modals/DonateModal'; 
 
 import { StorageService } from '../../services/StorageService';
+import { DatabaseService } from '../../services/DatabaseService';
 import { useBacktestQueue } from '../../hooks/useBacktestQueue';
 import { useBacktestQueueV2 } from '../../hooks/useBacktestQueueV2';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, BatchInfo, BatchResumeSource } from '../../types';
@@ -36,6 +38,7 @@ import { ConnectionService } from '../../services/ConnectionService';
 import { QueueLockService } from '../../services/QueueLockService';
 import { setMinTestInterval } from '../../services/QueueRetryPolicy';
 import type { UserProfile } from '../../types/veles';
+import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
 import styles from './MainLayout.module.css';
 
 export function MainLayout() {
@@ -60,8 +63,7 @@ export function MainLayout() {
     exitConfig: ExitConfig;
   }) => {
     const toIsoDateSafe = (value: unknown): string => {
-      const date = value instanceof Date ? value : new Date(value as Date | string | number);
-      return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+      return toIsoDateTime(parseDateLike(value as Date | string | number | null | undefined)) ?? '';
     };
 
     return ({
@@ -159,6 +161,17 @@ export function MainLayout() {
       setMinTestInterval(interval * 1000);
     };
     void initV2Interval();
+  }, []);
+
+  useEffect(() => {
+    const runStorageMigration = async () => {
+      try {
+        await DatabaseService.runLegacyMigration();
+      } catch (error) {
+        console.error('Database migration failed:', error);
+      }
+    };
+    void runStorageMigration();
   }, []);
 
   useEffect(() => {
@@ -301,7 +314,7 @@ export function MainLayout() {
     }
 
     const currentTab = activeTabRef.current;
-    const apiVersion = currentTab === 'backtester-v2' ? 'v2' : 'v1';
+    const apiVersion = currentTab === 'backtester-v2' || currentTab === 'directed-search' ? 'v2' : 'v1';
 
     const newTemplate: Template = {
         id: crypto.randomUUID(),
@@ -332,8 +345,8 @@ export function MainLayout() {
   const handleLoadTemplate = (template: Template) => {
       const restoredStatic = {
           ...template.config.staticConfig,
-          dateFrom: new Date(template.config.staticConfig.dateFrom),
-          dateTo: new Date(template.config.staticConfig.dateTo)
+          dateFrom: parseDateLike(template.config.staticConfig.dateFrom) ?? dayjs().subtract(7, 'day').toDate(),
+          dateTo: parseDateLike(template.config.staticConfig.dateTo) ?? new Date()
       };
 
       setStaticConfig(restoredStatic);
@@ -367,8 +380,8 @@ export function MainLayout() {
     const source = cloneResumeSource(batch.resumeSource);
     const restoredStatic: StaticConfig = {
       ...source.staticConfig,
-      dateFrom: new Date(source.staticConfig.dateFrom),
-      dateTo: new Date(source.staticConfig.dateTo)
+      dateFrom: parseDateLike(source.staticConfig.dateFrom) ?? dayjs().subtract(7, 'day').toDate(),
+      dateTo: parseDateLike(source.staticConfig.dateTo) ?? new Date()
     };
 
     const currentSnapshot = normalizeConfigForCompare({
@@ -533,7 +546,6 @@ export function MainLayout() {
                 </Group>
               )}
             </Paper>
-
             <NavLink 
                 label="Главная" 
                 leftSection={<IconLayoutDashboard size={20} stroke={1.5} />}
@@ -571,6 +583,14 @@ export function MainLayout() {
                 leftSection={<IconTestPipe size={20} stroke={1.5} />}
                 active={activeTab === 'backtester-v2'}
                 onClick={() => setActiveTab('backtester-v2')}
+                variant="light"
+                className={styles.navItem}
+            />
+            <NavLink 
+                label="Направленный поиск"
+                leftSection={<IconTestPipe size={20} stroke={1.5} />}
+                active={activeTab === 'directed-search'}
+                onClick={() => setActiveTab('directed-search')}
                 variant="light"
                 className={styles.navItem}
             />
@@ -622,7 +642,7 @@ export function MainLayout() {
                 leftSection={<IconHeart size={18} />}
                 className={styles.ctaButton}
              >
-                Оказать спасибо
+                Сказать спасибо
              </Button>
           </Stack>
 
@@ -691,6 +711,17 @@ export function MainLayout() {
               />
             </div>
 
+           <div style={{ display: activeTab === 'directed-search' ? 'block' : 'none' }}>
+              <DirectedSearchView
+                 staticConfig={staticConfig} setStaticConfig={handleStaticConfigChange}
+                 entryConfig={entryConfig} setEntryConfig={handleEntryConfigChange}
+                 orderState={orderState} setOrderState={handleOrderStateChange}
+                 exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
+                 onSaveTemplate={openSaveModal}
+                 connectionError={sidebarError}
+              />
+            </div>
+
           {activeTab === 'assets' && (
            <AssetsView connectionError={sidebarError} />
          )}
@@ -727,7 +758,7 @@ export function MainLayout() {
         opened={liveResultsOpened}
         onClose={closeLiveResultsModal}
         title={liveResultsTitle || 'Результаты'}
-        targetIds={queueController.currentBatchIds}
+        batchId={queueController.currentBatchId}
         isLive={queueController.isRunning}
         status={queueController.statusMessage}
         progress={queueController.progress}
@@ -741,7 +772,7 @@ export function MainLayout() {
         opened={liveResultsOpenedV2}
         onClose={closeLiveResultsModalV2}
         title={liveResultsTitleV2 || 'Результаты V2'}
-        targetIds={queueControllerV2.currentBatchIds}
+        batchId={queueControllerV2.currentBatchId}
         isLive={queueControllerV2.isRunning}
         status={queueControllerV2.statusMessage}
         progress={queueControllerV2.progress}

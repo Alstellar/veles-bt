@@ -8,6 +8,7 @@ import type {
 import { isSpot } from '../types';
 import type { VelesConfigPayload, VelesCondition } from '../types/veles';
 import { parseImportLink } from './ImportSettingsService';
+import { parseDateLike, toIsoDateTime } from '../utils/datePolicy';
 
 export const DEFAULT_BACKTESTS_NAME_TEMPLATE = '{template} {symbol} | {n}/{total} | VH {batch}';
 
@@ -111,16 +112,15 @@ const asString = (value: unknown, fallback: string): string => {
 
 // Converts input date string to ISO; returns fallback ISO when value is empty or invalid.
 const toIsoOrFallback = (value: string | undefined, fallbackIso: string): string => {
-  const ms = Date.parse(value ?? '');
-  if (!Number.isFinite(ms)) return fallbackIso;
-  return new Date(ms).toISOString();
+  const normalized = toIsoDateTime(value);
+  return normalized ?? fallbackIso;
 };
 
 // Parses a date-like value into unix milliseconds; returns null when parsing fails.
 const toDateMs = (value: string | null | undefined): number | null => {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
+  const parsed = parseDateLike(value);
+  if (!parsed) return null;
+  return parsed.getTime();
 };
 
 const toMarginType = (value: unknown): 'CROSS' | 'ISOLATED' => {
@@ -570,5 +570,9 @@ export const buildSymbolMaxLeverageMap = (limitations: SymbolLimitation[]): Reco
 };
 
 export const toIsoDateString = (date: Date): string => {
-  return new Date(date).toISOString();
+  const normalized = toIsoDateTime(date);
+  if (!normalized) {
+    throw new Error('Invalid date passed to toIsoDateString');
+  }
+  return normalized;
 };
