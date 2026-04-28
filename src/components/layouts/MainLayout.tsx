@@ -36,6 +36,7 @@ import { parseImportLink, mapImportedPayload } from '../../services/ImportSettin
 import { ConnectionService } from '../../services/ConnectionService';
 import { QueueLockService } from '../../services/QueueLockService';
 import { setMinTestInterval } from '../../services/QueueRetryPolicy';
+import { DEFAULT_TEST_QUEUE, clampV2TestQueue } from '../../config/backtestQueue';
 import type { UserProfile } from '../../types/veles';
 import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
 import styles from './MainLayout.module.css';
@@ -85,7 +86,7 @@ export function MainLayout() {
   const [resumeBatchId, setResumeBatchId] = useState<string | null>(null);
   const [resumeBacktestsBatchId, setResumeBacktestsBatchId] = useState<string | null>(null);
   const [backtestVersion, setBacktestVersion] = useState<BacktestVersion>('v1');
-  const [testQueue, setTestQueue] = useState<number>(5);
+  const [testQueue, setTestQueue] = useState<number>(DEFAULT_TEST_QUEUE);
   const [testIntervalSeconds, setTestIntervalSeconds] = useState<number>(5);
   const [sidebarUser, setSidebarUser] = useState<UserProfile | null>(null);
   const [sidebarLoading, setSidebarLoading] = useState(true);
@@ -332,8 +333,8 @@ export function MainLayout() {
 
   const handleTestQueueChange = useCallback((queue: number) => {
     const next = backtestVersion === 'v2'
-      ? Math.max(1, Math.min(10, queue))
-      : 5;
+      ? clampV2TestQueue(queue)
+      : DEFAULT_TEST_QUEUE;
     setTestQueue(next);
     void StorageService.setTestQueue(next);
     void LogService.info('configurator', 'run.queue_changed', { queue: next });
@@ -341,8 +342,8 @@ export function MainLayout() {
 
   useEffect(() => {
     const normalized = backtestVersion === 'v2'
-      ? Math.max(1, Math.min(10, testQueue))
-      : 5;
+      ? clampV2TestQueue(testQueue)
+      : DEFAULT_TEST_QUEUE;
     if (normalized === testQueue) return;
     setTestQueue(normalized);
     void StorageService.setTestQueue(normalized);
@@ -634,14 +635,6 @@ export function MainLayout() {
                 leftSection={<IconTestPipe size={20} stroke={1.5} />}
                 active={activeTab === 'backtester'}
                 onClick={() => setActiveTab('backtester')}
-                variant="light"
-                className={styles.navItem}
-            />
-            <NavLink 
-                label="Направленный поиск"
-                leftSection={<IconTestPipe size={20} stroke={1.5} />}
-                active={activeTab === 'directed-search'}
-                onClick={() => setActiveTab('directed-search')}
                 variant="light"
                 className={styles.navItem}
             />

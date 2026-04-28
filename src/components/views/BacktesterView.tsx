@@ -19,7 +19,7 @@ import { ConfigGeneratorV2 } from '../../services/ConfigGeneratorV2';
 import { ValidatorService } from '../../services/ValidatorService';
 import { StorageService } from '../../services/StorageService';
 import { LogService } from '../../services/LogService';
-import { fetchLimitations } from '../../services/apiService';
+import { fetchAvailability, fetchLimitations } from '../../services/apiService';
 import { ConnectionService } from '../../services/ConnectionService';
 import { VelesService } from '../../services/VelesService';
 import {
@@ -32,7 +32,7 @@ import {
 } from '../../services/SignalProbeService';
 import type { BacktestQueueController, QueueItem } from '../../hooks/useBacktestQueue';
 import type { BacktestQueueControllerV2, QueueItemV2 } from '../../hooks/useBacktestQueueV2';
-import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolLimitation, Condition, BacktestVersion } from '../../types';
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolAvailability, SymbolLimitation, Condition, BacktestVersion } from '../../types';
 import { isSpot } from '../../types';
 import { makeBatchId } from '../../utils/batchId';
 import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
@@ -198,6 +198,48 @@ function resolveLimitationBySymbol(limitations: SymbolLimitation[], userSymbol: 
     const itemId = item.externalId ? item.externalId.toUpperCase() : '';
     return itemSym === search || itemSym === withSlash || itemId === noSlash || itemSym.startsWith(`${search}/`);
   }) ?? null;
+}
+
+function resolveAvailabilityBySymbol(availabilities: SymbolAvailability[], userSymbol: string): SymbolAvailability | null {
+  const search = normalizeBaseSymbol(userSymbol);
+  const withSlash = `${search}/USDT`;
+  const noSlash = `${search}USDT`;
+  return availabilities.find((item) => {
+    const itemSym = item.symbol.toUpperCase();
+    return itemSym === search || itemSym === withSlash || itemSym === noSlash || itemSym.startsWith(`${search}/`);
+  }) ?? null;
+}
+
+function resolveDateFromBySymbol(
+  staticConfig: StaticConfig,
+  symbol: string,
+  availabilities: SymbolAvailability[]
+): { dateFrom: Date | null; skipped: boolean } {
+  const base = normalizeBaseSymbol(symbol);
+  const configuredFrom = parseDateLike(staticConfig.dateFrom as unknown as Date | string | number);
+  const configuredTo = parseDateLike(staticConfig.dateTo as unknown as Date | string | number);
+  if (!configuredFrom || !configuredTo) return { dateFrom: null, skipped: true };
+
+  const savedFromIso = staticConfig.dateFromBySymbol?.[base] ?? (
+    staticConfig.wholePeriodMode ? staticConfig.wholePeriodFromBySymbol?.[base] : undefined
+  );
+  const savedFrom = parseDateLike(savedFromIso);
+  const availability = resolveAvailabilityBySymbol(availabilities, base);
+  const availableFrom = parseDateLike(availability?.availableFrom);
+
+  let dateFrom = staticConfig.wholePeriodMode
+    ? (savedFrom ?? availableFrom)
+    : (savedFrom ?? configuredFrom);
+
+  if (!dateFrom) return { dateFrom: null, skipped: true };
+  if (!staticConfig.wholePeriodMode && availableFrom && availableFrom.getTime() > dateFrom.getTime()) {
+    dateFrom = availableFrom;
+  }
+  if (dateFrom.getTime() > configuredTo.getTime()) {
+    return { dateFrom, skipped: true };
+  }
+
+  return { dateFrom, skipped: false };
 }
 
 function collectRunnableSymbols(staticConfig: StaticConfig, limitations: SymbolLimitation[]) {
@@ -663,19 +705,35 @@ export function BacktesterView({
 
     let symbolsToRun: string[] = [];
     let skippedSymbols: string[] = [];
+    const dateSkippedSymbols: string[] = [];
+    const dateFromBySymbol: Record<string, string> = {};
     try {
-      const limitations = await fetchLimitations(staticConfig.exchange);
+      const [limitations, availabilities] = await Promise.all([
+        fetchLimitations(staticConfig.exchange),
+        fetchAvailability(staticConfig.exchange).catch(() => [])
+      ]);
       const symbolCheck = collectRunnableSymbols(staticConfig, limitations);
       if (symbolCheck.configured.length === 0) {
         alert('Ошибка валидации: не выбраны активы для запуска.');
         return;
       }
-      symbolsToRun = symbolCheck.runnable;
       skippedSymbols = [...symbolCheck.invalid, ...symbolCheck.leverageMismatch];
+      const runnableByDate = symbolCheck.runnable.filter((symbol) => {
+        const period = resolveDateFromBySymbol(staticConfig, symbol, availabilities);
+        if (period.skipped || !period.dateFrom) {
+          dateSkippedSymbols.push(symbol);
+          return false;
+        }
+
+        dateFromBySymbol[normalizeBaseSymbol(symbol)] = period.dateFrom.toISOString();
+        return true;
+      });
+      symbolsToRun = runnableByDate;
       if (symbolsToRun.length === 0) {
         const parts: string[] = [];
         if (symbolCheck.invalid.length > 0) parts.push(`Не найдены на бирже: ${symbolCheck.invalid.join(', ')}`);
         if (symbolCheck.leverageMismatch.length > 0) parts.push(`Плечо выше максимального: ${symbolCheck.leverageMismatch.join(', ')}`);
+        if (dateSkippedSymbols.length > 0) parts.push(`Нет доступного периода истории: ${dateSkippedSymbols.join(', ')}`);
         alert(`Запуск невозможен:\n${parts.join('\n')}`);
         return;
       }
@@ -690,10 +748,13 @@ export function BacktesterView({
       const namePrefix = staticConfig.namePrefix || 'Backtest';
 
       const configs = symbolsToRun.flatMap((symbol) => {
+        const symbolDateFrom = parseDateLike(dateFromBySymbol[normalizeBaseSymbol(symbol)]) ?? staticConfig.dateFrom;
         const staticConfigForSymbol: StaticConfig = {
           ...staticConfig,
           symbol,
-          selectedSymbols: [symbol]
+          selectedSymbols: [symbol],
+          dateFrom: symbolDateFrom,
+          dateFromBySymbol
         };
         const generated = backtestVersion === 'v2'
           ? ConfigGeneratorV2.generate(staticConfigForSymbol, entryConfig, orderState, exitConfig, '#TEMP')
@@ -708,7 +769,10 @@ export function BacktesterView({
       const skippedSuffix = skippedSymbols.length > 0
         ? `\nПропущено активов: ${skippedSymbols.length} (${skippedSymbols.join(', ')})`
         : '';
-      const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\nАктивов к запуску: ${symbolsToRun.length}.${skippedSuffix}\n\nЗапустить выполнение?`);
+      const dateSkippedSuffix = dateSkippedSymbols.length > 0
+        ? `\nПропущено по периоду истории: ${dateSkippedSymbols.length} (${dateSkippedSymbols.join(', ')})`
+        : '';
+      const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\nАктивов к запуску: ${symbolsToRun.length}.${skippedSuffix}${dateSkippedSuffix}\n\nЗапустить выполнение?`);
       if (!confirmed) return;
 
       const queueItems = configs.map((cfg) => {
@@ -745,6 +809,8 @@ export function BacktesterView({
             ...staticConfig,
             symbol: symbolsToRun[0],
             selectedSymbols: symbolsToRun,
+            dateFromBySymbol,
+            wholePeriodFromBySymbol: staticConfig.wholePeriodMode ? dateFromBySymbol : staticConfig.wholePeriodFromBySymbol,
             dateFrom: parsedFromIso,
             dateTo: parsedToIso
           },
@@ -770,6 +836,8 @@ export function BacktesterView({
           ...staticConfig,
           symbol: symbolsToRun[0],
           selectedSymbols: symbolsToRun,
+          dateFromBySymbol,
+          wholePeriodFromBySymbol: staticConfig.wholePeriodMode ? dateFromBySymbol : staticConfig.wholePeriodFromBySymbol,
           dateFrom: parsedFromIso,
           dateTo: parsedToIso
         },

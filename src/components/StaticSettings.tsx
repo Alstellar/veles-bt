@@ -12,7 +12,7 @@ import '@mantine/dates/styles.css';
 import type { StaticConfig, AlgoType, SymbolLimitation, SymbolAvailability, ExchangeInfo } from '../types';
 import { isSpot } from '../types';
 import { fetchLimitations, fetchAvailability, fetchExchanges } from '../services/apiService';
-import { parseDateLike } from '../utils/datePolicy';
+import { parseDateLike, toIsoDateTime } from '../utils/datePolicy';
 
 interface Props {
   config: StaticConfig;
@@ -58,6 +58,10 @@ function findSmart<T extends { symbol: string; externalId?: string }>(
       );
     });
   }
+
+function normalizeBaseSymbol(value: string): string {
+  return value.replace('/USDT', '').replace(/USDT$/, '').trim().toUpperCase();
+}
 
 export function StaticSettings({
   config,
@@ -175,7 +179,13 @@ export function StaticSettings({
   const update = <K extends keyof StaticConfig>(key: K, value: StaticConfig[K] | unknown) => {
     if (key === 'dateFrom' || key === 'dateTo') {
       const normalized = parseDateValue(value) ?? config[key];
-      onChange({ ...config, [key]: normalized } as StaticConfig);
+      onChange({
+        ...config,
+        [key]: normalized,
+        dateFromBySymbol: undefined,
+        wholePeriodMode: false,
+        wholePeriodFromBySymbol: undefined
+      } as StaticConfig);
       return;
     }
 
@@ -194,7 +204,10 @@ export function StaticSettings({
     onChange({
       ...config,
       symbol: nextSymbol,
-      selectedSymbols: normalized
+      selectedSymbols: normalized,
+      dateFromBySymbol: undefined,
+      wholePeriodMode: false,
+      wholePeriodFromBySymbol: undefined
     });
   };
 
@@ -269,17 +282,47 @@ export function StaticSettings({
   const setPresetDate = (months: number) => {
     const to = new Date();
     const from = dayjs().subtract(months, 'month').toDate();
-    onChange({ ...config, dateTo: to, dateFrom: from });
+    onChange({
+      ...config,
+      dateTo: to,
+      dateFrom: from,
+      dateFromBySymbol: undefined,
+      wholePeriodMode: false,
+      wholePeriodFromBySymbol: undefined
+    });
   };
 
   const handleWholePeriod = () => {
-    if (!currentAvailability?.availableFrom) {
+    const symbols = multiSymbolMode ? selectedSymbols : [selectedSymbols[0] ?? config.symbol].filter(Boolean);
+    const fromBySymbol: Record<string, string> = {};
+    let earliestFrom: Date | null = null;
+
+    symbols.forEach((symbol) => {
+      const base = normalizeBaseSymbol(symbol);
+      const availability = findSmart(availabilities, base);
+      const availableFromIso = toIsoDateTime(availability?.availableFrom);
+      if (!availableFromIso) return;
+
+      fromBySymbol[base] = availableFromIso;
+      const availableFromDate = new Date(availableFromIso);
+      if (!earliestFrom || availableFromDate.getTime() < earliestFrom.getTime()) {
+        earliestFrom = availableFromDate;
+      }
+    });
+
+    if (symbols.length === 0 || Object.keys(fromBySymbol).length === 0 || !earliestFrom) {
        alert('Дата листинга не найдена (или монета не выбрана).');
        return;
     }
-    const from = new Date(currentAvailability.availableFrom);
     const to = new Date();
-    onChange({ ...config, dateFrom: from, dateTo: to });
+    onChange({
+      ...config,
+      dateFrom: earliestFrom,
+      dateTo: to,
+      dateFromBySymbol: fromBySymbol,
+      wholePeriodMode: true,
+      wholePeriodFromBySymbol: fromBySymbol
+    });
   };
 
   // Рендер иконки статуса монеты
@@ -465,7 +508,10 @@ export function StaticSettings({
                 onChange({
                   ...config,
                   symbol: normalized,
-                  selectedSymbols: normalized ? [normalized] : []
+                  selectedSymbols: normalized ? [normalized] : [],
+                  dateFromBySymbol: undefined,
+                  wholePeriodMode: false,
+                  wholePeriodFromBySymbol: undefined
                 });
               }}
               rightSectionWidth={120}

@@ -7,10 +7,10 @@ import type {
   BatchRuntimeState,
   BacktestVersion
 } from '../types';
+import { DEFAULT_TEST_QUEUE, clampV2TestQueue } from '../config/backtestQueue';
 
 const STORAGE_KEY = 'veles_bt_storage_v1';
 const DEFAULT_BACKTEST_VERSION: BacktestVersion = 'v1';
-const DEFAULT_TEST_QUEUE = 5;
 
 export class StorageService {
   private static writeQueue: Promise<void> = Promise.resolve();
@@ -79,7 +79,7 @@ export class StorageService {
     });
 
     const backtestVersion: BacktestVersion = data?.backtestVersion ?? DEFAULT_BACKTEST_VERSION;
-    const testQueue = Math.max(1, data?.testQueue ?? DEFAULT_TEST_QUEUE);
+    const testQueue = clampV2TestQueue(data?.testQueue ?? DEFAULT_TEST_QUEUE);
 
     return {
       batches,
@@ -345,12 +345,12 @@ export class StorageService {
 
   static async getTestQueue(): Promise<number> {
     const data = await this.loadData();
-    return Math.max(1, data.testQueue ?? DEFAULT_TEST_QUEUE);
+    return clampV2TestQueue(data.testQueue ?? DEFAULT_TEST_QUEUE);
   }
 
   static async setTestQueue(queue: number): Promise<void> {
     await this.updateData((data) => {
-      data.testQueue = Math.max(1, queue);
+      data.testQueue = clampV2TestQueue(queue);
     });
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Container, Title, Text, Card, Stack, Button, Badge, Switch, Paper } from '@mantine/core';
+import { Container, Title, Text, Card, Stack, Button, Badge, SegmentedControl, Paper } from '@mantine/core';
 import { IconBug, IconDownload, IconRefresh } from '@tabler/icons-react';
 import { LogService } from '../../services/LogService';
 import { warmupReferenceDictionaries } from '../../services/apiService';
@@ -49,6 +49,10 @@ export function SettingsView({ appVersion, connectionError }: Props) {
     await LogService.setVerboseLogging(enabled);
   };
 
+  const handleLoggingModeChange = (value: string) => {
+    void handleToggleVerboseLogging(value === 'verbose');
+  };
+
   const handleRefreshExchangeData = async () => {
     setIsRefreshingExchanges(true);
     try {
@@ -89,20 +93,60 @@ export function SettingsView({ appVersion, connectionError }: Props) {
                 <div>
                   <Text fw={600}>Подробный режим логирования</Text>
                   <Text size="xs" c="dimmed">
-                    Включен: логируются действия и служебные события. Выключен: остаются только ключевые события и ошибки.
+                    Обычный: остаются только ключевые события и ошибки. Подробный: логируются действия и служебные события.
                   </Text>
                 </div>
-                <Switch
-                  checked={isVerboseLogging}
-                  disabled={isLoggingModeLoading}
-                  onChange={(e) => void handleToggleVerboseLogging(e.currentTarget.checked)}
-                  label={isVerboseLogging ? 'Подробный' : 'Обычный'}
-                />
               </div>
 
               <Text size="sm" c="dimmed">
                 Выгружает журнал действий и ошибок за последние 2 дня в текстовый файл для диагностики.
               </Text>
+
+              <SegmentedControl
+                fullWidth
+                w="100%"
+                size="md"
+                disabled={isLoggingModeLoading}
+                value={isVerboseLogging ? 'verbose' : 'normal'}
+                onChange={handleLoggingModeChange}
+                data={[
+                  { label: 'Обычный', value: 'normal' },
+                  { label: 'Подробный', value: 'verbose' }
+                ]}
+                styles={{
+                  root: {
+                    width: '100%',
+                    maxWidth: '100%',
+                    display: 'flex',
+                    minHeight: 36,
+                    padding: 3,
+                    borderRadius: 12,
+                    border: isVerboseLogging ? '1px solid #b7d3f4' : '1px solid #d2dae5',
+                    background: isVerboseLogging ? '#e8f1fb' : '#f1f4f8',
+                    overflow: 'hidden'
+                  },
+                  control: {
+                    flex: 1,
+                    minHeight: 30
+                  },
+                  indicator: {
+                    borderRadius: 9,
+                    border: isVerboseLogging ? '1px solid rgba(34, 139, 230, 0.38)' : '1px solid rgba(108, 117, 125, 0.3)',
+                    background: isVerboseLogging ? '#9dccfb' : '#d7dde5',
+                    boxShadow: isVerboseLogging
+                      ? '0 0 0 1px rgba(34, 139, 230, 0.18), 0 0 12px rgba(34, 139, 230, 0.2)'
+                      : '0 0 0 1px rgba(108, 117, 125, 0.14), 0 0 10px rgba(108, 117, 125, 0.12)',
+                    transition: 'transform 300ms cubic-bezier(0.22, 0.8, 0.26, 1), background 260ms ease, box-shadow 260ms ease, border-color 260ms ease'
+                  },
+                  label: {
+                    color: '#607b98',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
+                    transition: 'color 260ms ease, transform 260ms ease'
+                  }
+                }}
+              />
 
               <Button
                 leftSection={<IconDownload size={18} />}

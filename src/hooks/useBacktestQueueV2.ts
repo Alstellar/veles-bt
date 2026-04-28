@@ -6,6 +6,7 @@ import type { VelesConfigPayloadV2 } from '../types/velesV2';
 import type { BatchRuntimeActiveRun, BatchStopReason } from '../types';
 import { StorageService } from '../services/StorageService';
 import { DatabaseService } from '../services/DatabaseService';
+import { clampV2TestQueue } from '../config/backtestQueue';
 import type { BacktestResultItem } from '../types';
 import { LogService } from '../services/LogService';
 import { QueueLockService } from '../services/QueueLockService';
@@ -397,7 +398,7 @@ export function useBacktestQueueV2() {
       }
 
       const storedQueueSize = await StorageService.getTestQueue();
-      maxConcurrentTestsRef.current = Math.max(1, Math.min(10, storedQueueSize));
+      maxConcurrentTestsRef.current = clampV2TestQueue(storedQueueSize);
 
       const resumeFrom = Math.max(0, Math.min(options?.resumeFrom ?? 0, itemsToRun.length));
       if (resumeFrom > 0) {

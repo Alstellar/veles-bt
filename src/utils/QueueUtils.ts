@@ -18,6 +18,10 @@ interface QueueItemLike {
   config: unknown;
 }
 
+function normalizeBaseSymbol(value: string): string {
+  return value.replace('/USDT', '').replace(/USDT$/, '').trim().toUpperCase();
+}
+
 /**
  * Creates a delay promise
  * @param ms - Milliseconds to sleep
@@ -179,7 +183,16 @@ export function buildResumeQueue(batchId: string, resumeSource: {
   entryConfig: unknown;
   orderState: unknown;
   exitConfig: unknown;
-  staticConfig: { dateFrom: string | Date; dateTo: string | Date; symbol?: string; selectedSymbols?: unknown; [key: string]: unknown };
+  staticConfig: {
+    dateFrom: string | Date;
+    dateTo: string | Date;
+    symbol?: string;
+    selectedSymbols?: unknown;
+    dateFromBySymbol?: Record<string, string>;
+    wholePeriodMode?: boolean;
+    wholePeriodFromBySymbol?: Record<string, string>;
+    [key: string]: unknown;
+  };
 }, ConfigGen: { generate: (staticConfig: unknown, entry: unknown, orders: unknown, exits: unknown, temp: string) => { configs: Array<Record<string, unknown>> } }): QueueItemLike[] {
   const staticConfig = {
     ...resumeSource.staticConfig,
@@ -197,8 +210,13 @@ export function buildResumeQueue(batchId: string, resumeSource: {
     : (fallbackSymbol ? [fallbackSymbol] : []);
 
   const configs = (symbols.length > 0 ? symbols : ['']).flatMap((symbol) => {
+    const base = normalizeBaseSymbol(symbol);
+    const perSymbolFrom = parseDateLike(
+      staticConfig.dateFromBySymbol?.[base] ??
+      (staticConfig.wholePeriodMode ? staticConfig.wholePeriodFromBySymbol?.[base] : undefined)
+    );
     const perSymbolConfig = symbol
-      ? { ...staticConfig, symbol, selectedSymbols: [symbol] }
+      ? { ...staticConfig, symbol, selectedSymbols: [symbol], dateFrom: perSymbolFrom ?? staticConfig.dateFrom }
       : staticConfig;
     const generated = ConfigGen.generate(
       perSymbolConfig,

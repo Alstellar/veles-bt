@@ -55,6 +55,7 @@ export interface StaticConfig {
   algo: AlgoType;
   symbol: string;       
   selectedSymbols?: string[];
+  dateFromBySymbol?: Record<string, string>;
   wholePeriodMode?: boolean;
   wholePeriodFromBySymbol?: Record<string, string>;
   deposit: number;

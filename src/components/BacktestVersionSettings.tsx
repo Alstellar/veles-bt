@@ -1,6 +1,7 @@
 import { Paper, Group, ThemeIcon, Text, Select, NumberInput, SimpleGrid } from '@mantine/core';
 import { IconVersions } from '@tabler/icons-react';
 import type { BacktestVersion } from '../types';
+import { DEFAULT_TEST_QUEUE, MAX_V2_TEST_QUEUE, MIN_TEST_QUEUE, clampV2TestQueue } from '../config/backtestQueue';
 
 interface Props {
   backtestVersion: BacktestVersion;
@@ -42,7 +43,7 @@ export function BacktestVersionSettings({
               onBacktestVersionChange(next);
               if (next === 'v1') {
                 onTestIntervalChange(31);
-                onTestQueueChange(5);
+                onTestQueueChange(DEFAULT_TEST_QUEUE);
               }
             }}
             allowDeselect={false}
@@ -50,17 +51,16 @@ export function BacktestVersionSettings({
 
           <NumberInput
             label="Очередь тестов"
-            value={isV2 ? Math.min(10, Math.max(1, testQueue)) : 5}
-            min={1}
-            max={10}
+            value={isV2 ? clampV2TestQueue(testQueue) : DEFAULT_TEST_QUEUE}
+            min={MIN_TEST_QUEUE}
+            max={MAX_V2_TEST_QUEUE}
             step={1}
             disabled={!isV2}
             onChange={(value) => {
               if (!isV2) return;
               const next = typeof value === 'string' ? parseInt(value, 10) : value;
               if (!Number.isFinite(next)) return;
-              const clamped = Math.max(1, Math.min(10, next));
-              onTestQueueChange(clamped);
+              onTestQueueChange(clampV2TestQueue(next));
             }}
           />
 

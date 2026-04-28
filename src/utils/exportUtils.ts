@@ -1,7 +1,7 @@
 import { DatabaseService, type BatchTestSortKey } from '../services/DatabaseService';
 import type { BacktestResultItem } from '../types';
 import { formatDurationHuman } from './formatters';
-import { getVelesPublicBacktestUrl } from '../config/velesDomains';
+import { getVelesCabinetBacktestUrl } from '../config/velesDomains';
 
 const CSV_HEADERS = [
   'ID',
@@ -59,7 +59,7 @@ const toCsvLine = (item: BacktestResultItem): string => {
 
   return [
     item.id,
-    getVelesPublicBacktestUrl(item.id),
+    getVelesCabinetBacktestUrl(item.id),
     item.sourceTemplateUrl ?? '',
     escapeCsv(item.name || ''),
     item.symbol,

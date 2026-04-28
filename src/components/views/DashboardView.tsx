@@ -28,6 +28,9 @@ import {
   IconPlayerPause,
   IconSettings,
   IconDownload,
+  IconCopy,
+  IconDatabase,
+  IconBug,
   IconChevronLeft,
   IconChevronRight
 } from '@tabler/icons-react';
@@ -51,6 +54,30 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
   const error = connectionError ?? null;
 
   const releases = useMemo<ReleaseSlide[]>(() => ([
+    {
+      version: 'v1.8.0',
+      title: 'Что нового',
+      badge: 'NEW',
+      color: 'violet',
+      points: [
+        {
+          icon: <IconTestPipe size={16} />,
+          text: 'Бектесты 2.0 полностью интегрированы в Конфигуратор: запускайте тесты сразу по нескольким активам.'
+        },
+        {
+          icon: <IconCopy size={16} />,
+          text: 'Добавлено копирование отдельных индикаторов и полных слотов во всех разделах Конфигуратора.'
+        },
+        {
+          icon: <IconDatabase size={16} />,
+          text: 'Переработано внутреннее хранилище: приложение стабильнее работает с большими объемами данных.'
+        },
+        {
+          icon: <IconBug size={16} />,
+          text: 'Обновлено внутреннее логирование для более полного и полезного bug-report.'
+        }
+      ]
+    },
     {
       version: 'v1.7.0',
       title: 'Что нового',
