@@ -54,6 +54,9 @@ export interface StaticConfig {
   exchange: ExchangeType;
   algo: AlgoType;
   symbol: string;       
+  selectedSymbols?: string[];
+  wholePeriodMode?: boolean;
+  wholePeriodFromBySymbol?: Record<string, string>;
   deposit: number;
   leverage: number;
   marginType: MarginType;
@@ -281,6 +284,8 @@ export interface DirectedSearchConfig {
 
 // --- 8. Data Storage & History (Новое) ---
 
+export type BacktestVersion = 'v1' | 'v2';
+
 export interface BatchInfo {
   id: string;
   timestamp: number;
@@ -289,6 +294,7 @@ export interface BatchInfo {
   exchange: ExchangeType;
   totalTests: number;
   velesIds: number[];
+  backtestVersion?: BacktestVersion;
   apiVersion?: 'v1' | 'v2';
   runStatus?: BatchRunStatus;
   completedTests?: number;
@@ -367,6 +373,7 @@ export interface BacktestsResumeSource {
 export interface BatchRuntimeState {
   batchId: string;
   version?: 1 | 2;
+  backtestVersion?: BacktestVersion;
   apiVersion?: 'v1' | 'v2';
   v2IntervalSeconds?: number;
   // Legacy field: old versions persisted full queue payloads with config payloads here.
@@ -385,6 +392,8 @@ export interface StorageData {
   templates?: Record<string, Template>;
   runtimes?: Record<string, BatchRuntimeState>;
   v2IntervalSeconds?: number;
+  backtestVersion?: BacktestVersion;
+  testQueue?: number;
 }
 
 // -- Результат выполнения теста --
@@ -430,6 +439,7 @@ export interface Template {
 
   // Версия API (по умолчанию v1 для обратной совместимости)
   apiVersion?: 'v1' | 'v2';
+  backtestVersion?: BacktestVersion;
 
   // Полный слепок конфигурации
   config: {

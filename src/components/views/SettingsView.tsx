@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Container, Title, Text, Card, Stack, Button, Badge, Switch, Paper, NumberInput } from '@mantine/core';
-import { IconBug, IconDownload } from '@tabler/icons-react';
+import { Container, Title, Text, Card, Stack, Button, Badge, Switch, Paper } from '@mantine/core';
+import { IconBug, IconDownload, IconRefresh } from '@tabler/icons-react';
 import { LogService } from '../../services/LogService';
-import { StorageService } from '../../services/StorageService';
-import { setMinTestInterval } from '../../services/QueueRetryPolicy';
+import { warmupReferenceDictionaries } from '../../services/apiService';
 import styles from './SettingsView.module.css';
 import { ConnectionAlert } from '../ConnectionAlert';
 
@@ -17,8 +16,7 @@ export function SettingsView({ appVersion, connectionError }: Props) {
   const [lastExport, setLastExport] = useState<string | null>(null);
   const [isVerboseLogging, setIsVerboseLogging] = useState(true);
   const [isLoggingModeLoading, setIsLoggingModeLoading] = useState(true);
-  const [v2Interval, setV2Interval] = useState<number>(5);
-  const [v2IntervalLoading, setV2IntervalLoading] = useState(true);
+  const [isRefreshingExchanges, setIsRefreshingExchanges] = useState(false);
 
   useEffect(() => {
     const loadLoggingMode = async () => {
@@ -30,19 +28,6 @@ export function SettingsView({ appVersion, connectionError }: Props) {
       }
     };
     void loadLoggingMode();
-  }, []);
-
-  useEffect(() => {
-    const loadV2Interval = async () => {
-      try {
-        const interval = await StorageService.getV2IntervalSeconds();
-        setV2Interval(interval);
-        setMinTestInterval(interval * 1000);
-      } finally {
-        setV2IntervalLoading(false);
-      }
-    };
-    void loadV2Interval();
   }, []);
 
   const handleExportBugReport = async () => {
@@ -64,12 +49,17 @@ export function SettingsView({ appVersion, connectionError }: Props) {
     await LogService.setVerboseLogging(enabled);
   };
 
-  const handleV2IntervalChange = async (value: number | string) => {
-    const seconds = typeof value === 'string' ? parseInt(value, 10) : value;
-    if (!Number.isFinite(seconds) || seconds < 1) return;
-    setV2Interval(seconds);
-    setMinTestInterval(seconds * 1000);
-    await StorageService.setV2IntervalSeconds(seconds);
+  const handleRefreshExchangeData = async () => {
+    setIsRefreshingExchanges(true);
+    try {
+      await warmupReferenceDictionaries(true);
+      await LogService.info('settings', 'reference_cache.refresh_forced');
+    } catch (error) {
+      await LogService.error('settings', 'reference_cache.refresh_failed', error);
+      alert('Не удалось обновить данные бирж. Проверьте подключение и авторизацию.');
+    } finally {
+      setIsRefreshingExchanges(false);
+    }
   };
 
   return (
@@ -121,7 +111,6 @@ export function SettingsView({ appVersion, connectionError }: Props) {
               >
                 Скачать bug-report
               </Button>
-
               {lastExport && (
                 <div className={styles.lastExport}>
                   Последний файл: {lastExport}
@@ -132,26 +121,21 @@ export function SettingsView({ appVersion, connectionError }: Props) {
 
           <Card withBorder radius="md" p="lg" className={`ui-card ui-hover-lift ${styles.sectionCard}`}>
             <div className={styles.cardTitle}>
-              <span>Конфигуратор 2.0</span>
+              <IconRefresh size={14} />
+              <span>Данные бирж</span>
             </div>
             <Stack gap="md">
-              <div className={styles.row}>
-                <div>
-                  <Text fw={600}>Интервал между тестами (V2)</Text>
-                  <Text size="xs" c="dimmed">
-                    Пауза между запуском тестов в Конфигураторе 2.0 (в секундах). Минимум 1 сек.
-                  </Text>
-                </div>
-                <NumberInput
-                  value={v2Interval}
-                  min={1}
-                  max={120}
-                  step={1}
-                  disabled={v2IntervalLoading}
-                  onChange={handleV2IntervalChange}
-                  style={{ width: 80 }}
-                />
-              </div>
+              <Text size="sm" c="dimmed">
+                Принудительно обновляет кэш активов, плеч и дат тестирования по всем биржам.
+              </Text>
+              <Button
+                variant="light"
+                leftSection={<IconRefresh size={18} />}
+                onClick={() => void handleRefreshExchangeData()}
+                loading={isRefreshingExchanges}
+              >
+                Обновить данные бирж
+              </Button>
             </Stack>
           </Card>
         </div>
@@ -159,3 +143,4 @@ export function SettingsView({ appVersion, connectionError }: Props) {
     </Container>
   );
 }
+

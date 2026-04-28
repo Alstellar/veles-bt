@@ -103,6 +103,7 @@ export function useBacktestQueueV2() {
   const currentBatchIdRef = useRef<string | null>(null);
   const lastLogTimestampRef = useRef<string>(new Date().toLocaleTimeString('ru-RU', { hour12: false }));
   const statusSnapshotRef = useRef<{ items: QueueItemV2[]; activeCount: number } | null>(null);
+  const maxConcurrentTestsRef = useRef<number>(MAX_CONCURRENT_TESTS);
 
   useEffect(() => {
     return () => {
@@ -115,8 +116,9 @@ export function useBacktestQueueV2() {
     const completed = calculateCompletedTests(items);
     const total = items.length;
     const errors = items.reduce((acc, item) => (item.status === 'ERROR' ? acc + 1 : acc), 0);
-    const queueBusy = Math.max(0, Math.min(activeCount, MAX_CONCURRENT_TESTS));
-    return `[${ts}] Завершено ${completed}/${total} | Очередь ${queueBusy}/${MAX_CONCURRENT_TESTS} | Ошибки ${errors}`;
+    const currentMaxConcurrent = Math.max(1, maxConcurrentTestsRef.current || MAX_CONCURRENT_TESTS);
+    const queueBusy = Math.max(0, Math.min(activeCount, currentMaxConcurrent));
+    return `[${ts}] Завершено ${completed}/${total} | Очередь ${queueBusy}/${currentMaxConcurrent} | Ошибки ${errors}`;
   }, []);
 
   const addLog = useCallback((msg: string) => {
@@ -393,6 +395,9 @@ export function useBacktestQueueV2() {
         setIsRunning(false);
         return;
       }
+
+      const storedQueueSize = await StorageService.getTestQueue();
+      maxConcurrentTestsRef.current = Math.max(1, Math.min(10, storedQueueSize));
 
       const resumeFrom = Math.max(0, Math.min(options?.resumeFrom ?? 0, itemsToRun.length));
       if (resumeFrom > 0) {
@@ -751,7 +756,7 @@ export function useBacktestQueueV2() {
             const launchBlockedByRetry = isLaunchRetryBlocked(now);
             const canLaunchByCapacity =
               pendingIndices.length > 0 &&
-              activeRuns.size < MAX_CONCURRENT_TESTS &&
+              activeRuns.size < maxConcurrentTestsRef.current &&
               !launchBlockedByRetry;
             const nextAllowedLaunchAt = lastLaunchAt > 0 ? lastLaunchAt + getMinTestInterval() : 0;
             const launchIntervalRemainingMs = canLaunchByCapacity && nextAllowedLaunchAt > now

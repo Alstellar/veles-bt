@@ -1,4 +1,4 @@
-﻿import {
+import {
   Table,
   ScrollArea,
   Stack,

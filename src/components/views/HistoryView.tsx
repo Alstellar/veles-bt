@@ -28,6 +28,7 @@ import { StorageService } from '../../services/StorageService';
 import { SyncService } from '../../services/SyncService';
 import { ConnectionService } from '../../services/ConnectionService';
 import { DatabaseService } from '../../services/DatabaseService';
+import { LogService } from '../../services/LogService';
 import { ResultsModal } from '../ResultsModal';
 import { QueueLockService } from '../../services/QueueLockService';
 import type { BatchInfo, BatchRunStatus } from '../../types';
@@ -44,6 +45,11 @@ function statusColor(status: BatchRunStatus): string {
   if (status === 'RUN') return 'yellow';
   if (status === 'STOP') return 'red';
   return 'green';
+}
+
+function resolveBatchVersion(batch: BatchInfo): 'v1' | 'v2' {
+  if (batch.backtestVersion) return batch.backtestVersion;
+  return batch.apiVersion === 'v2' ? 'v2' : 'v1';
 }
 
 export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: HistoryViewProps) {
@@ -66,6 +72,12 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
     if (!lock) {
       const existing = await StorageService.getBatches();
       const staleRunning = existing.filter((batch) => batch.runStatus === 'RUN');
+      if (staleRunning.length > 0) {
+        await LogService.warn('history', 'history.stale_running_detected', {
+          count: staleRunning.length,
+          batchIds: staleRunning.map((batch) => batch.id)
+        });
+      }
       for (const batch of staleRunning) {
         await StorageService.updateBatchRunState(batch.id, 'STOP', {
           completedTests: batch.completedTests ?? batch.velesIds.length,
@@ -88,6 +100,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
   const handleClearHistory = async () => {
     if (!confirm('Очистить историю запусков и локальную базу результатов?')) return;
 
+    await LogService.warn('history', 'history.clear_requested');
     await StorageService.clearHistory();
     await DatabaseService.clearAll();
     await loadHistory();
@@ -97,6 +110,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
   const handleDeleteBatch = async (batchId: string) => {
     if (!confirm('Удалить этот запуск, связанные с ним конфигурации и результаты?')) return;
 
+    await LogService.warn('history', 'history.batch_deleted', { batchId }, batchId);
     await StorageService.removeBatch(batchId);
     await DatabaseService.deleteBatchTests(batchId);
     setBatches((prev) => prev.filter((batch) => batch.id !== batchId));
@@ -106,6 +120,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
   const handleSync = async () => {
     setSyncing(true);
     setSyncCount(0);
+    await LogService.info('history', 'history.sync_started');
 
     try {
       const conn = await ConnectionService.getConnection({ force: true });
@@ -121,6 +136,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
       await loadDbStats();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      await LogService.captureError(error, { source: 'history', event: 'history.sync_failed' });
       alert(`Ошибка синхронизации: ${message}`);
     } finally {
       setSyncing(false);
@@ -132,16 +148,24 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
     const hasConfiguratorSource = Boolean(batch.resumeSource);
     const hasBacktestsSource = Boolean(batch.backtestsSource);
     if (!runtime || (!hasConfiguratorSource && !hasBacktestsSource)) {
+      await LogService.warn('history', 'history.resume_unavailable', {
+        batchId: batch.id,
+        hasRuntime: Boolean(runtime),
+        hasConfiguratorSource,
+        hasBacktestsSource
+      }, batch.id);
       alert('Этот запуск нельзя продолжить: не найдены данные для восстановления. Запустите задачу заново.');
       return;
     }
 
+    await LogService.info('history', 'history.resume_forwarded', { batchId: batch.id }, batch.id);
     onResumeBatch?.(batch);
   };
 
   const handleStopBatch = async (batchId: string) => {
     const batch = batches.find((item) => item.id === batchId);
     if (!batch) return;
+    await LogService.warn('history', 'history.stop_requested', { batchId }, batchId);
 
     if (onStopBatch) {
       await onStopBatch(batch);
@@ -164,6 +188,11 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
         }
         : batch
     )));
+  };
+
+  const openBatchResults = (batch: BatchInfo) => {
+    void LogService.info('history', 'history.results_opened', { batchId: batch.id }, batch.id);
+    setSelectedBatch({ title: `${batch.namePrefix} (${batch.id})`, batchId: batch.id, legacyIds: batch.velesIds });
   };
 
   if (loading) {
@@ -250,12 +279,15 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
 
                 <Text fw={700} size="lg" mt="xs">{batch.namePrefix}</Text>
 
-                <Group mt={4} mb="sm">
-                  <Badge variant="dot" color={batch.exchange.includes('FUTURES') ? 'orange' : 'green'}>
-                    {batch.exchange}
-                  </Badge>
-                  <Text fw={500}>{batch.symbol}</Text>
-                </Group>
+	                <Group mt={4} mb="sm">
+	                  <Badge variant="dot" color={batch.exchange.includes('FUTURES') ? 'orange' : 'green'}>
+	                    {batch.exchange}
+	                  </Badge>
+	                  <Text fw={500}>{batch.symbol}</Text>
+	                  <Badge variant="light" color={resolveBatchVersion(batch) === 'v2' ? 'violet' : 'gray'}>
+	                    {resolveBatchVersion(batch)}
+	                  </Badge>
+	                </Group>
 
                 <Group mb="md" justify="space-between">
                   <Badge color={statusColor(status)} variant="light">{status}</Badge>
@@ -301,7 +333,7 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
                         variant="white"
                         color="blue"
                         leftSection={<IconTable size={16} />}
-                        onClick={() => setSelectedBatch({ title: `${batch.namePrefix} (${batch.id})`, batchId: batch.id, legacyIds: batch.velesIds })}
+                        onClick={() => openBatchResults(batch)}
                       >
                         Результаты
                       </Button>
@@ -316,7 +348,12 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
 
       <ResultsModal
         opened={!!selectedBatch}
-        onClose={() => setSelectedBatch(null)}
+        onClose={() => {
+          if (selectedBatch?.batchId) {
+            void LogService.info('history', 'history.results_closed', { batchId: selectedBatch.batchId }, selectedBatch.batchId);
+          }
+          setSelectedBatch(null);
+        }}
         title={selectedBatch?.title || ''}
         batchId={selectedBatch?.batchId || null}
         targetIds={selectedBatch?.legacyIds || []}
@@ -324,3 +361,5 @@ export function HistoryView({ onResumeBatch, onStopBatch, connectionError }: His
     </Container>
   );
 }
+
+

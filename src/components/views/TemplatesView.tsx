@@ -52,6 +52,11 @@ export function TemplatesView({ onLoadTemplate, onNavigate, connectionError }: P
     onLoadTemplate(template);
   };
 
+  const resolveTemplateVersion = (template: Template): 'v1' | 'v2' => {
+    if (template.backtestVersion) return template.backtestVersion;
+    return template.apiVersion === 'v2' ? 'v2' : 'v1';
+  };
+
   if (loading) {
     return (
       <Container p="xl" className={`ui-surface ${styles.viewRoot}`}>
@@ -98,10 +103,13 @@ export function TemplatesView({ onLoadTemplate, onNavigate, connectionError }: P
                 </Text>
               </Group>
 
-              <Group mb="sm">
-                <Badge variant="dot" color="blue">{tpl.config.staticConfig.exchange}</Badge>
-                <Text fw={500} size="sm">{tpl.config.staticConfig.symbol}</Text>
-              </Group>
+	              <Group mb="sm">
+	                <Badge variant="dot" color="blue">{tpl.config.staticConfig.exchange}</Badge>
+	                <Text fw={500} size="sm">{tpl.config.staticConfig.symbol}</Text>
+	                <Badge variant="light" color={resolveTemplateVersion(tpl) === 'v2' ? 'violet' : 'gray'}>
+	                  {resolveTemplateVersion(tpl)}
+	                </Badge>
+	              </Group>
 
               <Card.Section inheritPadding py="xs" className={styles.footerSection}>
                 <Group justify="space-between" align="center">

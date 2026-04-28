@@ -13,7 +13,6 @@ import dayjs from 'dayjs';
 import { DashboardView } from '../views/DashboardView';
 import { BacktestsView } from '../views/BacktestsView';
 import { BacktesterView } from '../views/BacktesterView';
-import { BacktesterViewV2 } from '../views/BacktesterViewV2';
 import { DirectedSearchView } from '../views/DirectedSearchView';
 import { AssetsView } from '../views/AssetsView';
 import { TemplatesView } from '../views/TemplatesView';
@@ -28,12 +27,12 @@ import { StorageService } from '../../services/StorageService';
 import { DatabaseService } from '../../services/DatabaseService';
 import { useBacktestQueue } from '../../hooks/useBacktestQueue';
 import { useBacktestQueueV2 } from '../../hooks/useBacktestQueueV2';
-import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, BatchInfo, BatchResumeSource } from '../../types';
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig, Template, BatchInfo, BatchResumeSource, BacktestVersion } from '../../types';
 import { LogService } from '../../services/LogService';
 import { getObjectDiff } from '../../utils/objectDiff';
 import { configHash } from '../../utils/configHash';
-import { fetchImportPayload } from '../../services/apiService';
-import { parseImportLink, mapImportedPayload, getV2ImportIncompatibilities } from '../../services/ImportSettingsService';
+import { fetchImportPayload, warmupReferenceDictionaries } from '../../services/apiService';
+import { parseImportLink, mapImportedPayload } from '../../services/ImportSettingsService';
 import { ConnectionService } from '../../services/ConnectionService';
 import { QueueLockService } from '../../services/QueueLockService';
 import { setMinTestInterval } from '../../services/QueueRetryPolicy';
@@ -46,8 +45,8 @@ export function MainLayout() {
   const queueControllerV2 = useBacktestQueueV2();
   const [liveResultsOpened, setLiveResultsOpened] = useState(false);
   const [liveResultsTitle, setLiveResultsTitle] = useState('');
-  const [liveResultsOpenedV2, setLiveResultsOpenedV2] = useState(false);
-  const [liveResultsTitleV2, setLiveResultsTitleV2] = useState('');
+  const [liveResultsVersion, setLiveResultsVersion] = useState<BacktestVersion>('v1');
+  const [liveResultsBatchId, setLiveResultsBatchId] = useState<string | null>(null);
 
   const cloneResumeSource = (source: BatchResumeSource): BatchResumeSource => {
     if (typeof structuredClone === 'function') {
@@ -84,8 +83,10 @@ export function MainLayout() {
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [resumeBatchId, setResumeBatchId] = useState<string | null>(null);
-  const [resumeBatchIdV2, setResumeBatchIdV2] = useState<string | null>(null);
   const [resumeBacktestsBatchId, setResumeBacktestsBatchId] = useState<string | null>(null);
+  const [backtestVersion, setBacktestVersion] = useState<BacktestVersion>('v1');
+  const [testQueue, setTestQueue] = useState<number>(5);
+  const [testIntervalSeconds, setTestIntervalSeconds] = useState<number>(5);
   const [sidebarUser, setSidebarUser] = useState<UserProfile | null>(null);
   const [sidebarLoading, setSidebarLoading] = useState(true);
   const [sidebarError, setSidebarError] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export function MainLayout() {
     exchange: 'BINANCE_FUTURES',
     algo: 'LONG',
     symbol: 'HYPE',
+    selectedSymbols: ['HYPE'],
     deposit: 50,
     leverage: 10,
     marginType: 'CROSS',
@@ -156,11 +158,18 @@ export function MainLayout() {
   }, [staticConfig, entryConfig, orderState, exitConfig]);
 
   useEffect(() => {
-    const initV2Interval = async () => {
-      const interval = await StorageService.getV2IntervalSeconds();
-      setMinTestInterval(interval * 1000);
+    const initBacktestPreferences = async () => {
+      const [savedVersion, savedQueue, savedInterval] = await Promise.all([
+        StorageService.getBacktestVersion(),
+        StorageService.getTestQueue(),
+        StorageService.getV2IntervalSeconds()
+      ]);
+      setBacktestVersion(savedVersion);
+      setTestQueue(savedQueue);
+      setTestIntervalSeconds(savedInterval);
+      setMinTestInterval(savedInterval * 1000);
     };
-    void initV2Interval();
+    void initBacktestPreferences();
   }, []);
 
   useEffect(() => {
@@ -191,6 +200,9 @@ export function MainLayout() {
         throw new Error(ConnectionService.reasonToMessage(result.reason));
       }
       setSidebarUser(result.connection.user);
+      void warmupReferenceDictionaries().catch(() => {
+        // silent fallback: views will fetch on demand
+      });
     } catch (e: any) {
       setSidebarError(e.message);
       setSidebarUser(null);
@@ -205,37 +217,43 @@ export function MainLayout() {
 
   useEffect(() => {
     if (queueController.isRunning) {
+      setLiveResultsVersion('v1');
+      setLiveResultsBatchId(queueController.currentBatchId ?? null);
       setLiveResultsOpened(true);
     }
-  }, [queueController.isRunning]);
+  }, [queueController.isRunning, queueController.currentBatchId]);
 
   useEffect(() => {
     if (queueControllerV2.isRunning) {
-      setLiveResultsOpenedV2(true);
+      setLiveResultsVersion('v2');
+      setLiveResultsBatchId(queueControllerV2.currentBatchId ?? null);
+      setLiveResultsOpened(true);
     }
-  }, [queueControllerV2.isRunning]);
+  }, [queueControllerV2.isRunning, queueControllerV2.currentBatchId]);
 
-  const openLiveResultsModal = useCallback((title?: string) => {
+  const openLiveResultsModal = useCallback((title?: string, version: BacktestVersion = 'v1', batchId?: string | null) => {
     if (title && title.trim()) {
       setLiveResultsTitle(title);
     }
-    setLiveResultsOpened(true);
-  }, []);
-
-  const openLiveResultsModalV2 = useCallback((title?: string) => {
-    if (title && title.trim()) {
-      setLiveResultsTitleV2(title);
+    setLiveResultsVersion(version);
+    if (typeof batchId !== 'undefined') {
+      setLiveResultsBatchId(batchId ?? null);
     }
-    setLiveResultsOpenedV2(true);
+    setLiveResultsOpened(true);
+    void LogService.info('results_modal', 'modal.opened', {
+      title: title?.trim() || 'Результаты',
+      version,
+      batchId: batchId ?? null
+    }, batchId ?? undefined);
   }, []);
 
   const closeLiveResultsModal = useCallback(() => {
+    void LogService.info('results_modal', 'modal.closed', {
+      version: liveResultsVersion,
+      batchId: liveResultsBatchId
+    }, liveResultsBatchId ?? undefined);
     setLiveResultsOpened(false);
-  }, []);
-
-  const closeLiveResultsModalV2 = useCallback(() => {
-    setLiveResultsOpenedV2(false);
-  }, []);
+  }, [liveResultsBatchId, liveResultsVersion]);
 
   const logConfigSectionChanges = useCallback(
     async (section: 'staticConfig' | 'entryConfig' | 'orderState' | 'exitConfig', before: unknown, after: unknown) => {
@@ -306,6 +324,38 @@ export function MainLayout() {
     [exitConfig, logConfigSectionChanges]
   );
 
+  const handleBacktestVersionChange = useCallback((version: BacktestVersion) => {
+    setBacktestVersion(version);
+    void StorageService.setBacktestVersion(version);
+    void LogService.info('configurator', 'run.version_changed', { version });
+  }, []);
+
+  const handleTestQueueChange = useCallback((queue: number) => {
+    const next = backtestVersion === 'v2'
+      ? Math.max(1, Math.min(10, queue))
+      : 5;
+    setTestQueue(next);
+    void StorageService.setTestQueue(next);
+    void LogService.info('configurator', 'run.queue_changed', { queue: next });
+  }, [backtestVersion]);
+
+  useEffect(() => {
+    const normalized = backtestVersion === 'v2'
+      ? Math.max(1, Math.min(10, testQueue))
+      : 5;
+    if (normalized === testQueue) return;
+    setTestQueue(normalized);
+    void StorageService.setTestQueue(normalized);
+  }, [backtestVersion, testQueue]);
+
+  const handleTestIntervalChange = useCallback((seconds: number) => {
+    const next = Math.max(1, seconds);
+    setTestIntervalSeconds(next);
+    setMinTestInterval(next * 1000);
+    void StorageService.setV2IntervalSeconds(next);
+    void LogService.info('configurator', 'run.interval_changed', { seconds: next });
+  }, []);
+
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) {
       alert('Введите название шаблона');
@@ -314,13 +364,14 @@ export function MainLayout() {
     }
 
     const currentTab = activeTabRef.current;
-    const apiVersion = currentTab === 'backtester-v2' || currentTab === 'directed-search' ? 'v2' : 'v1';
+    const apiVersion = currentTab === 'directed-search' ? 'v2' : backtestVersion;
 
     const newTemplate: Template = {
         id: crypto.randomUUID(),
         name: templateName,
         timestamp: Date.now(),
         apiVersion,
+        backtestVersion: currentTab === 'directed-search' ? 'v2' : backtestVersion,
         config: {
             staticConfig,
             entryConfig,
@@ -360,11 +411,20 @@ export function MainLayout() {
         apiVersion: template.apiVersion || 'v1'
       });
 
-      const targetTab = template.apiVersion === 'v2' ? 'backtester-v2' : 'backtester';
-      setActiveTab(targetTab);
+      const restoredVersion: BacktestVersion =
+        template.backtestVersion ??
+        (template.apiVersion === 'v2' ? 'v2' : 'v1');
+      setBacktestVersion(restoredVersion);
+      void StorageService.setBacktestVersion(restoredVersion);
+      setActiveTab('backtester');
   };
 
   const handleResumeFromHistory = useCallback(async (batch: BatchInfo) => {
+    await LogService.info('history', 'history.resume_clicked', {
+      batchId: batch.id,
+      mode: batch.mode ?? 'CONFIGURATOR',
+      backtestVersion: batch.backtestVersion ?? batch.apiVersion ?? 'v1'
+    }, batch.id);
     if (batch.mode === 'BACKTESTS' || batch.backtestsSource) {
       setLiveResultsTitle(`${batch.namePrefix} (${batch.id})`);
       setResumeBacktestsBatchId(batch.id);
@@ -409,25 +469,29 @@ export function MainLayout() {
     setOrderState(source.orderState);
     setExitConfig(source.exitConfig);
     const runtime = await StorageService.getBatchRuntime(batch.id);
-    const apiVersion = runtime?.apiVersion ?? batch.apiVersion ?? 'v1';
-
-    if (apiVersion === 'v2') {
-      setLiveResultsTitleV2(`${batch.namePrefix} (${batch.id})`);
-      setResumeBatchIdV2(batch.id);
-      setActiveTab('backtester-v2');
-      return;
-    }
-
+    const targetVersion: BacktestVersion =
+      runtime?.backtestVersion ??
+      batch.backtestVersion ??
+      (runtime?.apiVersion === 'v2' || batch.apiVersion === 'v2' ? 'v2' : 'v1');
+    setBacktestVersion(targetVersion);
+    void StorageService.setBacktestVersion(targetVersion);
     setLiveResultsTitle(`${batch.namePrefix} (${batch.id})`);
     setResumeBatchId(batch.id);
     setActiveTab('backtester');
   }, [staticConfig, entryConfig, orderState, exitConfig]);
 
   const handleStopBatchFromHistory = useCallback(async (batch: BatchInfo) => {
+    await LogService.warn('history', 'history.stop_clicked', {
+      batchId: batch.id,
+      runStatus: batch.runStatus ?? 'STOP'
+    }, batch.id);
     const runtime = await StorageService.getBatchRuntime(batch.id);
-    const apiVersion = runtime?.apiVersion ?? batch.apiVersion ?? 'v1';
+    const backtestVersion: BacktestVersion =
+      runtime?.backtestVersion ??
+      batch.backtestVersion ??
+      (runtime?.apiVersion === 'v2' || batch.apiVersion === 'v2' ? 'v2' : 'v1');
 
-    if (apiVersion === 'v2') {
+    if (backtestVersion === 'v2') {
       if (queueControllerV2.isRunning && queueControllerV2.currentBatchId === batch.id) {
         queueControllerV2.stop();
         return;
@@ -443,18 +507,15 @@ export function MainLayout() {
   // --- GRATITUDE MODAL LOGIC ---
   const [gratitudeOpened, { open: openGratitude, close: closeGratitude }] = useDisclosure(false);
   const [importModalV2Opened, { open: openImportModalV2, close: closeImportModalV2 }] = useDisclosure(false);
-  const [importTarget, setImportTarget] = useState<'v1' | 'v2' | null>(null);
   const [importLink, setImportLink] = useState('');
   const [isImporting, setIsImporting] = useState(false);
 
-  const openImportModalFor = useCallback((target: 'v1' | 'v2') => {
-    setImportTarget(target);
+  const openImportModalFor = useCallback(() => {
     openImportModalV2();
   }, [openImportModalV2]);
 
   const closeImportModal = useCallback(() => {
     closeImportModalV2();
-    setImportTarget(null);
     setImportLink('');
   }, [closeImportModalV2]);
 
@@ -468,10 +529,8 @@ export function MainLayout() {
     setIsImporting(true);
     try {
       const payload = await fetchImportPayload(parsed.code);
-      const incompatibilities = importTarget === 'v2'
-        ? getV2ImportIncompatibilities(payload as any)
-        : [];
-      if (importTarget === 'v2' && incompatibilities.length > 0) {
+      const incompatibilities: string[] = [];
+      if (incompatibilities.length > 0) {
         alert(`Импорт невозможен: бот содержит параметры, которые не поддерживаются Конфигуратором 2.0:\n- ${incompatibilities.join('\n- ')}`);
         return;
       }
@@ -578,14 +637,6 @@ export function MainLayout() {
                 variant="light"
                 className={styles.navItem}
             />
-            <NavLink
-                label="Конфигуратор 2.0"
-                leftSection={<IconTestPipe size={20} stroke={1.5} />}
-                active={activeTab === 'backtester-v2'}
-                onClick={() => setActiveTab('backtester-v2')}
-                variant="light"
-                className={styles.navItem}
-            />
             <NavLink 
                 label="Направленный поиск"
                 leftSection={<IconTestPipe size={20} stroke={1.5} />}
@@ -686,30 +737,21 @@ export function MainLayout() {
                 orderState={orderState} setOrderState={handleOrderStateChange}
                 exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
                 onSaveTemplate={openSaveModal}
-                onImportSettings={() => openImportModalFor('v1')}
+                onImportSettings={openImportModalFor}
                 queueController={queueController}
+                queueControllerV2={queueControllerV2}
+                backtestVersion={backtestVersion}
+                onBacktestVersionChange={handleBacktestVersionChange}
+                testQueue={testQueue}
+                onTestQueueChange={handleTestQueueChange}
+                testIntervalSeconds={testIntervalSeconds}
+                onTestIntervalChange={handleTestIntervalChange}
                 onOpenLiveResultsModal={openLiveResultsModal}
                 resumeBatchId={resumeBatchId}
                 onResumeHandled={() => setResumeBatchId(null)}
                 connectionError={sidebarError}
              />
           </div>
-
-           <div style={{ display: activeTab === 'backtester-v2' ? 'block' : 'none' }}>
-              <BacktesterViewV2
-                 staticConfig={staticConfig} setStaticConfig={handleStaticConfigChange}
-                 entryConfig={entryConfig} setEntryConfig={handleEntryConfigChange}
-                 orderState={orderState} setOrderState={handleOrderStateChange}
-                 exitConfig={exitConfig} setExitConfig={handleExitConfigChange}
-                 onSaveTemplate={openSaveModal}
-                 onImportSettings={() => openImportModalFor('v2')}
-                 queueController={queueControllerV2}
-                 onOpenLiveResultsModal={openLiveResultsModalV2}
-                 resumeBatchId={resumeBatchIdV2}
-                 onResumeHandled={() => setResumeBatchIdV2(null)}
-                 connectionError={sidebarError}
-              />
-            </div>
 
            <div style={{ display: activeTab === 'directed-search' ? 'block' : 'none' }}>
               <DirectedSearchView
@@ -758,29 +800,20 @@ export function MainLayout() {
         opened={liveResultsOpened}
         onClose={closeLiveResultsModal}
         title={liveResultsTitle || 'Результаты'}
-        batchId={queueController.currentBatchId}
-        isLive={queueController.isRunning}
-        status={queueController.statusMessage}
-        progress={queueController.progress}
-        onStop={queueController.stop}
-        logs={queueController.logs}
-        notificationsEnabled={queueController.notificationsEnabled}
-        onToggleNotifications={queueController.setNotificationsEnabled}
+        batchId={
+          liveResultsBatchId ??
+          (liveResultsVersion === 'v2' ? queueControllerV2.currentBatchId : queueController.currentBatchId)
+        }
+        targetIds={liveResultsVersion === 'v2' ? queueControllerV2.currentBatchIds : queueController.currentBatchIds}
+        isLive={liveResultsVersion === 'v2' ? queueControllerV2.isRunning : queueController.isRunning}
+        status={liveResultsVersion === 'v2' ? queueControllerV2.statusMessage : queueController.statusMessage}
+        progress={liveResultsVersion === 'v2' ? queueControllerV2.progress : queueController.progress}
+        onStop={liveResultsVersion === 'v2' ? queueControllerV2.stop : queueController.stop}
+        logs={liveResultsVersion === 'v2' ? queueControllerV2.logs : queueController.logs}
+        notificationsEnabled={liveResultsVersion === 'v2' ? queueControllerV2.notificationsEnabled : queueController.notificationsEnabled}
+        onToggleNotifications={liveResultsVersion === 'v2' ? queueControllerV2.setNotificationsEnabled : queueController.setNotificationsEnabled}
       />
 
-      <ResultsModal
-        opened={liveResultsOpenedV2}
-        onClose={closeLiveResultsModalV2}
-        title={liveResultsTitleV2 || 'Результаты V2'}
-        batchId={queueControllerV2.currentBatchId}
-        isLive={queueControllerV2.isRunning}
-        status={queueControllerV2.statusMessage}
-        progress={queueControllerV2.progress}
-        onStop={queueControllerV2.stop}
-        logs={queueControllerV2.logs}
-        notificationsEnabled={queueControllerV2.notificationsEnabled}
-        onToggleNotifications={queueControllerV2.setNotificationsEnabled}
-      />
 
       <Modal opened={saveModalOpened} onClose={closeSaveModal} title="Сохранить шаблон">
         <Stack>

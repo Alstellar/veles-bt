@@ -5,6 +5,7 @@ import {
 import { 
   IconPlus, IconTrash, IconPencil, IconArrowsRightLeft 
 } from '@tabler/icons-react';
+import { IconCopy } from '@tabler/icons-react';
 import { SignalProbeAction } from '../SignalProbeAction';
 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
@@ -14,6 +15,7 @@ import type { StopLossConfig, FilterSlot, Condition, IntervalType, OperationType
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
 import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
 import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
+import { cloneConditionWithNewId, cloneFilterSlotWithNewIds } from '../../utils/filterClone';
 
 interface Props {
   config: StopLossConfig;
@@ -66,6 +68,17 @@ export function StopLoss({
     updateConfig(config.filterSlots.filter(s => s.id !== slotId));
   };
 
+  const duplicateSlot = (slotId: string) => {
+    const index = config.filterSlots.findIndex((s) => s.id === slotId);
+    if (index === -1) return;
+
+    const source = config.filterSlots[index];
+    const newSlot = cloneFilterSlotWithNewIds(source);
+    const newSlots = [...config.filterSlots];
+    newSlots.splice(index + 1, 0, newSlot);
+    updateConfig(newSlots);
+  };
+
   // --- ЛОГИКА ВАРИАНТОВ ---
   const addVariant = (slotId: string) => {
     const newVariant: Condition = normalizeCondition({
@@ -89,6 +102,21 @@ export function StopLoss({
             return { ...slot, variants: slot.variants.filter(v => v.id !== variantId) };
         }
         return slot;
+    });
+    updateConfig(newSlots);
+  };
+
+  const duplicateVariant = (slotId: string, variantId: string) => {
+    const newSlots = config.filterSlots.map((slot) => {
+      if (slot.id !== slotId) return slot;
+      const index = slot.variants.findIndex((v) => v.id === variantId);
+      if (index === -1) return slot;
+
+      const source = slot.variants[index];
+      const duplicated = cloneConditionWithNewId(source);
+      const newVariants = [...slot.variants];
+      newVariants.splice(index + 1, 0, duplicated);
+      return { ...slot, variants: newVariants };
     });
     updateConfig(newSlots);
   };
@@ -235,11 +263,11 @@ export function StopLoss({
                         <Paper p="lg" withBorder bg="white" ta="center">
                             <Text c="dimmed" mb="sm" size="sm">Индикаторы стоп-лосса не заданы.</Text>
                             <Button 
-                                variant="light" color="cyan" size="xs" 
-                                leftSection={<IconPlus size={14}/>}
+                                variant="light" color="cyan" size="sm" 
+                                leftSection={<IconPlus size={16}/>}
                                 onClick={addSlot}
                             >
-                                Добавить фильтр (Группу)
+                                Добавить фильтр
                             </Button>
                         </Paper>
                     )}
@@ -251,14 +279,19 @@ export function StopLoss({
                                     <Badge size="sm" radius="sm" variant="filled" color="cyan">ФИЛЬТР {slotIndex + 1}</Badge>
                                     <Text size="xs" c="dimmed">Перебор вариантов</Text>
                                 </Group>
-                                <ActionIcon color="red" variant="subtle" size="sm" onClick={() => removeSlot(slot.id)}>
-                                    <IconTrash size={16} />
-                                </ActionIcon>
+                                <Group gap={4}>
+                                    <ActionIcon color="blue" variant="subtle" size="sm" onClick={() => duplicateSlot(slot.id)}>
+                                        <IconCopy size={16} />
+                                    </ActionIcon>
+                                    <ActionIcon color="red" variant="subtle" size="sm" onClick={() => removeSlot(slot.id)}>
+                                        <IconTrash size={16} />
+                                    </ActionIcon>
+                                </Group>
                             </Group>
 
                             <Stack gap="sm" p="sm" bg="gray.0">
                                 {slot.variants.length === 0 && (
-                                    <Text size="xs" c="dimmed" fs="italic" ta="center">Нет вариантов.</Text>
+                                    <Text size="xs" c="dimmed" fs="italic" ta="center">Нет индикаторов в группе.</Text>
                                 )}
 
                                 {slot.variants.map((variant, vIndex) => {
@@ -290,6 +323,7 @@ export function StopLoss({
                                                       }}
                                                       size="md"
                                                     />
+                                                    <ActionIcon variant="light" color="blue" size="md" onClick={() => duplicateVariant(slot.id, variant.id!)}><IconCopy size={14}/></ActionIcon>
                                                     <ActionIcon variant="light" color="red" size="md" onClick={() => removeVariant(slot.id, variant.id!)}><IconTrash size={14}/></ActionIcon>
                                                 </Group>
                                             </Group>
@@ -303,13 +337,13 @@ export function StopLoss({
                                         </Paper>
                                     );
                                 })}
-                                <Button variant="subtle" size="xs" leftSection={<IconPlus size={14} />} onClick={() => addVariant(slot.id)} style={{ alignSelf: 'flex-start' }}>Добавить вариант</Button>
+                                <Button variant="subtle" size="xs" leftSection={<IconPlus size={14} />} onClick={() => addVariant(slot.id)} style={{ alignSelf: 'flex-start' }}>Добавить индикатор</Button>
                             </Stack>
                         </Paper>
                     ))}
 
                     {config.filterSlots.length > 0 && (
-                        <Button variant="outline" size="sm" leftSection={<IconPlus size={16} />} onClick={addSlot} fullWidth style={{ borderStyle: 'dashed' }} color="cyan">Добавить фильтр (AND)</Button>
+                        <Button variant="outline" size="sm" leftSection={<IconPlus size={16} />} onClick={addSlot} fullWidth style={{ borderStyle: 'dashed' }} color="cyan">Добавить фильтр</Button>
                     )}
                 </Stack>
             </Collapse>

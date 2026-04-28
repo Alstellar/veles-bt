@@ -1,6 +1,12 @@
-﻿import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { StorageService } from './StorageService';
-import type { BacktestResultItem, BatchInfo } from '../types';
+import type {
+  BacktestResultItem,
+  BatchInfo,
+  ExchangeInfo,
+  SymbolAvailability,
+  SymbolLimitation
+} from '../types';
 
 export type BatchTestSortKey =
   | 'date'
@@ -79,10 +85,17 @@ interface VelesDB extends DBSchema {
       'by-batch-days': [string, number];
     };
   };
+  reference_cache: {
+    key: string;
+    value: ReferenceCacheRecord;
+    indexes: {
+      'by-updatedAt': number;
+    };
+  };
 }
 
 const DB_NAME = 'VelesHelperDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const MIGRATION_STATE_KEY = 'vh_batch_tests_migration_v1';
 const MIGRATION_CHUNK_SIZE = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -95,6 +108,19 @@ interface MigrationState {
   offset: number;
   migratedLinks: number;
   updatedAt: number;
+}
+
+export interface ReferenceCacheExchangeRecord {
+  limitations: SymbolLimitation[];
+  availability: SymbolAvailability[];
+  updatedAt: number;
+}
+
+export interface ReferenceCacheRecord {
+  key: 'global';
+  updatedAt: number;
+  exchanges: ExchangeInfo[];
+  byExchange: Partial<Record<string, ReferenceCacheExchangeRecord>>;
 }
 
 interface BatchPageQuery {
@@ -249,6 +275,12 @@ const createBatchTestsStore = (db: IDBPDatabase<VelesDB>) => {
   store.createIndex('by-batch-days', ['batchId', 'daysSort']);
 };
 
+const createReferenceCacheStore = (db: IDBPDatabase<VelesDB>) => {
+  if (db.objectStoreNames.contains('reference_cache')) return;
+  const store = db.createObjectStore('reference_cache', { keyPath: 'key' });
+  store.createIndex('by-updatedAt', 'updatedAt');
+};
+
 export class DatabaseService {
   private static dbPromise: Promise<IDBPDatabase<VelesDB>>;
 
@@ -263,6 +295,9 @@ export class DatabaseService {
 
           if (oldVersion < 2) {
             createBatchTestsStore(db);
+          }
+          if (oldVersion < 3) {
+            createReferenceCacheStore(db);
           }
         }
       });
@@ -473,8 +508,33 @@ export class DatabaseService {
 
   static async clearAll(): Promise<void> {
     const db = await this.getDB();
-    const tx = db.transaction(['tests', 'batch_tests'], 'readwrite');
-    await Promise.all([tx.objectStore('tests').clear(), tx.objectStore('batch_tests').clear(), tx.done]);
+    const tx = db.transaction(['tests', 'batch_tests', 'reference_cache'], 'readwrite');
+    await Promise.all([
+      tx.objectStore('tests').clear(),
+      tx.objectStore('batch_tests').clear(),
+      tx.objectStore('reference_cache').clear(),
+      tx.done
+    ]);
+  }
+
+  static async getReferenceCache(): Promise<ReferenceCacheRecord | null> {
+    const db = await this.getDB();
+    const tx = db.transaction('reference_cache', 'readonly');
+    const payload = await tx.store.get('global');
+    await tx.done;
+    return payload ?? null;
+  }
+
+  static async setReferenceCache(payload: Omit<ReferenceCacheRecord, 'key'>): Promise<void> {
+    const db = await this.getDB();
+    const tx = db.transaction('reference_cache', 'readwrite');
+    await tx.store.put({
+      key: 'global',
+      updatedAt: payload.updatedAt,
+      exchanges: payload.exchanges,
+      byExchange: payload.byExchange
+    });
+    await tx.done;
   }
 
   private static async readMigrationState(): Promise<MigrationState | null> {

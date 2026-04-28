@@ -166,31 +166,6 @@ export function parseImportLink(link: string): ParsedImportLink | null {
   return null;
 }
 
-export function getV2ImportIncompatibilities(payload: RawPayload): string[] {
-  const issues: string[] = [];
-
-  if (payload.settings?.type === 'SIGNAL') {
-    issues.push('режим ордеров "Сигнал"');
-  }
-
-  if (payload.profit?.type === 'MULTIPLE') {
-    issues.push('режим тейк-профита "Свой"');
-  }
-
-  const stopLoss = payload.stopLoss;
-  const hasSignalStopLoss =
-    !!stopLoss && (
-      (Array.isArray(stopLoss.conditions) && stopLoss.conditions.length > 0) ||
-      stopLoss.conditionalIndent !== undefined && stopLoss.conditionalIndent !== null
-    );
-
-  if (hasSignalStopLoss) {
-    issues.push('сигнальный стоп-лосс');
-  }
-
-  return issues;
-}
-
 export function mapImportedPayload(
   payload: RawPayload,
   current: {
@@ -223,6 +198,16 @@ export function mapImportedPayload(
     exchange: (payload.exchange as StaticConfig['exchange']) || current.staticConfig.exchange,
     algo: payload.algorithm || current.staticConfig.algo,
     symbol: (payload.symbols?.[0] ?? payload.symbol ?? current.staticConfig.symbol).replace('/USDT', ''),
+    selectedSymbols: (() => {
+      const parsed = Array.isArray(payload.symbols)
+        ? payload.symbols
+          .map((value) => String(value).replace('/USDT', '').trim().toUpperCase())
+          .filter((value) => value.length > 0)
+        : [];
+      if (parsed.length > 0) return Array.from(new Set(parsed));
+      const fallback = (payload.symbol ?? current.staticConfig.symbol).replace('/USDT', '').trim().toUpperCase();
+      return fallback ? [fallback] : (current.staticConfig.selectedSymbols ?? []);
+    })(),
     deposit: payload.deposit?.amount ?? current.staticConfig.deposit,
     leverage: payload.deposit?.leverage ?? current.staticConfig.leverage,
     marginType: payload.deposit?.marginType ?? current.staticConfig.marginType,
@@ -363,3 +348,4 @@ export function mapImportedPayload(
     warnings
   };
 }
+

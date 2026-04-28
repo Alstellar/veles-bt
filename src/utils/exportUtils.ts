@@ -1,4 +1,4 @@
-﻿import { DatabaseService, type BatchTestSortKey } from '../services/DatabaseService';
+import { DatabaseService, type BatchTestSortKey } from '../services/DatabaseService';
 import type { BacktestResultItem } from '../types';
 import { formatDurationHuman } from './formatters';
 import { getVelesPublicBacktestUrl } from '../config/velesDomains';

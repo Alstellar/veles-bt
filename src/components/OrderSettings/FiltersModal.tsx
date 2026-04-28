@@ -3,7 +3,7 @@ import {
   Modal, Button, Group, Select, ActionIcon, Paper, Text, 
   Stack, TextInput, Collapse, Badge, Tooltip 
 } from '@mantine/core';
-import { IconTrash, IconPlus, IconPencil, IconCheck, IconArrowsRightLeft } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconPencil, IconCheck, IconArrowsRightLeft, IconCopy } from '@tabler/icons-react';
 import { SignalProbeAction } from '../SignalProbeAction';
 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
@@ -11,6 +11,7 @@ import type { IndicatorDef } from '../../filtersLibrary';
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
 import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
 import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
+import { cloneConditionWithNewId, cloneFilterSlotWithNewIds } from '../../utils/filterClone';
 
 import type { Condition, FilterSlot, IntervalType, OperationType } from '../../types';
 
@@ -96,6 +97,17 @@ export function FiltersModal({
     setSlots(slots.filter(s => s.id !== slotId));
   };
 
+  const duplicateSlot = (slotId: string) => {
+    const index = slots.findIndex((s) => s.id === slotId);
+    if (index === -1) return;
+
+    const source = slots[index];
+    const newSlot = cloneFilterSlotWithNewIds(source);
+    const newSlots = [...slots];
+    newSlots.splice(index + 1, 0, newSlot);
+    setSlots(newSlots);
+  };
+
   // --- УПРАВЛЕНИЕ ВАРИАНТАМИ ---
 
   const addVariant = (slotId: string) => {
@@ -126,6 +138,20 @@ export function FiltersModal({
             return { ...slot, variants: slot.variants.filter(v => v.id !== variantId) };
         }
         return slot;
+    }));
+  };
+
+  const duplicateVariant = (slotId: string, variantId: string) => {
+    setSlots(slots.map((slot) => {
+      if (slot.id !== slotId) return slot;
+      const index = slot.variants.findIndex((v) => v.id === variantId);
+      if (index === -1) return slot;
+
+      const source = slot.variants[index];
+      const duplicated = cloneConditionWithNewId(source);
+      const newVariants = [...slot.variants];
+      newVariants.splice(index + 1, 0, duplicated);
+      return { ...slot, variants: newVariants };
     }));
   };
 
@@ -190,7 +216,7 @@ export function FiltersModal({
         {slots.length === 0 && (
             <Paper p="xl" withBorder bg="gray.0" ta="center">
                 <Text c="dimmed" mb="md">Нет добавленных фильтров.</Text>
-                <Text size="sm" c="dimmed">Добавьте группу фильтров (Слот), чтобы начать.</Text>
+                <Text size="sm" c="dimmed">Добавьте фильтр, чтобы начать.</Text>
             </Paper>
         )}
 
@@ -206,14 +232,19 @@ export function FiltersModal({
                 {/* ЗАГОЛОВОК СЛОТА */}
                 <Group justify="space-between" bg="blue.0" px="md" py="xs" style={{ borderBottom: '1px solid #e9ecef' }}>
                     <Group gap="xs">
-                        <Badge size="lg" radius="sm" variant="filled">ГРУППА {slotIndex + 1}</Badge>
+                        <Badge size="lg" radius="sm" variant="filled">ФИЛЬТР {slotIndex + 1}</Badge>
                         <Text size="xs" c="dimmed" style={{ lineHeight: 1.2 }}>
                           Внутри группы индикаторы работают как ИЛИ
                         </Text>
                     </Group>
-                    <ActionIcon color="red" variant="subtle" onClick={() => removeSlot(slot.id)}>
-                        <IconTrash size={18} />
-                    </ActionIcon>
+                    <Group gap={4}>
+                        <ActionIcon color="blue" variant="subtle" onClick={() => duplicateSlot(slot.id)}>
+                            <IconCopy size={18} />
+                        </ActionIcon>
+                        <ActionIcon color="red" variant="subtle" onClick={() => removeSlot(slot.id)}>
+                            <IconTrash size={18} />
+                        </ActionIcon>
+                    </Group>
                 </Group>
 
                 <Stack gap="sm" p="md" bg="gray.0">
@@ -328,6 +359,15 @@ export function FiltersModal({
                                                 size="md"
                                             />
 
+                                            <ActionIcon
+                                                variant="light"
+                                                color="blue"
+                                                size="md"
+                                                onClick={() => duplicateVariant(slot.id, variant.id!)}
+                                            >
+                                                <IconCopy size={16} />
+                                            </ActionIcon>
+
                                             <ActionIcon 
                                                 variant="light" 
                                                 color="red" 
@@ -390,7 +430,7 @@ export function FiltersModal({
                         onClick={() => addVariant(slot.id)}
                         style={{ alignSelf: 'flex-start' }}
                     >
-                        Добавить вариант индикатора
+                        Добавить индикатор
                     </Button>
                 </Stack>
             </Paper>
@@ -405,7 +445,7 @@ export function FiltersModal({
                 fullWidth
                 style={{ borderStyle: 'dashed' }}
             >
-                Добавить группу фильтров (Слот)
+                Добавить фильтр
             </Button>
 
             <Group justify="flex-end">

@@ -12,6 +12,7 @@ import { FiltersModal } from './FiltersModal';
 import type { OrderSignalConfig, SignalOrderLine, FilterSlot } from '../../types';
 import type { Condition } from '../../types';
 import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
+import { cloneSignalOrderWithNewIds } from '../../utils/filterClone';
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
@@ -80,7 +81,7 @@ export function SignalMode({
     const source = config.orders[index];
     
     // Делаем глубокую копию, чтобы отвязать ссылки на массивы (особенно фильтры)
-    const newOrder: SignalOrderLine = JSON.parse(JSON.stringify(source));
+    const newOrder = cloneSignalOrderWithNewIds(source);
     newOrder.id = randomId(); // Обязательно новый ID
 
     const newOrders = [...config.orders];

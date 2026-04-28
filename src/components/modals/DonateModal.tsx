@@ -1,4 +1,4 @@
-﻿// src/components/modals/DonateModal.tsx
+// src/components/modals/DonateModal.tsx
 import { 
     Modal, Stack, Text, Divider, List, ThemeIcon, Button, Code, Group, 
     CopyButton, Tooltip, ActionIcon, Title, Tabs // 👈 Удалили Badge

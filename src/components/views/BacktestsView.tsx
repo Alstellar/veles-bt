@@ -35,6 +35,7 @@ import dayjs from 'dayjs';
 
 import { ConnectionAlert } from '../ConnectionAlert';
 import { StorageService } from '../../services/StorageService';
+import { LogService } from '../../services/LogService';
 import {
   fetchAvailability,
   fetchExchanges,
@@ -685,8 +686,39 @@ export function BacktestsView({
         runStatus: 'STOP'
       });
 
+      const snapshotId = await LogService.createSnapshot('backtests.run_input', {
+        batchId,
+        mode: 'BACKTESTS',
+        namePrefix,
+        exchange: result.source.exchange,
+        totalGenerated: built.items.length,
+        skippedByLimitations: built.skipped.length,
+        source: result.source
+      }, { batchId, runId: batchId });
+      await LogService.log({
+        level: 'info',
+        source: 'backtests',
+        event: 'run.prepared',
+        batchId,
+        runId: batchId,
+        stage: 'prepare',
+        code: 'RUN_PREPARED',
+        snapshotId,
+        context: {
+          totalTests: built.items.length,
+          skipped: built.skipped.length
+        }
+      });
+
       onOpenLiveResultsModal(`${namePrefix} (${batchId})`);
       run(batchId, built.items);
+    } catch (error) {
+      await LogService.captureError(error, {
+        source: 'backtests',
+        event: 'run.start_failed'
+      });
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Не удалось запустить бектесты: ${message}`);
     } finally {
       setIsValidating(false);
     }
@@ -696,8 +728,18 @@ export function BacktestsView({
     async (batchId: string) => {
       const runtime = await StorageService.getBatchRuntime(batchId);
       const batch = await StorageService.getBatchById(batchId);
+      await LogService.info('backtests', 'run.resume_requested', {
+        batchId,
+        hasRuntime: Boolean(runtime),
+        hasBatch: Boolean(batch)
+      }, batchId);
 
       if (!runtime || !batch?.backtestsSource) {
+        await LogService.warn('backtests', 'run.resume_missing_source', {
+          batchId,
+          hasRuntime: Boolean(runtime),
+          hasBacktestsSource: Boolean(batch?.backtestsSource)
+        }, batchId);
         alert('Этот запуск нельзя продолжить: отсутствуют сохраненные данные.');
         return;
       }
@@ -711,6 +753,11 @@ export function BacktestsView({
           stopReason: 'runtime_error',
           lastError: 'Resume mismatch: generated combinations count differs'
         });
+        await LogService.error('backtests', 'run.resume_mismatch', new Error('Resume mismatch: generated combinations count differs'), {
+          batchId,
+          expectedTotal,
+          regeneratedTotal: regenerated.items.length
+        }, batchId);
         alert('Продолжить запуск нельзя: изменился размер матрицы комбинаций.');
         return;
       }
@@ -800,6 +847,12 @@ export function BacktestsView({
       });
 
       onOpenLiveResultsModal(`${batch.namePrefix} (${batch.id})`);
+      await LogService.info('backtests', 'run.resume_started', {
+        batchId,
+        total: preparedItems.length,
+        resumeFrom: runOptions.resumeFrom ?? 0,
+        restoredActiveRuns: (runOptions.resumeActiveRuns ?? []).length
+      }, batchId);
       run(batchId, preparedItems, runOptions);
     },
     [run, onOpenLiveResultsModal]
@@ -987,7 +1040,7 @@ export function BacktestsView({
                   />
 
                   <Select
-                    label="Источник активов"
+                    label="сточник активов"
                     data={[
                       { value: 'manual', label: 'Ручной ввод' },
                       { value: 'exchange_filtered', label: 'Активы с биржи' }
@@ -1254,3 +1307,7 @@ export function BacktestsView({
     </Container>
   );
 }
+
+
+
+

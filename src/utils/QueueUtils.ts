@@ -179,7 +179,7 @@ export function buildResumeQueue(batchId: string, resumeSource: {
   entryConfig: unknown;
   orderState: unknown;
   exitConfig: unknown;
-  staticConfig: { dateFrom: string | Date; dateTo: string | Date; [key: string]: unknown };
+  staticConfig: { dateFrom: string | Date; dateTo: string | Date; symbol?: string; selectedSymbols?: unknown; [key: string]: unknown };
 }, ConfigGen: { generate: (staticConfig: unknown, entry: unknown, orders: unknown, exits: unknown, temp: string) => { configs: Array<Record<string, unknown>> } }): QueueItemLike[] {
   const staticConfig = {
     ...resumeSource.staticConfig,
@@ -187,13 +187,28 @@ export function buildResumeQueue(batchId: string, resumeSource: {
     dateTo: parseDateLike(resumeSource.staticConfig.dateTo) ?? new Date()
   };
 
-  const { configs } = ConfigGen.generate(
-    staticConfig,
-    resumeSource.entryConfig,
-    resumeSource.orderState,
-    resumeSource.exitConfig,
-    '#TEMP'
-  );
+  const rawSelected = Array.isArray(staticConfig.selectedSymbols)
+    ? staticConfig.selectedSymbols.map((item) => String(item).trim().toUpperCase()).filter((item) => item.length > 0)
+    : [];
+  const uniqueSelected = Array.from(new Set(rawSelected));
+  const fallbackSymbol = String(staticConfig.symbol ?? '').trim().toUpperCase();
+  const symbols = uniqueSelected.length > 0
+    ? uniqueSelected
+    : (fallbackSymbol ? [fallbackSymbol] : []);
+
+  const configs = (symbols.length > 0 ? symbols : ['']).flatMap((symbol) => {
+    const perSymbolConfig = symbol
+      ? { ...staticConfig, symbol, selectedSymbols: [symbol] }
+      : staticConfig;
+    const generated = ConfigGen.generate(
+      perSymbolConfig,
+      resumeSource.entryConfig,
+      resumeSource.orderState,
+      resumeSource.exitConfig,
+      '#TEMP'
+    );
+    return generated.configs;
+  });
 
   return configs.map((cfg) => ({
     id: crypto.randomUUID(),

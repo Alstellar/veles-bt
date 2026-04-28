@@ -8,14 +8,17 @@ import {
 } from '@tabler/icons-react';
 
 import { StaticSettings } from '../StaticSettings';
+import { BacktestVersionSettings } from '../BacktestVersionSettings';
 import { OrderSettings } from '../OrderSettings';
 import { EntrySettings } from '../EntrySettings';
 import { ExitSettings } from '../ExitSettings';
 import { ConnectionAlert } from '../ConnectionAlert';
 
 import { ConfigGenerator } from '../../services/ConfigGenerator';
+import { ConfigGeneratorV2 } from '../../services/ConfigGeneratorV2';
 import { ValidatorService } from '../../services/ValidatorService';
 import { StorageService } from '../../services/StorageService';
+import { LogService } from '../../services/LogService';
 import { fetchLimitations } from '../../services/apiService';
 import { ConnectionService } from '../../services/ConnectionService';
 import { VelesService } from '../../services/VelesService';
@@ -28,7 +31,9 @@ import {
   type SignalProbeViewState
 } from '../../services/SignalProbeService';
 import type { BacktestQueueController, QueueItem } from '../../hooks/useBacktestQueue';
-import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolLimitation, Condition } from '../../types';
+import type { BacktestQueueControllerV2, QueueItemV2 } from '../../hooks/useBacktestQueueV2';
+import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolLimitation, Condition, BacktestVersion } from '../../types';
+import { isSpot } from '../../types';
 import { makeBatchId } from '../../utils/batchId';
 import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
 import styles from './BacktesterView.module.css';
@@ -45,7 +50,14 @@ export interface BacktesterProps {
   onSaveTemplate: () => void;
   onImportSettings: () => void;
   queueController: BacktestQueueController;
-  onOpenLiveResultsModal: (title?: string) => void;
+  queueControllerV2: BacktestQueueControllerV2;
+  backtestVersion: BacktestVersion;
+  onBacktestVersionChange: (version: BacktestVersion) => void;
+  testQueue: number;
+  onTestQueueChange: (queue: number) => void;
+  testIntervalSeconds: number;
+  onTestIntervalChange: (seconds: number) => void;
+  onOpenLiveResultsModal: (title?: string, version?: BacktestVersion, batchId?: string | null) => void;
   resumeBatchId?: string | null;
   onResumeHandled?: () => void;
   connectionError?: string | null;
@@ -164,6 +176,55 @@ function hasSymbolInLimitations(limitations: SymbolLimitation[], userSymbol: str
   });
 }
 
+function normalizeBaseSymbol(value: string): string {
+  return value.replace('/USDT', '').trim().toUpperCase();
+}
+
+function getConfiguredSymbols(staticConfig: StaticConfig): string[] {
+  const selected = Array.isArray(staticConfig.selectedSymbols)
+    ? staticConfig.selectedSymbols.map((item) => normalizeBaseSymbol(String(item))).filter((item) => item.length > 0)
+    : [];
+  if (selected.length > 0) return Array.from(new Set(selected));
+  const single = normalizeBaseSymbol(staticConfig.symbol || '');
+  return single ? [single] : [];
+}
+
+function resolveLimitationBySymbol(limitations: SymbolLimitation[], userSymbol: string): SymbolLimitation | null {
+  const search = normalizeBaseSymbol(userSymbol);
+  const withSlash = `${search}/USDT`;
+  const noSlash = `${search}USDT`;
+  return limitations.find((item) => {
+    const itemSym = item.symbol.toUpperCase();
+    const itemId = item.externalId ? item.externalId.toUpperCase() : '';
+    return itemSym === search || itemSym === withSlash || itemId === noSlash || itemSym.startsWith(`${search}/`);
+  }) ?? null;
+}
+
+function collectRunnableSymbols(staticConfig: StaticConfig, limitations: SymbolLimitation[]) {
+  const configured = getConfiguredSymbols(staticConfig);
+  const invalid: string[] = [];
+  const leverageMismatch: string[] = [];
+  const runnable: string[] = [];
+  const spotExchange = isSpot(staticConfig.exchange);
+
+  configured.forEach((symbol) => {
+    const limitation = resolveLimitationBySymbol(limitations, symbol);
+    if (!limitation) {
+      invalid.push(symbol);
+      return;
+    }
+
+    if (!spotExchange && typeof limitation.leverage === 'number' && staticConfig.leverage > limitation.leverage) {
+      leverageMismatch.push(symbol);
+      return;
+    }
+
+    runnable.push(symbol);
+  });
+
+  return { configured, invalid, leverageMismatch, runnable };
+}
+
 function makeProbeKey(scope: string, variantId?: string): string | null {
   if (!variantId) return null;
   return `${scope}:${variantId}`;
@@ -177,17 +238,28 @@ export function BacktesterView({
   onSaveTemplate,
   onImportSettings,
   queueController,
+  queueControllerV2,
+  backtestVersion,
+  onBacktestVersionChange,
+  testQueue,
+  onTestQueueChange,
+  testIntervalSeconds,
+  onTestIntervalChange,
   onOpenLiveResultsModal,
   resumeBatchId,
   onResumeHandled,
   connectionError
 }: BacktesterProps) {
-  const sectionOrder = ['cfg-static', 'cfg-entry', 'cfg-order', 'cfg-exit', 'cfg-run'] as const;
+  const sectionOrder = ['cfg-static', 'cfg-backtest', 'cfg-entry', 'cfg-order', 'cfg-exit', 'cfg-run'] as const;
 
+  const activeQueueController = backtestVersion === 'v2' ? queueControllerV2 : queueController;
+  const activeBatchId = backtestVersion === 'v2'
+    ? queueControllerV2.currentBatchId
+    : queueController.currentBatchId;
   const {
-    run, resume, stop,
+    stop,
     isRunning, progress
-  } = queueController;
+  } = activeQueueController;
 
   const [activeSection, setActiveSection] = useState<string>('cfg-static');
   const [isSymbolValid, setIsSymbolValid] = useState<boolean | null>(null);
@@ -359,9 +431,36 @@ export function BacktesterView({
     if (!resumeBatchId) return;
     const batchId = resumeBatchId;
     onResumeHandled?.();
-    onOpenLiveResultsModal();
-    void resume(batchId);
-  }, [resumeBatchId, resume, onResumeHandled, onOpenLiveResultsModal]);
+    void (async () => {
+      try {
+        const runtime = await StorageService.getBatchRuntime(batchId);
+        const batch = await StorageService.getBatchById(batchId);
+        const targetVersion: BacktestVersion =
+          runtime?.backtestVersion ??
+          batch?.backtestVersion ??
+          (runtime?.apiVersion === 'v2' || batch?.apiVersion === 'v2' ? 'v2' : 'v1');
+        await LogService.info('configurator', 'run.resume_requested', {
+          batchId,
+          targetVersion,
+          hasRuntime: Boolean(runtime),
+          hasBatch: Boolean(batch)
+        }, batchId);
+        onBacktestVersionChange(targetVersion);
+        onOpenLiveResultsModal(undefined, targetVersion, batchId);
+        if (targetVersion === 'v2') {
+          await queueControllerV2.resume(batchId);
+          return;
+        }
+        await queueController.resume(batchId);
+      } catch (error) {
+        await LogService.captureError(error, {
+          source: 'configurator',
+          event: 'run.resume_failed',
+          context: { batchId }
+        });
+      }
+    })();
+  }, [resumeBatchId, onResumeHandled, onOpenLiveResultsModal, onBacktestVersionChange, queueController, queueControllerV2]);
 
   useEffect(() => {
     const nodes = sectionOrder
@@ -447,6 +546,24 @@ export function BacktesterView({
     () => calculateStats(entryConfig, orderState, exitConfig),
     [entryConfig, orderState, exitConfig]
   );
+  const configuredSymbols = useMemo(
+    () => getConfiguredSymbols(staticConfig),
+    [staticConfig.symbol, staticConfig.selectedSymbols]
+  );
+  const symbolsCount = Math.max(1, configuredSymbols.length);
+  const effectiveTotalTests = stats.totalCount * symbolsCount;
+  const effectiveTimeString = useMemo(() => {
+    const totalSeconds = effectiveTotalTests * 30;
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    let timeString = '';
+    if (d > 0) timeString += `${d} д `;
+    if (h > 0) timeString += `${h} ч `;
+    if (m > 0) timeString += `${m} мин`;
+    if (!timeString) timeString = '~ 30 сек';
+    return timeString.trim();
+  }, [effectiveTotalTests]);
 
   const validation = useMemo(
     () => ValidatorService.validate(staticConfig, entryConfig, orderState, exitConfig),
@@ -455,8 +572,7 @@ export function BacktesterView({
 
   useEffect(() => {
     let cancelled = false;
-    const symbol = staticConfig.symbol.trim();
-    if (!symbol || !staticConfig.exchange) {
+    if (configuredSymbols.length === 0 || !staticConfig.exchange) {
       setIsSymbolValid(null);
       return;
     }
@@ -464,7 +580,7 @@ export function BacktesterView({
     const validateSymbol = async () => {
       try {
         const limitations = await fetchLimitations(staticConfig.exchange);
-        const valid = hasSymbolInLimitations(limitations, symbol);
+        const valid = configuredSymbols.every((symbol) => hasSymbolInLimitations(limitations, symbol));
         if (!cancelled) setIsSymbolValid(valid);
       } catch {
         if (!cancelled) setIsSymbolValid(null);
@@ -475,7 +591,7 @@ export function BacktesterView({
     return () => {
       cancelled = true;
     };
-  }, [staticConfig.exchange, staticConfig.symbol]);
+  }, [staticConfig.exchange, configuredSymbols]);
 
   const periodLabel = useMemo(() => {
     const from = parseDateLike(staticConfig.dateFrom);
@@ -490,6 +606,7 @@ export function BacktesterView({
     const symbolWarn = isSymbolValid === false;
     return {
       baseWarn: validation.sections.static || symbolWarn,
+      backtestWarn: false,
       entryWarn: validation.sections.entry,
       orderWarn: validation.sections.order,
       exitWarn: validation.sections.exit,
@@ -512,9 +629,21 @@ export function BacktesterView({
 
     try {
       const limitations = await fetchLimitations(staticConfig.exchange);
-      const hasSymbol = hasSymbolInLimitations(limitations, staticConfig.symbol);
-      if (!hasSymbol) {
-        alert('Ошибка валидации: монета не найдена в выбранной бирже Veles. Проверьте тикер.');
+      const symbolCheck = collectRunnableSymbols(staticConfig, limitations);
+      if (symbolCheck.configured.length === 0) {
+        alert('Ошибка валидации: не выбраны активы для запуска.');
+        return;
+      }
+
+      if (symbolCheck.invalid.length > 0 || symbolCheck.leverageMismatch.length > 0) {
+        const parts: string[] = [];
+        if (symbolCheck.invalid.length > 0) {
+          parts.push(`Не найдены на бирже: ${symbolCheck.invalid.join(', ')}`);
+        }
+        if (symbolCheck.leverageMismatch.length > 0) {
+          parts.push(`Плечо выше максимального: ${symbolCheck.leverageMismatch.join(', ')}`);
+        }
+        alert(`Ошибка валидации:\n${parts.join('\n')}`);
         return;
       }
     } catch (error) {
@@ -532,12 +661,22 @@ export function BacktesterView({
       return;
     }
 
+    let symbolsToRun: string[] = [];
+    let skippedSymbols: string[] = [];
     try {
       const limitations = await fetchLimitations(staticConfig.exchange);
-      const hasSymbol = hasSymbolInLimitations(limitations, staticConfig.symbol);
-
-      if (!hasSymbol) {
-        alert('Ошибка валидации: монета не найдена в выбранной бирже Veles. Проверьте тикер.');
+      const symbolCheck = collectRunnableSymbols(staticConfig, limitations);
+      if (symbolCheck.configured.length === 0) {
+        alert('Ошибка валидации: не выбраны активы для запуска.');
+        return;
+      }
+      symbolsToRun = symbolCheck.runnable;
+      skippedSymbols = [...symbolCheck.invalid, ...symbolCheck.leverageMismatch];
+      if (symbolsToRun.length === 0) {
+        const parts: string[] = [];
+        if (symbolCheck.invalid.length > 0) parts.push(`Не найдены на бирже: ${symbolCheck.invalid.join(', ')}`);
+        if (symbolCheck.leverageMismatch.length > 0) parts.push(`Плечо выше максимального: ${symbolCheck.leverageMismatch.join(', ')}`);
+        alert(`Запуск невозможен:\n${parts.join('\n')}`);
         return;
       }
     } catch (error) {
@@ -546,60 +685,136 @@ export function BacktesterView({
       return;
     }
 
-    const batchId = makeBatchId();
-    const namePrefix = staticConfig.namePrefix || 'Backtest';
+    try {
+      const batchId = makeBatchId();
+      const namePrefix = staticConfig.namePrefix || 'Backtest';
 
-    const { configs } = ConfigGenerator.generate(staticConfig, entryConfig, orderState, exitConfig, '#TEMP');
-    if (configs.length === 0) {
-      alert('Ошибка: не сгенерировано ни одной конфигурации.');
-      return;
-    }
+      const configs = symbolsToRun.flatMap((symbol) => {
+        const staticConfigForSymbol: StaticConfig = {
+          ...staticConfig,
+          symbol,
+          selectedSymbols: [symbol]
+        };
+        const generated = backtestVersion === 'v2'
+          ? ConfigGeneratorV2.generate(staticConfigForSymbol, entryConfig, orderState, exitConfig, '#TEMP')
+          : ConfigGenerator.generate(staticConfigForSymbol, entryConfig, orderState, exitConfig, '#TEMP');
+        return generated.configs;
+      });
+      if (configs.length === 0) {
+        alert('Ошибка: не сгенерировано ни одной конфигурации.');
+        return;
+      }
 
-    const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\n\nЗапустить выполнение?`);
-    if (!confirmed) return;
+      const skippedSuffix = skippedSymbols.length > 0
+        ? `\nПропущено активов: ${skippedSymbols.length} (${skippedSymbols.join(', ')})`
+        : '';
+      const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\nАктивов к запуску: ${symbolsToRun.length}.${skippedSuffix}\n\nЗапустить выполнение?`);
+      if (!confirmed) return;
 
-    const queueItems: QueueItem[] = configs.map((cfg) => {
-      const realName = cfg.name.replace('#TEMP', batchId);
-      return {
-        id: crypto.randomUUID(),
-        config: { ...cfg, name: realName },
-        status: 'PENDING'
-      };
-    });
+      const queueItems = configs.map((cfg) => {
+        const realName = cfg.name.replace('#TEMP', batchId);
+        return {
+          id: crypto.randomUUID(),
+          config: { ...cfg, name: realName },
+          status: 'PENDING'
+        };
+      });
 
-    const parsedFromIso = toIsoDateTime(parseDateLike(staticConfig.dateFrom as unknown as Date | string | number));
-    const parsedToIso = toIsoDateTime(parseDateLike(staticConfig.dateTo as unknown as Date | string | number));
-    if (!parsedFromIso || !parsedToIso) {
-      alert('Ошибка валидации: некорректная дата начала или окончания теста.');
-      return;
-    }
+      const parsedFromIso = toIsoDateTime(parseDateLike(staticConfig.dateFrom as unknown as Date | string | number));
+      const parsedToIso = toIsoDateTime(parseDateLike(staticConfig.dateTo as unknown as Date | string | number));
+      if (!parsedFromIso || !parsedToIso) {
+        alert('Ошибка валидации: некорректная дата начала или окончания теста.');
+        return;
+      }
 
-    await StorageService.saveBatch({
-      id: batchId,
-      timestamp: Date.now(),
-      apiVersion: 'v1',
-      namePrefix,
-      symbol: staticConfig.symbol,
-      exchange: staticConfig.exchange,
-      totalTests: configs.length,
-      velesIds: [],
-      mode: 'CONFIGURATOR',
-      resumeSource: {
+      await StorageService.saveBatch({
+        id: batchId,
+        timestamp: Date.now(),
+        backtestVersion,
+        apiVersion: backtestVersion === 'v2' ? 'v2' : 'v1',
+        namePrefix,
+        symbol: symbolsToRun.length > 1
+          ? `${symbolsToRun[0]} +${symbolsToRun.length - 1}`
+          : symbolsToRun[0],
+        exchange: staticConfig.exchange,
+        totalTests: configs.length,
+        velesIds: [],
+        mode: 'CONFIGURATOR',
+        resumeSource: {
+          staticConfig: {
+            ...staticConfig,
+            symbol: symbolsToRun[0],
+            selectedSymbols: symbolsToRun,
+            dateFrom: parsedFromIso,
+            dateTo: parsedToIso
+          },
+          entryConfig,
+          orderState,
+          exitConfig
+        }
+      });
+
+      const snapshotId = await LogService.createSnapshot('configurator.run_input', {
+        batchId,
+        namePrefix,
+        mode: 'CONFIGURATOR',
+        backtestVersion,
+        apiVersion: backtestVersion === 'v2' ? 'v2' : 'v1',
+        testQueue,
+        testIntervalSeconds,
+        totalGenerated: configs.length,
+        requestedSymbols: configuredSymbols,
+        runnableSymbols: symbolsToRun,
+        skippedSymbols,
         staticConfig: {
           ...staticConfig,
+          symbol: symbolsToRun[0],
+          selectedSymbols: symbolsToRun,
           dateFrom: parsedFromIso,
           dateTo: parsedToIso
         },
         entryConfig,
         orderState,
         exitConfig
+      }, { batchId, runId: batchId });
+      await LogService.log({
+        level: 'info',
+        source: 'configurator',
+        event: 'run.prepared',
+        batchId,
+        runId: batchId,
+        stage: 'prepare',
+        code: 'RUN_PREPARED',
+        snapshotId,
+        context: {
+          totalTests: configs.length,
+          symbolsCount: symbolsToRun.length,
+          backtestVersion,
+          testQueue,
+          testIntervalSeconds
+        }
+      });
+
+      onOpenLiveResultsModal(`${namePrefix} (${batchId})`, backtestVersion, batchId);
+      if (backtestVersion === 'v2') {
+        queueControllerV2.run(batchId, queueItems as QueueItemV2[]);
+        return;
       }
-    });
-
-    onOpenLiveResultsModal(`${namePrefix} (${batchId})`);
-    run(batchId, queueItems);
+      queueController.run(batchId, queueItems as QueueItem[]);
+    } catch (error) {
+      await LogService.captureError(error, {
+        source: 'configurator',
+        event: 'run.start_failed',
+        context: {
+          backtestVersion,
+          testQueue,
+          testIntervalSeconds
+        }
+      });
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Не удалось запустить бектесты: ${message}`);
+    }
   };
-
   return (
     <Container size="xl" py="xl" pb={100} className={styles.viewRoot}>
       <div className={styles.topbar}>
@@ -616,7 +831,17 @@ export function BacktesterView({
         <div>
           <Stack gap="xl" className={styles.sectionsStack}>
             <div id="cfg-static" className={styles.sectionGlass}>
-              <StaticSettings config={staticConfig} onChange={setStaticConfig} />
+              <StaticSettings config={staticConfig} onChange={setStaticConfig} multiSymbolMode />
+            </div>
+            <div id="cfg-backtest" className={styles.sectionGlass}>
+              <BacktestVersionSettings
+                backtestVersion={backtestVersion}
+                onBacktestVersionChange={onBacktestVersionChange}
+                testQueue={testQueue}
+                onTestQueueChange={onTestQueueChange}
+                testIntervalSeconds={testIntervalSeconds}
+                onTestIntervalChange={onTestIntervalChange}
+              />
             </div>
             <div id="cfg-entry" className={styles.sectionGlass}>
               <EntrySettings
@@ -632,6 +857,7 @@ export function BacktesterView({
               <OrderSettings
                 state={orderState}
                 onChange={setOrderState}
+                hiddenModes={[]}
                 resolveSignalProbeState={resolveSignalProbeState}
                 onSignalProbeRequest={requestSignalProbe}
                 onSignalProbeDirty={markSignalProbeDirty}
@@ -641,6 +867,8 @@ export function BacktesterView({
               <ExitSettings
                 config={exitConfig}
                 onChange={setExitConfig}
+                hiddenProfitModes={[]}
+                stopLossHideSignalMode={false}
                 resolveSignalProbeState={resolveSignalProbeState}
                 onSignalProbeRequest={requestSignalProbe}
                 onSignalProbeDirty={markSignalProbeDirty}
@@ -674,7 +902,7 @@ export function BacktesterView({
                     size="md"
                     color="blue"
                     leftSection={<IconList size={20} />}
-                    onClick={() => onOpenLiveResultsModal()}
+                    onClick={() => onOpenLiveResultsModal(undefined, backtestVersion, activeBatchId ?? null)}
                   >
                     Открыть таблицу (Запущено...)
                   </Button>
@@ -720,6 +948,10 @@ export function BacktesterView({
                 <span>Базовые настройки</span>
                 {stepWarnings.baseWarn && <span className={styles.warnBadge}>!</span>}
               </button>
+              <button type="button" onClick={() => scrollToSection('cfg-backtest')} className={`${styles.stepButton} ${styles.stepRow} ${activeSection === 'cfg-backtest' ? styles.stepActive : ''} ${stepWarnings.backtestWarn ? styles.stepWarn : ''}`}>
+                <span>Режим бектестов</span>
+                {stepWarnings.backtestWarn && <span className={styles.warnBadge}>!</span>}
+              </button>
               <button type="button" onClick={() => scrollToSection('cfg-entry')} className={`${styles.stepButton} ${styles.stepRow} ${activeSection === 'cfg-entry' ? styles.stepActive : ''} ${stepWarnings.entryWarn ? styles.stepWarn : ''}`}>
                 <span>Условия открытия сделки</span>
                 {stepWarnings.entryWarn && <span className={styles.warnBadge}>!</span>}
@@ -745,6 +977,7 @@ export function BacktesterView({
             <div className={styles.summaryBlock}>
               <div className={styles.kv}><span>Биржа</span><strong>{staticConfig.exchange}</strong></div>
               <div className={styles.kv}><span>Тикер</span><strong>{staticConfig.symbol || '-'}</strong></div>
+              <div className={styles.kv}><span>Активов</span><strong>{symbolsCount}</strong></div>
               <div className={styles.kv}><span>Алгоритм</span><strong>{staticConfig.algo}</strong></div>
               <div className={styles.kv}><span>Период</span><strong>{periodLabel}</strong></div>
             </div>
@@ -753,8 +986,8 @@ export function BacktesterView({
               <div className={styles.kv}><span>Комбинаций входа</span><strong>{stats.entryCombinations}</strong></div>
               <div className={styles.kv}><span>Комбинаций сетки</span><strong>{stats.orderCombinations}</strong></div>
               <div className={styles.kv}><span>Комбинаций выхода</span><strong>{stats.exitCombinations}</strong></div>
-              <div className={styles.kv}><span>Всего комбинаций</span><strong>{stats.totalCount}</strong></div>
-              <div className={styles.kv}><span>Время теста</span><strong>{stats.timeString}</strong></div>
+              <div className={styles.kv}><span>Всего комбинаций</span><strong>{effectiveTotalTests}</strong></div>
+              <div className={styles.kv}><span>Время теста</span><strong>{effectiveTimeString}</strong></div>
             </div>
           </div>
         </aside>
@@ -763,3 +996,4 @@ export function BacktesterView({
     </Container>
   );
 }
+

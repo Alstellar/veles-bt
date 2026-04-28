@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Modal, Group, Text, Badge, Button, Switch, Menu, ActionIcon, Checkbox } from '@mantine/core';
 import { IconDownload, IconColumns } from '@tabler/icons-react';
 
@@ -43,6 +44,8 @@ interface Props {
   onToggleNotifications?: (val: boolean) => void;
 }
 
+const EMPTY_TARGET_IDS: number[] = [];
+
 const SORT_KEY_TO_DB: Partial<Record<SortKey, BatchTestSortKey>> = {
   date: 'date',
   name: 'name',
@@ -69,7 +72,7 @@ export function ResultsModal({
   onClose,
   title,
   batchId,
-  targetIds = [],
+  targetIds,
   isLive,
   status,
   progress,
@@ -78,6 +81,11 @@ export function ResultsModal({
   notificationsEnabled,
   onToggleNotifications
 }: Props) {
+  const effectiveTargetIds = useMemo(
+    () => (targetIds && targetIds.length > 0 ? targetIds : EMPTY_TARGET_IDS),
+    [targetIds]
+  );
+
   const {
     data,
     loading,
@@ -90,7 +98,7 @@ export function ResultsModal({
     pageSize,
     setPageSize,
     total
-  } = useResultsData(batchId, targetIds, opened, isLive);
+  } = useResultsData(batchId, effectiveTargetIds, opened, isLive);
 
   const handleExport = async () => {
     const dateStr = new Date().toISOString().slice(0, 10);

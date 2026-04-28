@@ -389,6 +389,7 @@ export function DirectedSearchView({
                 config={staticConfig}
                 onChange={setStaticConfig}
                 titleVariant="section"
+                multiSymbolMode={false}
               />
             </div>
 

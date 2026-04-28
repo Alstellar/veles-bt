@@ -265,6 +265,8 @@ export function useBacktestQueue() {
       await StorageService.saveBatchRuntime({
         batchId,
         version: RUNTIME_VERSION,
+        backtestVersion: 'v1',
+        apiVersion: 'v1',
         items: items.map(toRuntimeItem),
         nextIndex: calculateCompletedTests(items),
         total: items.length,
@@ -348,7 +350,7 @@ export function useBacktestQueue() {
       });
     }
 
-    void LogService.warn('queue', 'queue.stop_requested');
+    void LogService.warn('queue', 'queue.stop_requested', { batchId: batchId ?? null }, batchId ?? undefined);
   }, [addLog]);
 
   /**
@@ -1309,8 +1311,10 @@ export function useBacktestQueue() {
    */
   const resume = useCallback(
     async (batchId: string) => {
+      await LogService.info('queue', 'queue.resume_requested', { batchId }, batchId);
       const runtime = await StorageService.getBatchRuntime(batchId);
       if (!runtime) {
+        await LogService.warn('queue', 'queue.resume_missing_runtime', { batchId }, batchId);
         addLog('Не найдено сохраненное состояние для продолжения.');
         return;
       }
@@ -1322,6 +1326,7 @@ export function useBacktestQueue() {
 
       const batch = await StorageService.getBatchById(batchId);
       if (!batch || !batch.resumeSource) {
+        await LogService.warn('queue', 'queue.resume_missing_source', { batchId }, batchId);
         addLog('Нет исходной конфигурации для продолжения этого запуска.');
         return;
       }
@@ -1335,6 +1340,11 @@ export function useBacktestQueue() {
           stopReason: 'runtime_error',
           lastError: 'Resume mismatch: generated combinations count differs'
         });
+        await LogService.error('queue', 'queue.resume_mismatch', new Error('Resume mismatch: generated combinations count differs'), {
+          batchId,
+          expectedTotal,
+          regeneratedTotal: regenerated.length
+        }, batchId);
         return;
       }
 

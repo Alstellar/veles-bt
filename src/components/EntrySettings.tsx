@@ -1,7 +1,7 @@
 import { 
   Paper, Group, Select, ActionIcon, Text, Stack, TextInput, Collapse, Badge, Button, ThemeIcon, Tooltip 
 } from '@mantine/core';
-import { IconTrash, IconPlus, IconPencil, IconAntenna, IconArrowsRightLeft } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconPencil, IconAntenna, IconArrowsRightLeft, IconCopy } from '@tabler/icons-react';
 import { SignalProbeAction } from './SignalProbeAction';
 
 import { FILTERS_LIBRARY } from '../filtersLibrary';
@@ -10,6 +10,7 @@ import type { Condition, FilterSlot, EntryConfig, IntervalType, OperationType } 
 import { normalizeCondition } from '../services/ConditionNormalizationService';
 import { resolveIndicator, toApiIndicatorCode } from '../utils/indicatorMapping';
 import type { SignalProbeRequestType, SignalProbeViewState } from '../services/SignalProbeService';
+import { cloneConditionWithNewId, cloneFilterSlotWithNewIds } from '../utils/filterClone';
 
 interface Props {
   config: EntryConfig;
@@ -64,6 +65,17 @@ export function EntrySettings({
     updateConfig(config.filterSlots.filter(s => s.id !== slotId));
   };
 
+  const duplicateSlot = (slotId: string) => {
+    const index = config.filterSlots.findIndex((s) => s.id === slotId);
+    if (index === -1) return;
+
+    const source = config.filterSlots[index];
+    const newSlot = cloneFilterSlotWithNewIds(source);
+    const newSlots = [...config.filterSlots];
+    newSlots.splice(index + 1, 0, newSlot);
+    updateConfig(newSlots);
+  };
+
   // --- УПРАВЛЕНИЕ ВАРИАНТАМИ ---
 
   const addVariant = (slotId: string) => {
@@ -95,6 +107,21 @@ export function EntrySettings({
             return { ...slot, variants: slot.variants.filter(v => v.id !== variantId) };
         }
         return slot;
+    });
+    updateConfig(newSlots);
+  };
+
+  const duplicateVariant = (slotId: string, variantId: string) => {
+    const newSlots = config.filterSlots.map((slot) => {
+      if (slot.id !== slotId) return slot;
+      const index = slot.variants.findIndex((v) => v.id === variantId);
+      if (index === -1) return slot;
+
+      const source = slot.variants[index];
+      const duplicated = cloneConditionWithNewId(source);
+      const newVariants = [...slot.variants];
+      newVariants.splice(index + 1, 0, duplicated);
+      return { ...slot, variants: newVariants };
     });
     updateConfig(newSlots);
   };
@@ -189,9 +216,14 @@ export function EntrySettings({
                           Перебор вариантов для этого слота
                         </Text>
                     </Group>
-                    <ActionIcon color="red" variant="subtle" size="sm" onClick={() => removeSlot(slot.id)}>
-                        <IconTrash size={16} />
-                    </ActionIcon>
+                    <Group gap={4}>
+                        <ActionIcon color="blue" variant="subtle" size="sm" onClick={() => duplicateSlot(slot.id)}>
+                            <IconCopy size={16} />
+                        </ActionIcon>
+                        <ActionIcon color="red" variant="subtle" size="sm" onClick={() => removeSlot(slot.id)}>
+                            <IconTrash size={16} />
+                        </ActionIcon>
+                    </Group>
                 </Group>
 
                 <Stack gap="sm" p="sm" bg="gray.0">
@@ -310,6 +342,15 @@ export function EntrySettings({
                                                 }}
                                                 size="md"
                                             />
+
+                                            <ActionIcon
+                                                variant="light"
+                                                color="blue"
+                                                size="md"
+                                                onClick={() => duplicateVariant(slot.id, variant.id!)}
+                                            >
+                                                <IconCopy size={14} />
+                                            </ActionIcon>
 
                                             <ActionIcon 
                                                 variant="light" color="red" size="md"

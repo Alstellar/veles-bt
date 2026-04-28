@@ -1,6 +1,7 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import dayjs from 'dayjs';
 import { DatabaseService, type BatchTestSortKey } from '../services/DatabaseService';
+import { LogService } from '../services/LogService';
 import type { BacktestResultItem } from '../types';
 
 export type SortKey = keyof BacktestResultItem | 'recoveryFactor' | 'days' | 'dealsPerDay';
@@ -96,6 +97,7 @@ export function useResultsData(batchId: string | null | undefined, targetIds: nu
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(INITIAL_COLUMNS);
 
   const limit = Math.max(1, Number.parseInt(pageSize, 10) || 20);
+  const targetIdsKey = targetIds.join(',');
 
   useEffect(() => {
     setPage(1);
@@ -104,6 +106,11 @@ export function useResultsData(batchId: string | null | undefined, targetIds: nu
   const loadData = useCallback(async () => {
     if (!isLive) setLoading(true);
     try {
+      const resolvedTargetIds = targetIdsKey
+        .split(',')
+        .map((value) => Number.parseInt(value, 10))
+        .filter((value) => Number.isFinite(value));
+
       if (batchId) {
         const result = await DatabaseService.getBatchTestsPage({
           batchId,
@@ -117,8 +124,8 @@ export function useResultsData(batchId: string | null | undefined, targetIds: nu
         return;
       }
 
-      if (targetIds.length > 0) {
-        const items = await DatabaseService.getTestsByIds(targetIds);
+      if (resolvedTargetIds.length > 0) {
+        const items = await DatabaseService.getTestsByIds(resolvedTargetIds);
         const sorted = sortInMemory(items, sort);
         setTotal(sorted.length);
         setData(sorted.slice((page - 1) * limit, page * limit));
@@ -128,20 +135,35 @@ export function useResultsData(batchId: string | null | undefined, targetIds: nu
       setData([]);
       setTotal(0);
     } catch (e) {
+      await LogService.captureError(e, {
+        source: 'results',
+        event: 'results.load_failed',
+        context: {
+          batchId: batchId ?? null,
+          targetIdsCount: targetIds.length,
+          isLive: Boolean(isLive),
+          page,
+          limit,
+          sort: {
+            key: sort.key,
+            reversed: sort.reversed
+          }
+        }
+      });
       console.error('Ошибка загрузки результатов:', e);
       setData([]);
       setTotal(0);
     } finally {
       if (!isLive) setLoading(false);
     }
-  }, [batchId, targetIds, isLive, sort, page, limit]);
+  }, [batchId, targetIdsKey, isLive, sort, page, limit]);
 
   useEffect(() => {
     if (opened) {
       void loadData();
     } else {
-      setData([]);
-      setTotal(0);
+      setData((prev) => (prev.length === 0 ? prev : []));
+      setTotal((prev) => (prev === 0 ? prev : 0));
     }
   }, [opened, loadData]);
 
@@ -164,3 +186,5 @@ export function useResultsData(batchId: string | null | undefined, targetIds: nu
     total
   };
 }
+
+

@@ -6,7 +6,12 @@ import type {
   SymbolLimitation
 } from '../types';
 import { ConnectionService } from './ConnectionService';
+import { DatabaseService, type ReferenceCacheRecord, type ReferenceCacheExchangeRecord } from './DatabaseService';
 import { getVelesApiUrl } from '../config/velesDomains';
+
+const DICTIONARY_TTL_MS = 24 * 60 * 60 * 1000;
+const REFERENCE_WARMUP_CHUNK = 4;
+let dictionariesWarmupPromise: Promise<void> | null = null;
 
 const isUsdtPair = (value: unknown): boolean => {
   if (typeof value !== 'string') return false;
@@ -55,7 +60,7 @@ const handleHttpError = (response: Response, fallback: string): never => {
   throw new Error(`${fallback}: ${response.status} ${response.statusText}`);
 };
 
-export const fetchExchanges = async (): Promise<ExchangeInfo[]> => {
+const fetchExchangesNetwork = async (): Promise<ExchangeInfo[]> => {
   const { token, origin } = await resolveApiContext();
   const response = await fetch(getVelesApiUrl('/exchanges', origin), {
     method: 'GET',
@@ -75,7 +80,7 @@ export const fetchExchanges = async (): Promise<ExchangeInfo[]> => {
   });
 };
 
-export const fetchLimitations = async (exchange: ExchangeType): Promise<SymbolLimitation[]> => {
+const fetchLimitationsNetwork = async (exchange: ExchangeType): Promise<SymbolLimitation[]> => {
   const { token, origin } = await resolveApiContext();
   const response = await fetch(
     `${getVelesApiUrl('/pairs/limitations/dictionary', origin)}?exchange=${encodeURIComponent(exchange)}`,
@@ -98,7 +103,7 @@ export const fetchLimitations = async (exchange: ExchangeType): Promise<SymbolLi
   });
 };
 
-export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolAvailability[]> => {
+const fetchAvailabilityNetwork = async (exchange: ExchangeType): Promise<SymbolAvailability[]> => {
   const { token, origin } = await resolveApiContext();
   const response = await fetch(
     `${getVelesApiUrl('/pairs/availability/dictionary', origin)}?exchange=${encodeURIComponent(exchange)}`,
@@ -116,6 +121,211 @@ export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolA
   const payload = unwrapPayload<SymbolAvailability[]>(await response.json());
   if (!Array.isArray(payload)) return [];
   return payload.filter((item) => isUsdtPair(item?.symbol));
+};
+
+const isDictionariesCacheFresh = (cache: ReferenceCacheRecord | null): boolean => {
+  if (!cache) return false;
+  return Date.now() - cache.updatedAt < DICTIONARY_TTL_MS;
+};
+
+const buildEmptyReferenceCache = (): Omit<ReferenceCacheRecord, 'key'> => ({
+  updatedAt: Date.now(),
+  exchanges: [],
+  byExchange: {}
+});
+
+const mergeExchangeIntoCache = (
+  cache: Omit<ReferenceCacheRecord, 'key'>,
+  exchange: ExchangeType,
+  payload: ReferenceCacheExchangeRecord
+): Omit<ReferenceCacheRecord, 'key'> => ({
+  ...cache,
+  byExchange: {
+    ...cache.byExchange,
+    [exchange]: payload
+  }
+});
+
+const runWithConcurrency = async <T,>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<Array<PromiseSettledResult<T>>> => {
+  const results: Array<PromiseSettledResult<T>> = new Array(tasks.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const current = nextIndex;
+      nextIndex += 1;
+      if (current >= tasks.length) return;
+      try {
+        const value = await tasks[current]();
+        results[current] = { status: 'fulfilled', value };
+      } catch (error) {
+        results[current] = { status: 'rejected', reason: error };
+      }
+    }
+  };
+
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, tasks.length)) }, () => worker());
+  await Promise.all(workers);
+  return results;
+};
+
+export const warmupReferenceDictionaries = async (force = false): Promise<void> => {
+  if (dictionariesWarmupPromise && !force) {
+    return dictionariesWarmupPromise;
+  }
+
+  const runner = async () => {
+    const existing = await DatabaseService.getReferenceCache();
+    if (!force && isDictionariesCacheFresh(existing) && (existing?.exchanges.length ?? 0) > 0) {
+      return;
+    }
+
+    const exchanges = await fetchExchangesNetwork();
+    const baseCache: Omit<ReferenceCacheRecord, 'key'> = existing
+      ? {
+          updatedAt: existing.updatedAt,
+          exchanges: existing.exchanges,
+          byExchange: existing.byExchange
+        }
+      : buildEmptyReferenceCache();
+
+    const tasks = exchanges.map((exchangeInfo) => async () => {
+      const exchange = exchangeInfo.key;
+      const [limitations, availability] = await Promise.all([
+        fetchLimitationsNetwork(exchange),
+        fetchAvailabilityNetwork(exchange)
+      ]);
+      return { exchange, limitations, availability };
+    });
+
+    const settled = await runWithConcurrency(tasks, REFERENCE_WARMUP_CHUNK);
+    let nextCache = {
+      ...baseCache,
+      updatedAt: Date.now(),
+      exchanges
+    };
+
+    settled.forEach((result) => {
+      if (result.status !== 'fulfilled') return;
+      nextCache = mergeExchangeIntoCache(nextCache, result.value.exchange, {
+        limitations: result.value.limitations,
+        availability: result.value.availability,
+        updatedAt: Date.now()
+      });
+    });
+
+    await DatabaseService.setReferenceCache(nextCache);
+  };
+
+  const promise = runner().finally(() => {
+    if (dictionariesWarmupPromise === promise) {
+      dictionariesWarmupPromise = null;
+    }
+  });
+  dictionariesWarmupPromise = promise;
+  return promise;
+};
+
+export const fetchExchanges = async (): Promise<ExchangeInfo[]> => {
+  const cache = await DatabaseService.getReferenceCache();
+  if (cache?.exchanges.length) {
+    if (!isDictionariesCacheFresh(cache)) {
+      void warmupReferenceDictionaries().catch(() => undefined);
+    }
+    return cache.exchanges;
+  }
+
+  const exchanges = await fetchExchangesNetwork();
+  await DatabaseService.setReferenceCache({
+    updatedAt: cache?.updatedAt ?? Date.now(),
+    exchanges,
+    byExchange: cache?.byExchange ?? {}
+  });
+  return exchanges;
+};
+
+export const fetchLimitations = async (exchange: ExchangeType): Promise<SymbolLimitation[]> => {
+  const cache = await DatabaseService.getReferenceCache();
+  const cachedEntry = cache?.byExchange?.[exchange];
+  if (cachedEntry) {
+    if (!isDictionariesCacheFresh(cache)) {
+      void warmupReferenceDictionaries().catch(() => undefined);
+    }
+    return cachedEntry.limitations;
+  }
+
+  try {
+    await warmupReferenceDictionaries();
+    const warmed = await DatabaseService.getReferenceCache();
+    const warmedEntry = warmed?.byExchange?.[exchange];
+    if (warmedEntry) return warmedEntry.limitations;
+  } catch {
+    // fallback to per-exchange request
+  }
+
+  const limitations = await fetchLimitationsNetwork(exchange);
+  const current = (await DatabaseService.getReferenceCache()) ?? {
+    key: 'global',
+    ...buildEmptyReferenceCache()
+  };
+  await DatabaseService.setReferenceCache(
+    mergeExchangeIntoCache(
+      {
+        updatedAt: current.updatedAt,
+        exchanges: current.exchanges,
+        byExchange: current.byExchange
+      },
+      exchange,
+      {
+        limitations,
+        availability: current.byExchange?.[exchange]?.availability ?? [],
+        updatedAt: Date.now()
+      }
+    )
+  );
+  return limitations;
+};
+
+export const fetchAvailability = async (exchange: ExchangeType): Promise<SymbolAvailability[]> => {
+  const cache = await DatabaseService.getReferenceCache();
+  const cachedEntry = cache?.byExchange?.[exchange];
+  if (cachedEntry) {
+    if (!isDictionariesCacheFresh(cache)) {
+      void warmupReferenceDictionaries().catch(() => undefined);
+    }
+    return cachedEntry.availability;
+  }
+
+  try {
+    await warmupReferenceDictionaries();
+    const warmed = await DatabaseService.getReferenceCache();
+    const warmedEntry = warmed?.byExchange?.[exchange];
+    if (warmedEntry) return warmedEntry.availability;
+  } catch {
+    // fallback to per-exchange request
+  }
+
+  const availability = await fetchAvailabilityNetwork(exchange);
+  const current = (await DatabaseService.getReferenceCache()) ?? {
+    key: 'global',
+    ...buildEmptyReferenceCache()
+  };
+  await DatabaseService.setReferenceCache(
+    mergeExchangeIntoCache(
+      {
+        updatedAt: current.updatedAt,
+        exchanges: current.exchanges,
+        byExchange: current.byExchange
+      },
+      exchange,
+      {
+        limitations: current.byExchange?.[exchange]?.limitations ?? [],
+        availability,
+        updatedAt: Date.now()
+      }
+    )
+  );
+  return availability;
 };
 
 export const fetchTopSymbols = async (exchange: ExchangeType, algorithm: AlgoType): Promise<string[]> => {

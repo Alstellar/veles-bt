@@ -4,10 +4,13 @@ import type {
   Template,
   BatchRunStatus,
   BatchStopReason,
-  BatchRuntimeState
+  BatchRuntimeState,
+  BacktestVersion
 } from '../types';
 
 const STORAGE_KEY = 'veles_bt_storage_v1';
+const DEFAULT_BACKTEST_VERSION: BacktestVersion = 'v1';
+const DEFAULT_TEST_QUEUE = 5;
 
 export class StorageService {
   private static writeQueue: Promise<void> = Promise.resolve();
@@ -19,12 +22,39 @@ export class StorageService {
       batch.runStatus ??
       (batch.totalTests > 0 && completedTests >= batch.totalTests ? 'DONE' : 'STOP');
 
+    const backtestVersion: BacktestVersion =
+      batch.backtestVersion ??
+      (batch.apiVersion === 'v2' ? 'v2' : 'v1');
+
     return {
       ...batch,
+      backtestVersion,
       velesIds,
       completedTests,
       runStatus,
       updatedAt: batch.updatedAt ?? batch.timestamp
+    };
+  }
+
+  private static normalizeTemplate(template: Template): Template {
+    const backtestVersion: BacktestVersion =
+      template.backtestVersion ??
+      (template.apiVersion === 'v2' ? 'v2' : 'v1');
+
+    return {
+      ...template,
+      backtestVersion
+    };
+  }
+
+  private static normalizeRuntime(runtime: BatchRuntimeState): BatchRuntimeState {
+    const backtestVersion: BacktestVersion =
+      runtime.backtestVersion ??
+      (runtime.apiVersion === 'v2' ? 'v2' : 'v1');
+
+    return {
+      ...runtime,
+      backtestVersion
     };
   }
 
@@ -36,11 +66,28 @@ export class StorageService {
       batches[id] = this.normalizeBatch(batch);
     });
 
+    const rawTemplates = data?.templates ?? {};
+    const templates: Record<string, Template> = {};
+    Object.entries(rawTemplates).forEach(([id, template]) => {
+      templates[id] = this.normalizeTemplate(template);
+    });
+
+    const rawRuntimes = data?.runtimes ?? {};
+    const runtimes: Record<string, BatchRuntimeState> = {};
+    Object.entries(rawRuntimes).forEach(([id, runtime]) => {
+      runtimes[id] = this.normalizeRuntime(runtime);
+    });
+
+    const backtestVersion: BacktestVersion = data?.backtestVersion ?? DEFAULT_BACKTEST_VERSION;
+    const testQueue = Math.max(1, data?.testQueue ?? DEFAULT_TEST_QUEUE);
+
     return {
       batches,
-      templates: data?.templates ?? {},
-      runtimes: data?.runtimes ?? {},
-      v2IntervalSeconds: data?.v2IntervalSeconds
+      templates,
+      runtimes,
+      v2IntervalSeconds: data?.v2IntervalSeconds,
+      backtestVersion,
+      testQueue
     };
   }
 
@@ -192,10 +239,10 @@ export class StorageService {
   static async saveBatchRuntime(runtime: BatchRuntimeState): Promise<void> {
     await this.updateData((data) => {
       data.runtimes = data.runtimes ?? {};
-      data.runtimes[runtime.batchId] = {
+      data.runtimes[runtime.batchId] = this.normalizeRuntime({
         ...runtime,
         updatedAt: Date.now()
-      };
+      });
     });
   }
 
@@ -257,7 +304,7 @@ export class StorageService {
   static async saveTemplate(template: Template): Promise<void> {
     await this.updateData((data) => {
       data.templates = data.templates ?? {};
-      data.templates[template.id] = template;
+      data.templates[template.id] = this.normalizeTemplate(template);
     });
   }
 
@@ -282,6 +329,28 @@ export class StorageService {
   static async setV2IntervalSeconds(seconds: number): Promise<void> {
     await this.updateData((data) => {
       data.v2IntervalSeconds = Math.max(1, seconds);
+    });
+  }
+
+  static async getBacktestVersion(): Promise<BacktestVersion> {
+    const data = await this.loadData();
+    return data.backtestVersion ?? DEFAULT_BACKTEST_VERSION;
+  }
+
+  static async setBacktestVersion(version: BacktestVersion): Promise<void> {
+    await this.updateData((data) => {
+      data.backtestVersion = version;
+    });
+  }
+
+  static async getTestQueue(): Promise<number> {
+    const data = await this.loadData();
+    return Math.max(1, data.testQueue ?? DEFAULT_TEST_QUEUE);
+  }
+
+  static async setTestQueue(queue: number): Promise<void> {
+    await this.updateData((data) => {
+      data.testQueue = Math.max(1, queue);
     });
   }
 }

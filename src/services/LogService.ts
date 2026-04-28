@@ -2,6 +2,7 @@ type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'critical';
 
 export interface LogEntry {
   id: string;
+  seq: number;
   ts: string;
   dayKey: string;
   level: LogLevel;
@@ -9,8 +10,13 @@ export interface LogEntry {
   event: string;
   sessionId: string;
   batchId?: string;
+  runId?: string;
+  testId?: string;
+  stage?: string;
+  code?: string;
   message?: string;
   context?: unknown;
+  snapshotId?: string;
   error?: {
     name?: string;
     message: string;
@@ -18,19 +24,34 @@ export interface LogEntry {
   };
 }
 
+interface LogSnapshot {
+  id: string;
+  ts: string;
+  kind: string;
+  sessionId: string;
+  batchId?: string;
+  runId?: string;
+  testId?: string;
+  data: unknown;
+}
+
 interface LogsMeta {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  seq: number;
   dayKeys: string[];
+  snapshotKeys: string[];
 }
 
 const LOG_PREFIX = 'vh_logs_';
-const META_KEY = 'vh_logs_meta_v1';
+const SNAPSHOT_PREFIX = 'vh_snapshot_';
+const META_KEY = 'vh_logs_meta_v2';
 const SETTINGS_KEY = 'vh_logs_settings_v1';
-const MAX_DAYS_TO_KEEP = 2;
-const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
-const MAX_FIELD_LENGTH = 2000;
-const MAX_ARRAY_ITEMS = 50;
-const MAX_NESTING_DEPTH = 6;
+const MAX_DAYS_TO_KEEP = 7;
+const MAX_SNAPSHOTS_TO_KEEP = 300;
+const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+const MAX_FIELD_LENGTH = 3000;
+const MAX_ARRAY_ITEMS = 100;
+const MAX_NESTING_DEPTH = 8;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -40,38 +61,11 @@ function dayKeyFromIso(iso: string): string {
   return iso.slice(0, 10);
 }
 
-function generateId(): string {
+function generateId(prefix = 'log'): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
+    return `${prefix}_${crypto.randomUUID()}`;
   }
-  return `log_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function serializeError(error: unknown): LogEntry['error'] {
-  const normalizeMessage = (input: unknown): string => {
-    const raw = String(input ?? '');
-    const trimmed = raw.length > MAX_FIELD_LENGTH ? `${raw.slice(0, MAX_FIELD_LENGTH)}...[truncated]` : raw;
-    // Защита от вставки больших минифицированных кусков кода в message.
-    if (
-      trimmed.includes('function ') ||
-      trimmed.includes('=>') ||
-      trimmed.includes('const ') ||
-      trimmed.includes('var ') ||
-      trimmed.includes('let ')
-    ) {
-      return '[minified-source-omitted]';
-    }
-    return trimmed;
-  };
-
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: normalizeMessage(error.message),
-      stack: error.stack?.slice(0, MAX_FIELD_LENGTH)
-    };
-  }
-  return { message: normalizeMessage(error) };
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function estimateBytes(value: unknown): number {
@@ -119,7 +113,8 @@ function sanitizeValue(value: unknown, depth = 0): unknown {
         lowered.includes('authorization') ||
         lowered.includes('cookie') ||
         lowered.includes('csrf') ||
-        lowered.includes('password')
+        lowered.includes('password') ||
+        lowered.includes('secret')
       ) {
         output[key] = '[masked]';
         return;
@@ -132,27 +127,59 @@ function sanitizeValue(value: unknown, depth = 0): unknown {
   return toStringSafe(value);
 }
 
+function serializeError(error: unknown): LogEntry['error'] {
+  const normalizeMessage = (input: unknown): string => {
+    const raw = String(input ?? '');
+    const trimmed = raw.length > MAX_FIELD_LENGTH ? `${raw.slice(0, MAX_FIELD_LENGTH)}...[truncated]` : raw;
+    if (
+      trimmed.includes('function ') ||
+      trimmed.includes('=>') ||
+      trimmed.includes('const ') ||
+      trimmed.includes('var ') ||
+      trimmed.includes('let ')
+    ) {
+      return '[minified-source-omitted]';
+    }
+    return trimmed;
+  };
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: normalizeMessage(error.message),
+      stack: error.stack?.slice(0, MAX_FIELD_LENGTH)
+    };
+  }
+
+  return { message: normalizeMessage(error) };
+}
+
 export class LogService {
   private static writeQueue: Promise<void> = Promise.resolve();
   private static sessionId = '';
   private static handlersInstalled = false;
   private static verboseCache: boolean | null = null;
+  private static consolePatched = false;
+  private static fetchPatched = false;
 
   static initialize(): void {
     if (!this.sessionId) {
-      this.sessionId = generateId();
+      this.sessionId = generateId('session');
     }
     if (!this.handlersInstalled && typeof window !== 'undefined') {
       this.installGlobalErrorHandlers();
+      this.patchConsole();
+      this.patchFetch();
       this.handlersInstalled = true;
     }
     void this.info('app', 'app.initialized', {
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a'
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a',
+      location: typeof window !== 'undefined' ? window.location.href : 'n/a'
     });
   }
 
   static getSessionId(): string {
-    if (!this.sessionId) this.sessionId = generateId();
+    if (!this.sessionId) this.sessionId = generateId('session');
     return this.sessionId;
   }
 
@@ -196,11 +223,25 @@ export class LogService {
   }
 
   private static async getMeta(): Promise<LogsMeta> {
-    const meta = await this.storageGet<LogsMeta>(META_KEY);
+    const meta = await this.storageGet<Partial<LogsMeta> & { dayKeys?: string[] }>(META_KEY);
     if (!meta || !Array.isArray(meta.dayKeys)) {
-      return { schemaVersion: 1, dayKeys: [] };
+      return { schemaVersion: 2, seq: 0, dayKeys: [], snapshotKeys: [] };
     }
-    return { schemaVersion: 1, dayKeys: [...meta.dayKeys].sort() };
+    return {
+      schemaVersion: 2,
+      seq: typeof meta.seq === 'number' && Number.isFinite(meta.seq) ? Math.max(0, Math.floor(meta.seq)) : 0,
+      dayKeys: [...meta.dayKeys].sort(),
+      snapshotKeys: Array.isArray(meta.snapshotKeys) ? [...meta.snapshotKeys] : []
+    };
+  }
+
+  private static async setMeta(meta: LogsMeta): Promise<void> {
+    await this.storageSet(META_KEY, {
+      schemaVersion: 2,
+      seq: Math.max(0, Math.floor(meta.seq)),
+      dayKeys: [...new Set(meta.dayKeys)].sort(),
+      snapshotKeys: [...new Set(meta.snapshotKeys)]
+    });
   }
 
   private static async getSettings(): Promise<{ verboseLogging: boolean }> {
@@ -237,7 +278,6 @@ export class LogService {
     if (level === 'warn' || level === 'error' || level === 'critical') return true;
     if (level === 'debug') return false;
 
-    // В обычном режиме храним только ключевые info-события.
     const infoAllowlist = new Set([
       'app.initialized',
       'queue.started',
@@ -247,10 +287,6 @@ export class LogService {
       'bug_report.exported'
     ]);
     return infoAllowlist.has(event);
-  }
-
-  private static async setMeta(meta: LogsMeta): Promise<void> {
-    await this.storageSet(META_KEY, { schemaVersion: 1, dayKeys: [...new Set(meta.dayKeys)].sort() });
   }
 
   private static async getDayEntries(dayKey: string): Promise<LogEntry[]> {
@@ -270,13 +306,13 @@ export class LogService {
 
   private static async rotateByDays(meta: LogsMeta): Promise<LogsMeta> {
     const sorted = [...meta.dayKeys].sort();
-    if (sorted.length <= MAX_DAYS_TO_KEEP) return { schemaVersion: 1, dayKeys: sorted };
+    if (sorted.length <= MAX_DAYS_TO_KEEP) return { ...meta, dayKeys: sorted };
 
     const toDelete = sorted.slice(0, sorted.length - MAX_DAYS_TO_KEEP);
     for (const dayKey of toDelete) {
       await this.dropDay(dayKey);
     }
-    return { schemaVersion: 1, dayKeys: sorted.slice(-MAX_DAYS_TO_KEEP) };
+    return { ...meta, dayKeys: sorted.slice(-MAX_DAYS_TO_KEEP) };
   }
 
   private static async enforceSizeLimit(meta: LogsMeta): Promise<LogsMeta> {
@@ -310,7 +346,70 @@ export class LogService {
       await this.setDayEntries(lastDay, entries);
     }
 
-    return { schemaVersion: 1, dayKeys: nextDays };
+    return { ...meta, dayKeys: nextDays };
+  }
+
+  private static async pruneSnapshots(meta: LogsMeta): Promise<LogsMeta> {
+    if (meta.snapshotKeys.length <= MAX_SNAPSHOTS_TO_KEEP) return meta;
+    const toDelete = meta.snapshotKeys.slice(0, meta.snapshotKeys.length - MAX_SNAPSHOTS_TO_KEEP);
+    for (const key of toDelete) {
+      await this.storageRemove(key);
+    }
+    return { ...meta, snapshotKeys: meta.snapshotKeys.slice(-MAX_SNAPSHOTS_TO_KEEP) };
+  }
+
+  private static inferBatchId(input: { batchId?: string; context?: unknown }): string | undefined {
+    if (input.batchId) return input.batchId;
+    if (input.context && typeof input.context === 'object') {
+      const batchId = (input.context as { batchId?: unknown }).batchId;
+      if (typeof batchId === 'string' && batchId.trim()) return batchId;
+    }
+    return undefined;
+  }
+
+  private static inferRunId(input: { runId?: string; batchId?: string; context?: unknown }): string | undefined {
+    if (input.runId) return input.runId;
+    const batchId = this.inferBatchId(input);
+    if (batchId) return batchId;
+    if (input.context && typeof input.context === 'object') {
+      const runId = (input.context as { runId?: unknown }).runId;
+      if (typeof runId === 'string' && runId.trim()) return runId;
+    }
+    return undefined;
+  }
+
+  static async createSnapshot(
+    kind: string,
+    data: unknown,
+    meta?: { batchId?: string; runId?: string; testId?: string }
+  ): Promise<string> {
+    const id = generateId('snapshot');
+    const payload: LogSnapshot = {
+      id,
+      ts: nowIso(),
+      kind,
+      sessionId: this.getSessionId(),
+      batchId: meta?.batchId,
+      runId: meta?.runId,
+      testId: meta?.testId,
+      data: sanitizeValue(data)
+    };
+
+    await this.enqueueWrite(async () => {
+      await this.storageSet(`${SNAPSHOT_PREFIX}${id}`, payload);
+      const current = await this.getMeta();
+      const next = await this.pruneSnapshots({
+        ...current,
+        snapshotKeys: [...current.snapshotKeys, `${SNAPSHOT_PREFIX}${id}`]
+      });
+      await this.setMeta(next);
+    });
+
+    return id;
+  }
+
+  private static async getSnapshotById(id: string): Promise<LogSnapshot | undefined> {
+    return this.storageGet<LogSnapshot>(`${SNAPSHOT_PREFIX}${id}`);
   }
 
   static async log(input: {
@@ -318,41 +417,61 @@ export class LogService {
     source: string;
     event: string;
     batchId?: string;
+    runId?: string;
+    testId?: string;
+    stage?: string;
+    code?: string;
     message?: string;
     context?: unknown;
     error?: unknown;
+    snapshotId?: string;
   }): Promise<void> {
     if (!(await this.shouldPersist(input.level, input.event))) return;
 
     const ts = nowIso();
-    const entry: LogEntry = {
-      id: generateId(),
-      ts,
-      dayKey: dayKeyFromIso(ts),
-      level: input.level,
-      source: input.source,
-      event: input.event,
-      sessionId: this.getSessionId(),
-      batchId: input.batchId,
-      message: input.message ? toStringSafe(input.message) : undefined,
-      context: sanitizeValue(input.context),
-      error: input.error ? serializeError(input.error) : undefined
-    };
+    const sanitizedContext = sanitizeValue(input.context);
+    const batchId = this.inferBatchId({ batchId: input.batchId, context: sanitizedContext });
+    const runId = this.inferRunId({ runId: input.runId, batchId, context: sanitizedContext });
 
     await this.enqueueWrite(async () => {
       const meta = await this.getMeta();
+      const seq = meta.seq + 1;
+
+      const entry: LogEntry = {
+        id: generateId(),
+        seq,
+        ts,
+        dayKey: dayKeyFromIso(ts),
+        level: input.level,
+        source: input.source,
+        event: input.event,
+        sessionId: this.getSessionId(),
+        batchId,
+        runId,
+        testId: input.testId,
+        stage: input.stage,
+        code: input.code,
+        message: input.message ? toStringSafe(input.message) : undefined,
+        context: sanitizedContext,
+        snapshotId: input.snapshotId,
+        error: input.error ? serializeError(input.error) : undefined
+      };
+
       const dayEntries = await this.getDayEntries(entry.dayKey);
       dayEntries.push(entry);
       await this.setDayEntries(entry.dayKey, dayEntries);
 
       const nextMeta: LogsMeta = {
-        schemaVersion: 1,
-        dayKeys: [...new Set([...meta.dayKeys, entry.dayKey])].sort()
+        schemaVersion: 2,
+        seq,
+        dayKeys: [...new Set([...meta.dayKeys, entry.dayKey])].sort(),
+        snapshotKeys: meta.snapshotKeys
       };
 
       const rotated = await this.rotateByDays(nextMeta);
       const sizeChecked = await this.enforceSizeLimit(rotated);
-      await this.setMeta(sizeChecked);
+      const snapshotChecked = await this.pruneSnapshots(sizeChecked);
+      await this.setMeta(snapshotChecked);
     });
   }
 
@@ -389,7 +508,66 @@ export class LogService {
       const entries = await this.getDayEntries(dayKey);
       all.push(...entries);
     }
-    return all.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    return all.sort((a, b) => a.seq - b.seq);
+  }
+
+  private static buildSummary(logs: LogEntry[]): string[] {
+    const lines: string[] = [];
+    const byLevel = new Map<LogLevel, number>([
+      ['debug', 0],
+      ['info', 0],
+      ['warn', 0],
+      ['error', 0],
+      ['critical', 0]
+    ]);
+    const bySource = new Map<string, number>();
+    const byBatch = new Map<string, { total: number; errors: number; critical: number }>();
+
+    for (const entry of logs) {
+      byLevel.set(entry.level, (byLevel.get(entry.level) || 0) + 1);
+      bySource.set(entry.source, (bySource.get(entry.source) || 0) + 1);
+      if (entry.batchId) {
+        const current = byBatch.get(entry.batchId) || { total: 0, errors: 0, critical: 0 };
+        current.total += 1;
+        if (entry.level === 'error') current.errors += 1;
+        if (entry.level === 'critical') current.critical += 1;
+        byBatch.set(entry.batchId, current);
+      }
+    }
+
+    lines.push('Summary:');
+    lines.push(`  debug=${byLevel.get('debug') ?? 0}`);
+    lines.push(`  info=${byLevel.get('info') ?? 0}`);
+    lines.push(`  warn=${byLevel.get('warn') ?? 0}`);
+    lines.push(`  error=${byLevel.get('error') ?? 0}`);
+    lines.push(`  critical=${byLevel.get('critical') ?? 0}`);
+
+    const topSources = [...bySource.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
+    lines.push('TopSources:');
+    if (topSources.length === 0) {
+      lines.push('  none');
+    } else {
+      for (const [source, count] of topSources) {
+        lines.push(`  ${source}: ${count}`);
+      }
+    }
+
+    const troubledBatches = [...byBatch.entries()]
+      .filter(([, stats]) => stats.errors > 0 || stats.critical > 0)
+      .sort((a, b) => (b[1].critical + b[1].errors) - (a[1].critical + a[1].errors))
+      .slice(0, 10);
+    lines.push('TroubledBatches:');
+    if (troubledBatches.length === 0) {
+      lines.push('  none');
+    } else {
+      for (const [batchId, stats] of troubledBatches) {
+        lines.push(`  ${batchId}: total=${stats.total}, error=${stats.errors}, critical=${stats.critical}`);
+      }
+    }
+
+    return lines;
   }
 
   static async exportReportText(): Promise<string> {
@@ -407,16 +585,53 @@ export class LogService {
     lines.push(`VerboseLogging: ${verbose ? 'enabled' : 'disabled'}`);
     lines.push(`Entries: ${logs.length}`);
     lines.push('');
+    lines.push(...this.buildSummary(logs));
+    lines.push('');
+    lines.push('RecentIncidents:');
+
+    const incidents = logs
+      .filter((entry) => entry.level === 'error' || entry.level === 'critical')
+      .slice(-30);
+    if (incidents.length === 0) {
+      lines.push('  none');
+    } else {
+      for (const entry of incidents) {
+        lines.push(
+          `  [${entry.ts}] [${entry.level.toUpperCase()}] ${entry.source}.${entry.event}` +
+          `${entry.batchId ? ` batch=${entry.batchId}` : ''}` +
+          `${entry.runId ? ` run=${entry.runId}` : ''}` +
+          `${entry.testId ? ` test=${entry.testId}` : ''}` +
+          `${entry.code ? ` code=${entry.code}` : ''}` +
+          `${entry.stage ? ` stage=${entry.stage}` : ''}`
+        );
+      }
+    }
+    lines.push('');
     lines.push('Timeline:');
 
-    logs.forEach((entry) => {
-      const base = `[${entry.ts}] [${entry.level.toUpperCase()}] [${entry.source}] ${entry.event}`;
+    for (const entry of logs) {
+      const base = `[${entry.ts}] [#${entry.seq}] [${entry.level.toUpperCase()}] [${entry.source}] ${entry.event}`;
       lines.push(base);
       if (entry.batchId) lines.push(`  batchId: ${entry.batchId}`);
+      if (entry.runId) lines.push(`  runId: ${entry.runId}`);
+      if (entry.testId) lines.push(`  testId: ${entry.testId}`);
+      if (entry.stage) lines.push(`  stage: ${entry.stage}`);
+      if (entry.code) lines.push(`  code: ${entry.code}`);
       if (entry.message) lines.push(`  message: ${entry.message}`);
       if (entry.context !== undefined) lines.push(`  context: ${JSON.stringify(entry.context)}`);
       if (entry.error) lines.push(`  error: ${JSON.stringify(entry.error)}`);
-    });
+      if (entry.snapshotId) {
+        lines.push(`  snapshotId: ${entry.snapshotId}`);
+        const snapshot = await this.getSnapshotById(entry.snapshotId);
+        if (snapshot) {
+          lines.push(`  snapshot.kind: ${snapshot.kind}`);
+          lines.push(`  snapshot.ts: ${snapshot.ts}`);
+          lines.push(`  snapshot.data: ${JSON.stringify(snapshot.data)}`);
+        } else {
+          lines.push('  snapshot: [missing]');
+        }
+      }
+    }
 
     return lines.join('\n');
   }
@@ -437,6 +652,68 @@ export class LogService {
     return filename;
   }
 
+  private static patchConsole(): void {
+    if (this.consolePatched || typeof window === 'undefined') return;
+    this.consolePatched = true;
+
+    const originalError = console.error.bind(console);
+    const originalWarn = console.warn.bind(console);
+
+    console.error = (...args: unknown[]) => {
+      void this.log({
+        level: 'error',
+        source: 'console',
+        event: 'console.error',
+        context: {
+          args: sanitizeValue(args)
+        }
+      });
+      originalError(...args);
+    };
+
+    console.warn = (...args: unknown[]) => {
+      void this.log({
+        level: 'warn',
+        source: 'console',
+        event: 'console.warn',
+        context: {
+          args: sanitizeValue(args)
+        }
+      });
+      originalWarn(...args);
+    };
+  }
+
+  private static patchFetch(): void {
+    if (this.fetchPatched || typeof window === 'undefined' || typeof window.fetch !== 'function') return;
+    this.fetchPatched = true;
+
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (async (...args: Parameters<typeof fetch>) => {
+      const startedAt = Date.now();
+      const input = args[0];
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      try {
+        const response = await originalFetch(...args);
+        if (!response.ok && url.includes('/api/')) {
+          void this.warn('network', 'network.fetch_non_ok', {
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            durationMs: Date.now() - startedAt
+          });
+        }
+        return response;
+      } catch (error) {
+        void this.error('network', 'network.fetch_failed', error, {
+          url,
+          durationMs: Date.now() - startedAt
+        });
+        throw error;
+      }
+    }) as typeof fetch;
+  }
+
   static installGlobalErrorHandlers(): void {
     if (typeof window === 'undefined') return;
 
@@ -446,7 +723,7 @@ export class LogService {
         event: 'window.error',
         context: {
           message: typeof event.message === 'string'
-            ? (event.message.length > 300 ? `${event.message.slice(0, 300)}...[truncated]` : event.message)
+            ? (event.message.length > 400 ? `${event.message.slice(0, 400)}...[truncated]` : event.message)
             : '[no-message]',
           file: event.filename,
           line: event.lineno,
@@ -463,3 +740,4 @@ export class LogService {
     });
   }
 }
+

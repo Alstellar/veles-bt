@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { 
-  Paper, SimpleGrid, Select, TextInput, NumberInput, SegmentedControl, Text, Autocomplete,
-  Group, Button, Switch, Divider, LoadingOverlay, Alert, Tooltip, Stack, ThemeIcon
+  Paper, SimpleGrid, Select, TextInput, NumberInput, SegmentedControl, Text, Checkbox, Autocomplete,
+  Group, Button, Switch, Divider, LoadingOverlay, Alert, Tooltip, Stack, ThemeIcon, ScrollArea, Box, Popover
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconAlertTriangle, IconCheck, IconSettings, IconX } from '@tabler/icons-react';
@@ -18,6 +18,7 @@ interface Props {
   config: StaticConfig;
   onChange: (newConfig: StaticConfig) => void;
   titleVariant?: 'default' | 'section';
+  multiSymbolMode?: boolean;
 }
 
 const FALLBACK_EXCHANGES: ExchangeInfo[] = [
@@ -58,13 +59,22 @@ function findSmart<T extends { symbol: string; externalId?: string }>(
     });
   }
 
-export function StaticSettings({ config, onChange, titleVariant = 'default' }: Props) {
+export function StaticSettings({
+  config,
+  onChange,
+  titleVariant = 'default',
+  multiSymbolMode = false
+}: Props) {
   
   const [loading, setLoading] = useState(false);
   const authError = false;
   const [exchanges, setExchanges] = useState<ExchangeInfo[]>(FALLBACK_EXCHANGES);
   const [limitations, setLimitations] = useState<SymbolLimitation[]>([]);
   const [availabilities, setAvailabilities] = useState<SymbolAvailability[]>([]);
+  const [symbolSearch, setSymbolSearch] = useState('');
+  const [symbolInputFocused, setSymbolInputFocused] = useState(false);
+  const [symbolPickerOpened, setSymbolPickerOpened] = useState(false);
+  const prevExchangeRef = useRef(config.exchange);
 
   useEffect(() => {
     let mounted = true;
@@ -116,8 +126,31 @@ export function StaticSettings({ config, onChange, titleVariant = 'default' }: P
 
   // --- ВЫЧИСЛЕНИЯ ---
   
-  const currentLimitation = useMemo(() => findSmart(limitations, config.symbol), [limitations, config.symbol]);
-  const currentAvailability = useMemo(() => findSmart(availabilities, config.symbol), [availabilities, config.symbol]);
+  const allSymbols = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ base: string; pair: string; leverage: number | null }> = [];
+    limitations.forEach((item) => {
+      const base = (item.symbol.includes('/') ? item.symbol.split('/')[0] : item.symbol).trim().toUpperCase();
+      if (!base || seen.has(base)) return;
+      seen.add(base);
+      out.push({
+        base,
+        pair: item.symbol.toUpperCase(),
+        leverage: typeof item.leverage === 'number' ? item.leverage : null
+      });
+    });
+    return out;
+  }, [limitations]);
+  const symbolOptions = useMemo(() => allSymbols.map((item) => item.base), [allSymbols]);
+  const selectedSymbols = useMemo(() => {
+    const raw = Array.isArray(config.selectedSymbols) && config.selectedSymbols.length > 0
+      ? config.selectedSymbols
+      : (config.symbol ? [config.symbol] : []);
+    return Array.from(new Set(raw.map((item) => String(item).trim().toUpperCase()).filter((item) => item.length > 0)));
+  }, [config.selectedSymbols, config.symbol]);
+  const currentSymbolForLookup = selectedSymbols.length === 1 ? selectedSymbols[0] : config.symbol;
+  const currentLimitation = useMemo(() => findSmart(limitations, currentSymbolForLookup), [limitations, currentSymbolForLookup]);
+  const currentAvailability = useMemo(() => findSmart(availabilities, currentSymbolForLookup), [availabilities, currentSymbolForLookup]);
   const currentExchange = useMemo(
     () => exchanges.find((item) => item.key === config.exchange) ?? null,
     [exchanges, config.exchange]
@@ -128,22 +161,12 @@ export function StaticSettings({ config, onChange, titleVariant = 'default' }: P
     () => exchanges.map((item) => ({ value: item.key, label: item.name })),
     [exchanges]
   );
-  const symbolOptions = useMemo(() => {
-    const set = new Set<string>();
-    limitations.forEach((item) => {
-      const base = item.symbol.includes('/') ? item.symbol.split('/')[0] : item.symbol;
-      const normalized = base.trim().toUpperCase();
-      if (normalized) set.add(normalized);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [limitations]);
-
   // Авто-корректировка плеча
   useEffect(() => {
-    if (currentLimitation?.leverage && config.leverage > currentLimitation.leverage) {
+    if (selectedSymbols.length === 1 && currentLimitation?.leverage && config.leverage > currentLimitation.leverage) {
         update('leverage', currentLimitation.leverage);
     }
-  }, [currentLimitation, config.leverage]);
+  }, [currentLimitation, config.leverage, selectedSymbols.length]);
 
   // --- ХЕЛПЕРЫ UI ---
 
@@ -158,6 +181,90 @@ export function StaticSettings({ config, onChange, titleVariant = 'default' }: P
 
     onChange({ ...config, [key]: value as StaticConfig[K] });
   };
+
+  const setSelectedSymbols = (nextSymbols: string[]) => {
+    const normalized = Array.from(
+      new Set(
+        nextSymbols
+          .map((item) => String(item).trim().toUpperCase())
+          .filter((item) => item.length > 0)
+      )
+    );
+    const nextSymbol = normalized.length > 0 ? normalized[0] : '';
+    onChange({
+      ...config,
+      symbol: nextSymbol,
+      selectedSymbols: normalized
+    });
+  };
+
+  const toggleSymbol = (symbol: string, checked: boolean) => {
+    const next = new Set(selectedSymbols);
+    if (checked) next.add(symbol);
+    else next.delete(symbol);
+    setSelectedSymbols(Array.from(next));
+  };
+
+  const toggleAllSymbols = (checked: boolean) => {
+    if (checked) {
+      const eligible = allSymbols
+        .filter((item) => currentIsSpot || typeof item.leverage !== 'number' || config.leverage <= item.leverage)
+        .map((item) => item.base);
+      setSelectedSymbols(eligible);
+      return;
+    }
+    setSelectedSymbols([]);
+  };
+
+  const selectableSymbols = useMemo(
+    () => allSymbols
+      .filter((item) => currentIsSpot || typeof item.leverage !== 'number' || config.leverage <= item.leverage)
+      .map((item) => item.base),
+    [allSymbols, currentIsSpot, config.leverage]
+  );
+  const selectedSelectableCount = selectedSymbols.filter((symbol) => selectableSymbols.includes(symbol)).length;
+  const allSelected = selectableSymbols.length > 0 && selectedSelectableCount === selectableSymbols.length;
+  const partiallySelected = selectedSelectableCount > 0 && selectedSelectableCount < selectableSymbols.length;
+
+  useEffect(() => {
+    if (!multiSymbolMode || currentIsSpot || selectedSymbols.length === 0) return;
+    const leverageBySymbol = new Map(allSymbols.map((item) => [item.base, item.leverage]));
+    const filtered = selectedSymbols.filter((symbol) => {
+      const leverage = leverageBySymbol.get(symbol);
+      return typeof leverage !== 'number' || config.leverage <= leverage;
+    });
+    if (filtered.length !== selectedSymbols.length) {
+      setSelectedSymbols(filtered);
+    }
+  }, [multiSymbolMode, currentIsSpot, allSymbols, selectedSymbols, config.leverage]);
+
+  const coinInputValue = symbolInputFocused
+    ? symbolSearch
+    : (
+      selectedSymbols.length > 1
+        ? String(selectedSymbols.length)
+        : (selectedSymbols[0] ?? config.symbol)
+    );
+
+  const handleCoinInputChange = (rawValue: string) => {
+    const next = rawValue.toUpperCase().replace('/USDT', '').trim();
+    setSymbolSearch(next);
+    if (!next) return;
+    const found = allSymbols.find((item) => item.base.startsWith(next) || item.base.includes(next));
+    if (!found) return;
+    const target = document.getElementById(`static-symbol-row-${found.base}`);
+    if (target) {
+      target.scrollIntoView({ block: 'center' });
+    }
+  };
+
+  useEffect(() => {
+    if (prevExchangeRef.current === config.exchange) return;
+    prevExchangeRef.current = config.exchange;
+    setSelectedSymbols([]);
+    setSymbolSearch('');
+    setSymbolPickerOpened(false);
+  }, [config.exchange]);
 
   const setPresetDate = (months: number) => {
     const to = new Date();
@@ -177,6 +284,14 @@ export function StaticSettings({ config, onChange, titleVariant = 'default' }: P
 
   // Рендер иконки статуса монеты
   const renderCoinStatus = () => {
+    if (selectedSymbols.length > 1) {
+      return (
+        <Text size="xs" c="dimmed">
+          выбрано: {selectedSymbols.length}
+        </Text>
+      );
+    }
+
     if (!config.symbol) return <Text size="xs" c="dimmed">/USDT</Text>;
 
     if (currentLimitation) {
@@ -260,17 +375,104 @@ export function StaticSettings({ config, onChange, titleVariant = 'default' }: P
 
       {/* Монета, Алго, Депо, Плечо */}
       <SimpleGrid cols={2} spacing="xs" mb="sm">
-        <Autocomplete
-          label="Монета"
-          placeholder="BTC"
-          data={symbolOptions}
-          maxDropdownHeight={220}
-          comboboxProps={{ withinPortal: false }}
-          value={config.symbol}
-          onChange={(v) => update('symbol', v.toUpperCase())}
-          rightSectionWidth={80} 
-          rightSection={renderCoinStatus()}
-        />
+        <div>
+          {multiSymbolMode ? (
+            <>
+              <Popover
+                opened={symbolPickerOpened}
+                onChange={setSymbolPickerOpened}
+                position="bottom-start"
+                width="target"
+                withArrow={false}
+                withinPortal={false}
+              >
+                <Popover.Target>
+                  <TextInput
+                    label="Монета"
+                    placeholder="BTC"
+                    value={coinInputValue}
+                    onFocus={() => {
+                      setSymbolInputFocused(true);
+                      setSymbolPickerOpened(true);
+                      setSymbolSearch('');
+                    }}
+                    onBlur={() => setSymbolInputFocused(false)}
+                    onClick={() => setSymbolPickerOpened(true)}
+                    onChange={(e) => handleCoinInputChange(e.currentTarget.value)}
+                    rightSectionWidth={120}
+                    rightSection={renderCoinStatus()}
+                  />
+                </Popover.Target>
+                <Popover.Dropdown p={0}>
+                  <Paper withBorder p="xs" radius="md" bg="white">
+                    <Group justify="space-between" mb="xs">
+                      <Checkbox
+                        label="Выбрать все"
+                        checked={allSelected}
+                        indeterminate={partiallySelected}
+                        onChange={(event) => toggleAllSymbols(event.currentTarget.checked)}
+                      />
+                      <Text size="xs" c="dimmed">Активов: {allSymbols.length} | Выбрано: {selectedSymbols.length}</Text>
+                    </Group>
+                    <ScrollArea h={220} offsetScrollbars>
+                      <Stack gap={6}>
+                        {allSymbols.map((item) => {
+                          const checked = selectedSymbols.includes(item.base);
+                          const leverageMismatch = !currentIsSpot && typeof item.leverage === 'number' && config.leverage > item.leverage;
+                          return (
+                            <Group
+                              key={item.base}
+                              id={`static-symbol-row-${item.base}`}
+                              justify="space-between"
+                              wrap="nowrap"
+                              px={6}
+                              py={4}
+                              style={{ borderRadius: 6, background: checked ? '#eef6ff' : 'transparent' }}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                disabled={leverageMismatch && !checked}
+                                onChange={(event) => toggleSymbol(item.base, event.currentTarget.checked)}
+                                label={item.base}
+                              />
+                              <Group gap={8} wrap="nowrap">
+                                {!currentIsSpot && leverageMismatch && (
+                                  <Tooltip label={`Требуется плечо x${config.leverage}, максимум x${item.leverage}`}>
+                                    <Box>
+                                      <IconX size={14} color="red" />
+                                    </Box>
+                                  </Tooltip>
+                                )}
+                                <Text size="xs" c="dimmed">Макс x{item.leverage ?? '-'}</Text>
+                              </Group>
+                            </Group>
+                          );
+                        })}
+                      </Stack>
+                    </ScrollArea>
+                  </Paper>
+                </Popover.Dropdown>
+              </Popover>
+            </>
+          ) : (
+            <Autocomplete
+              label="Монета"
+              placeholder="BTC"
+              data={symbolOptions}
+              value={selectedSymbols[0] ?? config.symbol}
+              onChange={(value) => {
+                const normalized = value.toUpperCase().replace('/USDT', '').trim();
+                onChange({
+                  ...config,
+                  symbol: normalized,
+                  selectedSymbols: normalized ? [normalized] : []
+                });
+              }}
+              rightSectionWidth={120}
+              rightSection={renderCoinStatus()}
+            />
+          )}
+        </div>
 
         <div>
            <Text size="sm" fw={500} mt={2} mb={3}>Алгоритм</Text>
