@@ -12,13 +12,20 @@ import {
   Tooltip,
   ThemeIcon,
   SimpleGrid,
-  Stack
+  Stack,
+  SegmentedControl
 } from '@mantine/core';
 import { IconPlus, IconTrash, IconCalculator, IconCopy } from '@tabler/icons-react';
 
 import { MultiInput } from '../MultiInput';
 import type { OrderCustomConfig, CustomOrderLine } from '../../types';
 import { cloneCustomOrderWithNewId } from '../../utils/filterClone';
+import {
+  CUSTOM_VOLUME_STEP,
+  generateCustomVolumeDistributions,
+  getCustomOrderVolumeRange,
+  getCustomOrderVolumeValues
+} from '../../utils/customOrderVolumes';
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
@@ -35,7 +42,9 @@ export function CustomMode({ config, onChange }: Props) {
       const initialOrder: CustomOrderLine = {
         id: randomId(),
         indent: ['0'],
-        volume: 100
+        volume: 100,
+        volumeRange: { from: '100', to: '100', step: String(CUSTOM_VOLUME_STEP) },
+        volumeValues: ['100']
       };
       onChange({ ...config, orders: [initialOrder] });
     }
@@ -53,11 +62,36 @@ export function CustomMode({ config, onChange }: Props) {
     update(newOrders);
   };
 
+  const updateVolumeRange = (id: string, field: 'from' | 'to' | 'step', value: string | number) => {
+    const newOrders = config.orders.map((order) => {
+      if (order.id !== id) return order;
+      const currentRange = getCustomOrderVolumeRange(order);
+      return {
+        ...order,
+        volumeRange: {
+          ...currentRange,
+          [field]: String(value)
+        }
+      };
+    });
+    update(newOrders);
+  };
+
+  const updateVolumeValues = (id: string, values: string[]) => {
+    const newOrders = config.orders.map((order) => {
+      if (order.id !== id) return order;
+      return { ...order, volumeValues: values };
+    });
+    update(newOrders);
+  };
+
   const addOrder = () => {
     const newOrder: CustomOrderLine = {
       id: randomId(),
       indent: [],
-      volume: 0
+      volume: 0,
+      volumeRange: { from: '0', to: '0', step: String(CUSTOM_VOLUME_STEP) },
+      volumeValues: []
     };
     update([...config.orders, newOrder]);
   };
@@ -113,9 +147,27 @@ export function CustomMode({ config, onChange }: Props) {
   };
 
   const currentTotalVolume = Number(config.orders.reduce((acc, o) => acc + o.volume, 0).toFixed(2));
+  const volumeMode = config.volumeMode ?? 'FIXED';
+  const volumeDistributionResult = volumeMode !== 'FIXED'
+    ? generateCustomVolumeDistributions(config.orders, volumeMode)
+    : null;
 
   return (
     <Paper p="md" withBorder bg="white">
+      <Group justify="space-between" align="center" mb="md">
+        <Text size="sm" fw={600}>Распределение объемов</Text>
+        <SegmentedControl
+          size="xs"
+          value={volumeMode}
+          onChange={(value) => onChange({ ...config, volumeMode: value as OrderCustomConfig['volumeMode'] })}
+          data={[
+            { value: 'FIXED', label: 'Мартингейл / фикс.' },
+            { value: 'LIST', label: 'Списки' },
+            { value: 'RANGE', label: 'Диапазоны' }
+          ]}
+        />
+      </Group>
+
       <SimpleGrid cols={2} spacing="md" mb="md">
         <Paper withBorder p="sm" bg="blue.0" radius="md" h="100%">
           <Stack gap="xs" justify="center" h="100%">
@@ -126,12 +178,14 @@ export function CustomMode({ config, onChange }: Props) {
                 w="100%"
                 value={calcMartingale}
                 onChange={(v) => setCalcMartingale(Number(v))}
+                disabled={volumeMode !== 'FIXED'}
               />
               <Button
                 size="xs"
                 variant="filled"
                 color="blue"
                 onClick={applyCalculator}
+                disabled={volumeMode !== 'FIXED'}
                 leftSection={<IconCalculator size={14} />}
                 style={{ flexShrink: 0 }}
               >
@@ -155,7 +209,13 @@ export function CustomMode({ config, onChange }: Props) {
         </Paper>
       </SimpleGrid>
 
-      <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm">
+      <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm" style={{ tableLayout: 'fixed', width: '100%' }}>
+        <colgroup>
+          <col style={{ width: 50 }} />
+          <col style={{ width: '49%' }} />
+          <col style={{ width: '42%' }} />
+          <col style={{ width: 70 }} />
+        </colgroup>
         <Table.Thead bg="gray.1">
           <Table.Tr>
             <Table.Th w={50} ta="center">№</Table.Th>
@@ -174,23 +234,78 @@ export function CustomMode({ config, onChange }: Props) {
                   <Text size="8px" c="dimmed" style={{ lineHeight: 1 }}>START</Text>
                 )}
               </Table.Td>
-              <Table.Td>
+              <Table.Td style={{ minWidth: 0 }}>
                 <MultiInput
-                  label=""
+                  label={volumeMode !== 'FIXED' ? 'Значения' : ''}
                   placeholder="Отступ"
                   value={order.indent}
                   onChange={(v) => updateOrder(order.id, 'indent', v)}
                 />
               </Table.Td>
               <Table.Td>
-                <NumberInput
-                  size="sm"
-                  variant="unstyled"
-                  value={order.volume}
-                  onChange={(v) => updateOrder(order.id, 'volume', Number(v))}
-                  style={{ textAlign: 'center', fontWeight: 500 }}
-                  styles={{ input: { textAlign: 'center' } }}
-                />
+                {volumeMode === 'LIST' && index < config.orders.length - 1 ? (
+                  <MultiInput
+                    label="Значения"
+                    placeholder="Объем"
+                    value={getCustomOrderVolumeValues(order)}
+                    onChange={(values) => updateVolumeValues(order.id, values)}
+                  />
+                ) : volumeMode !== 'FIXED' && index === config.orders.length - 1 ? (
+                  <SimpleGrid cols={2} spacing={4}>
+                    <NumberInput
+                      label="От"
+                      size="xs"
+                      min={0.01}
+                      step={CUSTOM_VOLUME_STEP}
+                      value={Number(getCustomOrderVolumeRange(order).from)}
+                      onChange={(v) => updateVolumeRange(order.id, 'from', v || 0)}
+                    />
+                    <NumberInput
+                      label="До"
+                      size="xs"
+                      min={0.01}
+                      step={CUSTOM_VOLUME_STEP}
+                      value={Number(getCustomOrderVolumeRange(order).to)}
+                      onChange={(v) => updateVolumeRange(order.id, 'to', v || 0)}
+                    />
+                  </SimpleGrid>
+                ) : volumeMode !== 'FIXED' ? (
+                  <SimpleGrid cols={3} spacing={4}>
+                    <NumberInput
+                      label="От"
+                      size="xs"
+                      min={CUSTOM_VOLUME_STEP}
+                      step={CUSTOM_VOLUME_STEP}
+                      value={Number(getCustomOrderVolumeRange(order).from)}
+                      onChange={(v) => updateVolumeRange(order.id, 'from', v || 0)}
+                    />
+                    <NumberInput
+                      label="До"
+                      size="xs"
+                      min={CUSTOM_VOLUME_STEP}
+                      step={CUSTOM_VOLUME_STEP}
+                      value={Number(getCustomOrderVolumeRange(order).to)}
+                      onChange={(v) => updateVolumeRange(order.id, 'to', v || 0)}
+                    />
+                    <NumberInput
+                      label="Шаг"
+                      size="xs"
+                      min={CUSTOM_VOLUME_STEP}
+                      step={CUSTOM_VOLUME_STEP}
+                      value={Number(getCustomOrderVolumeRange(order).step)}
+                      onChange={(v) => updateVolumeRange(order.id, 'step', v || CUSTOM_VOLUME_STEP)}
+                    />
+                  </SimpleGrid>
+                ) : (
+                  <NumberInput
+                    size="sm"
+                    variant="unstyled"
+                    value={order.volume}
+                    onChange={(v) => updateOrder(order.id, 'volume', Number(v))}
+                    style={{ textAlign: 'center', fontWeight: 500 }}
+                    styles={{ input: { textAlign: 'center' } }}
+                  />
+                )}
               </Table.Td>
               <Table.Td>
                 <Group gap={4} wrap="nowrap" justify="center">
@@ -228,6 +343,24 @@ export function CustomMode({ config, onChange }: Props) {
         >
           Добавить ордер
         </Button>
+        {volumeMode !== 'FIXED' && (
+          <Group gap="xs">
+            <Text size="sm">Валидных распределений:</Text>
+            <Badge
+              size="lg"
+              color={volumeDistributionResult?.error || volumeDistributionResult?.tooMany ? 'red' : 'green'}
+              variant="filled"
+            >
+              {volumeDistributionResult?.tooMany ? '10000+' : volumeDistributionResult?.distributions.length ?? 0}
+            </Badge>
+            {(volumeDistributionResult?.error || volumeDistributionResult?.tooMany) && (
+              <Tooltip label={volumeDistributionResult.tooMany ? 'Слишком много распределений. Увеличьте шаг или сузьте диапазоны.' : volumeDistributionResult.error}>
+                <ThemeIcon color="red" variant="light" size="sm">!</ThemeIcon>
+              </Tooltip>
+            )}
+          </Group>
+        )}
+        {volumeMode === 'FIXED' && (
         <Group gap="xs">
           <Text size="sm">Итого:</Text>
           <Badge
@@ -243,6 +376,7 @@ export function CustomMode({ config, onChange }: Props) {
             </Tooltip>
           )}
         </Group>
+        )}
       </Group>
     </Paper>
   );

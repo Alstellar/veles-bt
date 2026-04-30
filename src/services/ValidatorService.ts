@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import { getIndicatorSettings, resolveIndicator } from '../utils/indicatorMapping';
 import { parseDateLike } from '../utils/datePolicy';
+import { generateCustomVolumeDistributions } from '../utils/customOrderVolumes';
 
 export interface ValidationSections {
   static: boolean;
@@ -169,7 +170,7 @@ export class ValidatorService {
       let totalVol = 0;
       for (let i = 0; i < c.orders.length; i++) {
         const o = c.orders[i];
-        if (o.volume <= 0) {
+        if ((c.volumeMode ?? 'FIXED') === 'FIXED' && o.volume <= 0) {
           return this.fail('order', `Ордера сделки (Свой): ордер #${i + 1} имеет некорректный объем.`);
         }
         if (!hasNumericValues(o.indent)) {
@@ -178,12 +179,21 @@ export class ValidatorService {
         totalVol += o.volume;
       }
 
-      if (Math.abs(totalVol - 100) > 0.1) {
+      if ((c.volumeMode ?? 'FIXED') !== 'FIXED') {
+        const volumeResult = generateCustomVolumeDistributions(c.orders, c.volumeMode ?? 'RANGE');
+        if (volumeResult.error) {
+          return this.fail('order', `Ордера сделки (Свой): ${volumeResult.error}`);
+        }
+        if (volumeResult.tooMany) {
+          return this.fail('order', 'Ордера сделки (Свой): слишком много распределений объемов. Увеличьте шаг или сузьте диапазоны.');
+        }
+      } else if (Math.abs(totalVol - 100) > 0.1) {
         return this.fail('order', `Ордера сделки (Свой): сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(2)}%).`);
       }
     } else if (orderState.mode === 'SIGNAL') {
       const s = orderState.signal;
-      if (s.baseOrder.volume <= 0) {
+      const volumeMode = s.volumeMode ?? 'FIXED';
+      if (volumeMode === 'FIXED' && s.baseOrder.volume <= 0) {
         return this.fail('order', 'Ордера сделки (Сигнал): объем базового ордера должен быть больше 0.');
       }
       if (!hasNumericValues(s.baseOrder.indent)) {
@@ -196,7 +206,7 @@ export class ValidatorService {
       let totalVol = s.baseOrder.volume;
       for (let i = 0; i < s.orders.length; i++) {
         const o = s.orders[i];
-        if (o.volume <= 0) {
+        if (volumeMode === 'FIXED' && o.volume <= 0) {
           return this.fail('order', `Ордера сделки (Сигнал): ордер #${i + 1} имеет некорректный объем.`);
         }
         if (!hasNumericValues(o.indent)) {
@@ -213,7 +223,15 @@ export class ValidatorService {
         totalVol += o.volume;
       }
 
-      if (Math.abs(totalVol - 100) > 0.1) {
+      if (volumeMode !== 'FIXED') {
+        const volumeResult = generateCustomVolumeDistributions([s.baseOrder, ...s.orders], volumeMode);
+        if (volumeResult.error) {
+          return this.fail('order', `Ордера сделки (Сигнал): ${volumeResult.error}`);
+        }
+        if (volumeResult.tooMany) {
+          return this.fail('order', 'Ордера сделки (Сигнал): слишком много распределений объемов. Увеличьте шаг или сузьте диапазоны.');
+        }
+      } else if (Math.abs(totalVol - 100) > 0.1) {
         return this.fail('order', `Ордера сделки (Сигнал): сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(2)}%).`);
       }
     }
@@ -224,6 +242,7 @@ export class ValidatorService {
       }
     } else if (exitCfg.profitMode === 'MULTIPLE') {
       const m = exitCfg.profitMultiple;
+      const volumeMode = m.volumeMode ?? 'FIXED';
       if (m.orders.length === 0) {
         return this.fail('exit', 'Выход из сделки (Свой): добавьте хотя бы один ордер тейк-профита.');
       }
@@ -234,13 +253,21 @@ export class ValidatorService {
         if (!hasNumericValues(o.indent)) {
           return this.fail('exit', `Выход из сделки (Свой): ордер #${i + 1} имеет некорректный отступ.`);
         }
-        if (o.volume <= 0) {
+        if (volumeMode === 'FIXED' && o.volume <= 0) {
           return this.fail('exit', `Выход из сделки (Свой): ордер #${i + 1} имеет некорректный объем.`);
         }
         totalVol += o.volume;
       }
 
-      if (Math.abs(totalVol - 100) > 0.1) {
+      if (volumeMode !== 'FIXED') {
+        const volumeResult = generateCustomVolumeDistributions(m.orders, volumeMode);
+        if (volumeResult.error) {
+          return this.fail('exit', `Выход из сделки (Свой): ${volumeResult.error}`);
+        }
+        if (volumeResult.tooMany) {
+          return this.fail('exit', 'Выход из сделки (Свой): слишком много распределений объемов. Увеличьте шаг или сузьте диапазоны.');
+        }
+      } else if (Math.abs(totalVol - 100) > 0.1) {
         return this.fail('exit', `Выход из сделки (Свой): сумма объемов должна быть 100% (сейчас ${totalVol.toFixed(1)}%).`);
       }
     } else if (exitCfg.profitMode === 'SIGNAL') {

@@ -18,6 +18,7 @@ export function MultiInput({ label, description, placeholder, value, onChange }:
 
   return (
     <TagsInput
+      style={{ width: '100%', maxWidth: '100%' }}
       label={label}
       description={description}
       placeholder={placeholder || "Введите значение и нажмите Enter"}
@@ -46,7 +47,8 @@ export function MultiInput({ label, description, placeholder, value, onChange }:
         }
       }}
       styles={{
-        input: { fontFamily: 'monospace' } 
+        input: { fontFamily: 'monospace', maxWidth: '100%' },
+        root: { width: '100%', maxWidth: '100%' }
       }}
     />
   );

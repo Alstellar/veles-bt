@@ -1,5 +1,5 @@
-import { 
-  Paper, Group, Text, Switch, MultiSelect, Stack, Select, 
+import {
+  Paper, Group, Text, Switch, Stack, Select,
   Collapse, Button, ActionIcon, TextInput, Tooltip, SimpleGrid, Badge 
 } from '@mantine/core';
 import { 
@@ -7,15 +7,18 @@ import {
 } from '@tabler/icons-react';
 import { IconCopy } from '@tabler/icons-react';
 import { SignalProbeAction } from '../SignalProbeAction';
+import { SweepNumericParamEditor } from '../SweepNumericParamEditor';
 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
-import { STOP_LOSS_OPTIONS, CONDITIONAL_OPTIONS } from '../../utils/profitGen';
+import { CONDITIONAL_OPTIONS } from '../../utils/profitGen';
 import type { IndicatorDef } from '../../filtersLibrary';
-import type { StopLossConfig, FilterSlot, Condition, IntervalType, OperationType } from '../../types';
+import type { StopLossConfig, FilterSlot, Condition, IntervalType, OperationType, SweepNumericParam } from '../../types';
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
 import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
 import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
 import { cloneConditionWithNewId, cloneFilterSlotWithNewIds } from '../../utils/filterClone';
+import { VELES_SIMPLE_STOP_LOSS_PRESETS } from '../../config/velesSweepPresets';
+import { createSweepNumericParam, expandSweepNumericParam } from '../../utils/sweepParams';
 
 interface Props {
   config: StopLossConfig;
@@ -37,6 +40,14 @@ interface Props {
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
+function getSimpleStopLossSweep(config: StopLossConfig): SweepNumericParam {
+  return config.sweep ?? createSweepNumericParam(config.indent, '-0.5');
+}
+
+function getConditionalStopLossSweep(config: StopLossConfig): SweepNumericParam {
+  return config.conditionalSweep ?? createSweepNumericParam(config.conditionalIndent, 'null');
+}
+
 export function StopLoss({
   config,
   onChange,
@@ -46,10 +57,37 @@ export function StopLoss({
   onSignalProbeDirty,
   hideSignalMode = false
 }: Props) {
+  const simpleStopLossSweep = getSimpleStopLossSweep(config);
+  const conditionalStopLossSweep = getConditionalStopLossSweep(config);
 
   // --- ЛОГИКА СЛОТОВ (ГРУПП) ---
   const updateConfig = (newSlots: FilterSlot[]) => {
     onChange({ ...config, filterSlots: newSlots });
+  };
+
+  const updateSimpleStopLossSweep = (value: SweepNumericParam) => {
+    const indent = expandSweepNumericParam(value, {
+      allowedValues: VELES_SIMPLE_STOP_LOSS_PRESETS
+    });
+
+    onChange({
+      ...config,
+      indent,
+      sweep: value
+    });
+  };
+
+  const updateConditionalStopLossSweep = (value: SweepNumericParam) => {
+    const conditionalIndent = expandSweepNumericParam(value, {
+      allowedValues: CONDITIONAL_OPTIONS,
+      allowNull: true
+    });
+
+    onChange({
+      ...config,
+      conditionalIndent,
+      conditionalSweep: value
+    });
   };
 
   const markVariantDirty = (variantId?: string) => {
@@ -152,6 +190,7 @@ export function StopLoss({
     { value: 'null', label: 'Отключено' },
     ...CONDITIONAL_OPTIONS.map(val => ({ value: val, label: `${val}%` }))
   ];
+  void conditionalIndentData;
 
   return (
     <Stack gap="xl" mt="xs">
@@ -177,14 +216,13 @@ export function StopLoss({
                     {/* Поле ввода (в сером блоке) */}
                     <Collapse in={config.enabledSimple}>
                          <Paper withBorder p="sm" bg="gray.0" radius="md">
-                             <MultiSelect
+                             <SweepNumericParamEditor
                                 label="Отступ (%)"
                                 description="Выберите значения для перебора"
                                 placeholder="Например: -0.5"
-                                data={STOP_LOSS_OPTIONS}
-                                value={config.indent}
-                                onChange={(vals) => onChange({ ...config, indent: vals })}
-                                searchable clearable hidePickedOptions size="sm"
+                                value={simpleStopLossSweep}
+                                onChange={updateSimpleStopLossSweep}
+                                presetValues={VELES_SIMPLE_STOP_LOSS_PRESETS}
                             />
                          </Paper>
                     </Collapse>
@@ -217,14 +255,18 @@ export function StopLoss({
                     <Collapse in={config.enabledSignal}>
                         {/* h="100%" заставляет Paper растягиваться на высоту соседа */}
                         <Paper withBorder p="sm" bg="gray.0" radius="md" h="100%">
-                            <MultiSelect
+                            <SweepNumericParamEditor
                                 label="Мин. отступ (%)"
                                 description="Отрицательные или положительные"
                                 placeholder="Выберите значения или 'Отключено'"
-                                data={conditionalIndentData}
-                                value={config.conditionalIndent}
-                                onChange={(vals) => onChange({ ...config, conditionalIndent: vals })}
-                                searchable clearable hidePickedOptions size="sm"
+                                value={conditionalStopLossSweep}
+                                onChange={updateConditionalStopLossSweep}
+                                presetValues={CONDITIONAL_OPTIONS}
+                                allowNull
+                                nullLabel="Отключено"
+                                rangeFallbackFrom="-0.05"
+                                rangeFallbackTo="-3"
+                                rangeFallbackStep="0.05"
                             />
                         </Paper>
                     </Collapse>

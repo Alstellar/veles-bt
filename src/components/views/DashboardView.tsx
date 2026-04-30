@@ -10,7 +10,6 @@ import {
   ThemeIcon,
   Button,
   SimpleGrid,
-  Card,
   Badge,
   Accordion,
   List
@@ -31,6 +30,7 @@ import {
   IconCopy,
   IconDatabase,
   IconBug,
+  IconHeart,
   IconChevronLeft,
   IconChevronRight
 } from '@tabler/icons-react';
@@ -50,10 +50,30 @@ interface ReleaseSlide {
   points: Array<{ icon: ReactNode; text: string }>;
 }
 
-export function DashboardView({ onNavigate, connectionError }: Props) {
+export function DashboardView({ connectionError }: Props) {
   const error = connectionError ?? null;
 
   const releases = useMemo<ReleaseSlide[]>(() => ([
+    {
+      version: 'v1.9.0',
+      title: 'Что нового',
+      badge: 'NEW',
+      color: 'cyan',
+      points: [
+        {
+          icon: <IconAdjustments size={16} />,
+          text: 'Добавлен новый формат перебора параметров: списки значений и диапазоны с шагом.'
+        },
+        {
+          icon: <IconCoins size={16} />,
+          text: 'Добавлен перебор объемов для ордеров сделки в режимах "Свой" и "Сигнал".'
+        },
+        {
+          icon: <IconTable size={16} />,
+          text: 'Для распределения объемов автоматически отбираются только варианты с суммой 100%.'
+        }
+      ]
+    },
     {
       version: 'v1.8.0',
       title: 'Что нового',
@@ -218,6 +238,18 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
 
   const [slideIndex, setSlideIndex] = useState(0);
   const activeSlide = releases[slideIndex];
+  const referralLink = 'https://veles.finance/invite/algo_bots';
+  const [referralCopied, setReferralCopied] = useState(false);
+
+  const copyReferralLink = async () => {
+    try {
+      await navigator.clipboard.writeText(referralLink);
+      setReferralCopied(true);
+      window.setTimeout(() => setReferralCopied(false), 1400);
+    } catch {
+      setReferralCopied(false);
+    }
+  };
 
   return (
     <Container size="lg" py="xl" className={`ui-surface ${styles.viewRoot}`}>
@@ -235,50 +267,46 @@ export function DashboardView({ onNavigate, connectionError }: Props) {
           </Paper>
         )}
 
-        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" className={styles.mainGrid}>
-          <Card withBorder radius="md" padding="lg" className={`ui-card ui-hover-lift ${styles.mainCard}`}>
-            <Group justify="space-between" mb="xs">
-              <Text fw={500}>Конфигуратор</Text>
-              <Badge color="blue" variant="light">Основное</Badge>
+        <Paper withBorder p="lg" radius="md" className={`ui-card ${styles.supportCard}`}>
+          <div className={styles.supportHeader}>
+            <Group gap="xs" wrap="nowrap">
+              <ThemeIcon color="yellow" size="lg" radius="xl" variant="light">
+                <IconHeart size={20} />
+              </ThemeIcon>
+              <Title order={4}>🤝 Как поддержать проект (и получить бонусы)?</Title>
             </Group>
-            <Text size="sm" c="dimmed" mb="lg">
-              Настройка конфигураций, запуск Grid Search и быстрый запуск тестов на больших наборах параметров.
-            </Text>
-            <Button
-              variant="light"
-              color="blue"
-              fullWidth
-              mt="md"
-              radius="md"
-              leftSection={<IconTestPipe size={20} />}
-              onClick={() => onNavigate('backtester')}
-              disabled={!!error}
-            >
-              Запустить новый тест
-            </Button>
-          </Card>
+            <Badge color="yellow" variant="light">Спасибо за поддержку</Badge>
+          </div>
 
-          <Card withBorder radius="md" padding="lg" className={`ui-card ui-hover-lift ${styles.mainCard}`}>
-            <Group justify="space-between" mb="xs">
-              <Text fw={500}>История запусков</Text>
-              <Badge color="violet" variant="light">Контроль</Badge>
-            </Group>
-            <Text size="sm" c="dimmed" mb="lg">
-              Просмотр прогресса задач, управление остановкой/продолжением и быстрый доступ к результатам.
+          <Stack gap="sm" className={styles.supportBody}>
+            <Text size="sm" c="dimmed" className={styles.supportText}>
+              Весь основной функционал <strong>Veles Helper</strong> навсегда останется <strong>абсолютно бесплатным</strong>. Вы можете пользоваться им без регистраций и других скрытых условий. Но если расширение действительно является полезным инструментом для вас, <strong>лучший способ сказать "спасибо"</strong> - оформить подписку на бектесты на аккаунте, зарегистрированном по моей ссылке. Veles выплачивает мне небольшой партнерский бонус с каждой вашей покупки. Вы <strong>не тратите ни цента сверху</strong>, но напрямую <strong>инвестируете в развитие проекта</strong>.
             </Text>
-            <Button
-              variant="light"
-              color="gray"
-              fullWidth
-              mt="md"
-              radius="md"
-              leftSection={<IconHistory size={20} />}
-              onClick={() => onNavigate('history')}
-            >
-              Открыть историю
-            </Button>
-          </Card>
-        </SimpleGrid>
+            <Paper withBorder radius="md" p="sm" className={styles.supportBonus}>
+              <Text size="sm" fw={700}>🎁 Эксклюзив для рефералов:</Text>
+              <Text size="sm" c="dimmed" className={styles.supportText}>
+                В качестве благодарности за поддержку, для аккаунтов, зарегистрированных по моей ссылке, будут разблокированы продвинутые режимы тестирования. Вместо обычного «тупого» перебора вам станут доступны алгоритмы направленного поиска, которые находят самые профитные стратегии в разы быстрее.
+              </Text>
+            </Paper>
+            <Text size="sm" c="dimmed" className={styles.supportThanks}>Спасибо за вашу поддержку!</Text>
+
+            <div className={styles.referralCta}>
+              <Text size="sm" fw={700} className={styles.referralLabel}>👇 Ваша ссылка для регистрации:</Text>
+              <Group gap="xs" wrap="nowrap" justify="center" className={styles.referralCopyRow}>
+                <div className={styles.referralField}>{referralLink}</div>
+                <Button
+                  size="xs"
+                  color={referralCopied ? "green" : "yellow"}
+                  leftSection={<IconCopy size={14} />}
+                  onClick={copyReferralLink}
+                >
+                  {referralCopied ? "Скопировано" : "Копировать"}
+                </Button>
+              </Group>
+            </div>
+          </Stack>
+        </Paper>
+
 
         <Paper withBorder p="lg" radius="md" className={`ui-card ${styles.mainCard} ${styles.whatsNewCard}`}>
           <div className={styles.whatsNewHeader}>

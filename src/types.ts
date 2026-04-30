@@ -138,6 +138,24 @@ export interface OrderGeneralConfig {
   pullUp: string;
 }
 
+export type SweepParamMode = 'LIST' | 'RANGE';
+
+export interface SweepNumericParam {
+  mode: SweepParamMode;
+  listValues: string;
+  rangeFrom: string;
+  rangeTo: string;
+  rangeStep: string;
+}
+
+export interface OrderSimpleSweepConfig {
+  orders: SweepNumericParam;
+  martingale: SweepNumericParam;
+  indent: SweepNumericParam;
+  overlap: SweepNumericParam;
+  logarithmicFactor: SweepNumericParam;
+}
+
 export interface OrderSimpleConfig {
   orders: string[];       
   martingale: string[];   
@@ -146,21 +164,35 @@ export interface OrderSimpleConfig {
   logarithmicEnabled: boolean; 
   logarithmicFactor: string[]; 
   includePosition: boolean;
+  sweep?: OrderSimpleSweepConfig;
 }
 
 export interface SignalOrderLine {
   id: string;
   indent: string[]; 
-  volume: number;   
+  volume: number;
+  volumeRange?: {
+    from: string;
+    to: string;
+    step: string;
+  };
+  volumeValues?: string[];
   filterSlots: FilterSlot[]; 
 }
 
 export interface OrderSignalConfig {
   baseOrder: {
     indent: string[]; 
-    volume: number;   
+    volume: number;
+    volumeRange?: {
+      from: string;
+      to: string;
+      step: string;
+    };
+    volumeValues?: string[];
   };
   indentType: 'ORDER' | 'ENTRY';
+  volumeMode?: 'FIXED' | 'LIST' | 'RANGE';
   orders: SignalOrderLine[];
 }
 
@@ -169,6 +201,12 @@ export interface CustomOrderLine {
   id: string;
   indent: string[]; // Отступ всегда от входа, массив строк для Grid Search
   volume: number;
+  volumeRange?: {
+    from: string;
+    to: string;
+    step: string;
+  };
+  volumeValues?: string[];
 }
 
 export interface OrderCustomConfig {
@@ -176,6 +214,7 @@ export interface OrderCustomConfig {
     indent: string[];
     volume: number;
   };
+  volumeMode?: 'FIXED' | 'LIST' | 'RANGE';
   orders: CustomOrderLine[];
 }
 
@@ -202,22 +241,31 @@ export type BreakevenType = 'AVERAGE' | 'PROFIT' | null;
 export interface ProfitSingleConfig {
   // Массив строк для Grid Search (например ['0.5', '1.0', '1.5'])
   percents: string[]; 
+  sweep?: SweepNumericParam;
 }
 
 // -- Конфиг для CUSTOM (Свой) --
 export interface ProfitCustomOrderLine {
   id: string;
-  indent: string[]; // Массив строк для Grid Search (вариации отступа)
-  volume: number;   // Фиксированный объем (сумма должна быть 100%)
+  indent: string[];
+  volume: number;
+  volumeRange?: {
+    from: string;
+    to: string;
+    step: string;
+  };
+  volumeValues?: string[];
 }
 
 export interface ProfitMultipleConfig {
   orders: ProfitCustomOrderLine[];
   breakeven: BreakevenType;
+  volumeMode?: 'FIXED' | 'LIST' | 'RANGE';
 }
 
 // -- Конфиг для SIGNAL (Тейк-профит) --
 export interface ProfitSignalConfig {
+  checkPnlSweep?: SweepNumericParam;
   checkPnl: string[]; // Массив P&L для перебора (['null', '0.5', '1.0'])
   filterSlots: FilterSlot[]; // Группы индикаторов (для Grid Search)
 }
@@ -227,11 +275,13 @@ export interface ProfitSignalConfig {
 export interface StopLossConfig {
   // 1. Обычный Стоп-лосс
   enabledSimple: boolean;
+  sweep?: SweepNumericParam;
   indent: string[]; // Значения из UI (например '-0.5', '-1.0'). В JSON пойдут как 0.5, 1.0
 
   // 2. Стоп-лосс по сигналу
   enabledSignal: boolean;
   conditionalIndent: string[]; // Значения из UI ('-0.5', '0.2'). В JSON знаки инвертируются.
+  conditionalSweep?: SweepNumericParam;
   conditionalIndentType: 'AVERAGE' | 'LAST_GRID';
   
   // Индикаторы для сигнала (одна группа/слот)

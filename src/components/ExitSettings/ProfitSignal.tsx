@@ -1,17 +1,19 @@
-import { 
-  Paper, Group, Select, ActionIcon, Text, Stack, TextInput, Collapse, Badge, Button, Tooltip, MultiSelect, SimpleGrid 
+import {
+  Paper, Group, Select, ActionIcon, Text, Stack, TextInput, Collapse, Badge, Button, Tooltip, SimpleGrid
 } from '@mantine/core';
 import { IconTrash, IconPlus, IconPencil, IconArrowsRightLeft, IconCopy } from '@tabler/icons-react';
 import { SignalProbeAction } from '../SignalProbeAction';
+import { SweepNumericParamEditor } from '../SweepNumericParamEditor';
 
 import { FILTERS_LIBRARY } from '../../filtersLibrary';
 import { PNL_OPTIONS } from '../../utils/profitGen';
 import type { IndicatorDef } from '../../filtersLibrary';
-import type { Condition, FilterSlot, ProfitSignalConfig, IntervalType, OperationType } from '../../types';
+import type { Condition, FilterSlot, ProfitSignalConfig, IntervalType, OperationType, SweepNumericParam } from '../../types';
 import { normalizeCondition } from '../../services/ConditionNormalizationService';
 import { resolveIndicator, toApiIndicatorCode } from '../../utils/indicatorMapping';
 import type { SignalProbeRequestType, SignalProbeViewState } from '../../services/SignalProbeService';
 import { cloneConditionWithNewId, cloneFilterSlotWithNewIds } from '../../utils/filterClone';
+import { createSweepNumericParam, expandSweepNumericParam } from '../../utils/sweepParams';
 
 interface Props {
   config: ProfitSignalConfig;
@@ -32,6 +34,10 @@ interface Props {
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
+function getCheckPnlSweep(config: ProfitSignalConfig): SweepNumericParam {
+  return config.checkPnlSweep ?? createSweepNumericParam(config.checkPnl, 'null');
+}
+
 export function ProfitSignal({
   config,
   onChange,
@@ -40,9 +46,23 @@ export function ProfitSignal({
   onSignalProbeRequest,
   onSignalProbeDirty
 }: Props) {
+  const checkPnlSweep = getCheckPnlSweep(config);
   
   const updateConfig = (newSlots: FilterSlot[]) => {
     onChange({ ...config, filterSlots: newSlots });
+  };
+
+  const updateCheckPnlSweep = (value: SweepNumericParam) => {
+    const checkPnl = expandSweepNumericParam(value, {
+      allowedValues: PNL_OPTIONS,
+      allowNull: true
+    });
+
+    onChange({
+      ...config,
+      checkPnl,
+      checkPnlSweep: value
+    });
   };
 
   const markVariantDirty = (variantId?: string) => {
@@ -50,12 +70,10 @@ export function ProfitSignal({
     onSignalProbeDirty?.(probeScope, variantId);
   };
 
-  // --- УПРАВЛЕНИЕ ГРУППАМИ (СЛОТАМИ) ---
-
   const addSlot = () => {
     const newSlot: FilterSlot = {
       id: randomId(),
-      variants: [] 
+      variants: []
     };
     updateConfig([...config.filterSlots, newSlot]);
   };
@@ -77,26 +95,24 @@ export function ProfitSignal({
     updateConfig(newSlots);
   };
 
-  // --- УПРАВЛЕНИЕ ВАРИАНТАМИ ---
-
   const addVariant = (slotId: string) => {
     const newVariant: Condition = normalizeCondition({
       id: randomId(),
       type: 'INDICATOR',
-      indicator: 'RSI', 
+      indicator: 'RSI',
       interval: 'FIVE_MINUTES',
-      basic: true, 
-      closed: true, 
+      basic: true,
+      closed: true,
       operation: 'GREATER',
       value: '30',
       reverse: false
     });
 
     const newSlots = config.filterSlots.map(slot => {
-        if (slot.id === slotId) {
-            return { ...slot, variants: [...slot.variants, newVariant] };
-        }
-        return slot;
+      if (slot.id === slotId) {
+        return { ...slot, variants: [...slot.variants, newVariant] };
+      }
+      return slot;
     });
     updateConfig(newSlots);
   };
@@ -104,10 +120,10 @@ export function ProfitSignal({
   const removeVariant = (slotId: string, variantId: string) => {
     markVariantDirty(variantId);
     const newSlots = config.filterSlots.map(slot => {
-        if (slot.id === slotId) {
-            return { ...slot, variants: slot.variants.filter(v => v.id !== variantId) };
-        }
-        return slot;
+      if (slot.id === slotId) {
+        return { ...slot, variants: slot.variants.filter(v => v.id !== variantId) };
+      }
+      return slot;
     });
     updateConfig(newSlots);
   };
@@ -130,14 +146,14 @@ export function ProfitSignal({
   const updateVariant = (slotId: string, variantId: string, field: keyof Condition, value: any) => {
     markVariantDirty(variantId);
     const newSlots = config.filterSlots.map(slot => {
-        if (slot.id === slotId) {
-            const newVariants = slot.variants.map(v => {
-                if (v.id === variantId) return normalizeCondition({ ...v, [field]: value });
-                return v;
-            });
-            return { ...slot, variants: newVariants };
-        }
-        return slot;
+      if (slot.id === slotId) {
+        const newVariants = slot.variants.map(v => {
+          if (v.id === variantId) return normalizeCondition({ ...v, [field]: value });
+          return v;
+        });
+        return { ...slot, variants: newVariants };
+      }
+      return slot;
     });
     updateConfig(newSlots);
   };
@@ -147,10 +163,8 @@ export function ProfitSignal({
     updateVariant(slotId, variantId, 'value', sanitized);
   };
 
-  // --- ДАННЫЕ ДЛЯ UI ---
-
   const safeLibrary = FILTERS_LIBRARY || {};
-  
+
   const indicatorOptions = Object.values(safeLibrary).map((ind: IndicatorDef) => ({
     value: ind.code,
     label: ind.label,
@@ -169,12 +183,6 @@ export function ProfitSignal({
   const typeOptions = [
     { value: 'true', label: 'На закрытии' },
     { value: 'false', label: 'В моменте' },
-  ];
-
-  // --- ПОДГОТОВКА ОПЦИЙ ДЛЯ P&L (Исправление null -> Отключено) ---
-  const pnlOptionsData = [
-    { value: 'null', label: 'Отключено' },
-    ...PNL_OPTIONS.map(opt => ({ value: opt, label: opt }))
   ];
 
   const NUMBER_WIDTH = 24; 
@@ -406,23 +414,25 @@ export function ProfitSignal({
          
          {/* Выбор P&L */}
          <Paper withBorder p="sm" bg="gray.0" radius="md">
-             <MultiSelect
+             <SweepNumericParamEditor
                 label="Минимальный P&L"
                 description="Выберите варианты для перебора"
                 placeholder="Выберите % или 'Отключено'"
-                data={pnlOptionsData} // Используем обновленный массив опций
-                value={config.checkPnl}
-                onChange={(vals) => onChange({ ...config, checkPnl: vals })}
-                searchable
-                clearable
-                hidePickedOptions
-                size="sm"
+                value={checkPnlSweep}
+                onChange={updateCheckPnlSweep}
+                presetValues={PNL_OPTIONS}
+                allowNull
+                nullLabel="Отключено"
+                rangeFallbackFrom="0.1"
+                rangeFallbackTo="10"
+                rangeFallbackStep="0.1"
              />
          </Paper>
 
          {/* Валюта */}
          <Paper withBorder p="sm" bg="gray.0" radius="md">
-             <Group align="flex-end" h="100%">
+             <Paper withBorder p="sm" radius="md" bg="white">
+              <Group align="flex-start">
                  <TextInput 
                     label="Валюта профита"
                     value="USDT"
@@ -431,7 +441,8 @@ export function ProfitSignal({
                     w="100%"
                     styles={{ input: { color: 'black', opacity: 0.7, fontWeight: 600 } }}
                 />
-             </Group>
+              </Group>
+             </Paper>
          </Paper>
 
       </SimpleGrid>

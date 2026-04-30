@@ -1,10 +1,10 @@
 // src/components/views/BacktesterView.tsx
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Container, Title, Button, Stack, Group, Paper
+  Container, Title, Button, Stack, Group, Paper, Modal, ScrollArea, Code, Text
 } from '@mantine/core';
 import {
-  IconPlayerPlay, IconDeviceFloppy, IconList, IconCalculator, IconPlayerStop
+  IconPlayerPlay, IconDeviceFloppy, IconList, IconCalculator, IconPlayerStop, IconBug
 } from '@tabler/icons-react';
 
 import { StaticSettings } from '../StaticSettings';
@@ -33,9 +33,11 @@ import {
 import type { BacktestQueueController, QueueItem } from '../../hooks/useBacktestQueue';
 import type { BacktestQueueControllerV2, QueueItemV2 } from '../../hooks/useBacktestQueueV2';
 import type { StaticConfig, OrderState, EntryConfig, ExitConfig, SymbolAvailability, SymbolLimitation, Condition, BacktestVersion } from '../../types';
+import { generateCustomVolumeDistributions } from '../../utils/customOrderVolumes';
 import { isSpot } from '../../types';
 import { makeBatchId } from '../../utils/batchId';
 import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
+import { debug_mode } from '../../config/backtestQueue';
 import styles from './BacktesterView.module.css';
 
 export interface BacktesterProps {
@@ -71,6 +73,14 @@ interface ComboStats {
   timeString: string;
 }
 
+interface DebugRandomConfigState {
+  total: number;
+  index: number;
+  symbol: string;
+  version: BacktestVersion;
+  payload: unknown;
+}
+
 function calculateStats(entryConfig: EntryConfig, orderState: OrderState, exitConfig: ExitConfig): ComboStats {
   let entryCombinations = 1;
   if (entryConfig.filterSlots.length > 0) {
@@ -90,6 +100,10 @@ function calculateStats(entryConfig: EntryConfig, orderState: OrderState, exitCo
         const variants = o.indent.length || 1;
         customComb *= variants;
       });
+      if (c.volumeMode === 'RANGE' || c.volumeMode === 'LIST') {
+        const volumeVariants = generateCustomVolumeDistributions(c.orders, c.volumeMode).distributions.length;
+        customComb *= volumeVariants;
+      }
     } else {
       customComb = 0;
     }
@@ -103,6 +117,13 @@ function calculateStats(entryConfig: EntryConfig, orderState: OrderState, exitCo
       }
       sigComb *= ((o.indent.length || 1) * filterComb);
     });
+    if (orderState.signal.volumeMode === 'RANGE' || orderState.signal.volumeMode === 'LIST') {
+      const volumeVariants = generateCustomVolumeDistributions(
+        [orderState.signal.baseOrder, ...orderState.signal.orders],
+        orderState.signal.volumeMode
+      ).distributions.length;
+      sigComb *= volumeVariants;
+    }
     orderCombinations = sigComb;
   }
 
@@ -114,6 +135,13 @@ function calculateStats(entryConfig: EntryConfig, orderState: OrderState, exitCo
       exitConfig.profitMultiple.orders.forEach((o) => {
         profitCombinations *= (o.indent.length || 1);
       });
+      if (exitConfig.profitMultiple.volumeMode === 'RANGE' || exitConfig.profitMultiple.volumeMode === 'LIST') {
+        const volumeVariants = generateCustomVolumeDistributions(
+          exitConfig.profitMultiple.orders,
+          exitConfig.profitMultiple.volumeMode
+        ).distributions.length;
+        profitCombinations *= volumeVariants;
+      }
     }
   } else if (exitConfig.profitMode === 'SIGNAL') {
     const pnl = exitConfig.profitSignal.checkPnl.length || 1;
@@ -306,6 +334,8 @@ export function BacktesterView({
   const [activeSection, setActiveSection] = useState<string>('cfg-static');
   const [isSymbolValid, setIsSymbolValid] = useState<boolean | null>(null);
   const [signalProbeStates, setSignalProbeStates] = useState<Record<string, SignalProbeStoredState>>({});
+  const [debugRandomConfig, setDebugRandomConfig] = useState<DebugRandomConfigState | null>(null);
+  const [debugRandomConfigOpened, setDebugRandomConfigOpened] = useState(false);
 
   const resolveSignalProbeState = useCallback(
     (
@@ -663,6 +693,46 @@ export function BacktesterView({
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const handleShowRandomConfig = () => {
+    if (!validation.valid) {
+      alert(`Ошибка валидации:\n${validation.error}`);
+      return;
+    }
+
+    const symbols = configuredSymbols.length > 0
+      ? configuredSymbols
+      : [String(staticConfig.symbol || '').trim()].filter(Boolean);
+    if (symbols.length === 0) {
+      alert('Ошибка: не выбран актив для генерации случайного конфига.');
+      return;
+    }
+
+    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+    const staticConfigForSymbol: StaticConfig = {
+      ...staticConfig,
+      symbol,
+      selectedSymbols: [symbol]
+    };
+    const generated = backtestVersion === 'v2'
+      ? ConfigGeneratorV2.generate(staticConfigForSymbol, entryConfig, orderState, exitConfig, '#DEBUG')
+      : ConfigGenerator.generate(staticConfigForSymbol, entryConfig, orderState, exitConfig, '#DEBUG');
+
+    if (generated.configs.length === 0) {
+      alert('Ошибка: не сгенерировано ни одной конфигурации.');
+      return;
+    }
+
+    const index = Math.floor(Math.random() * generated.configs.length);
+    setDebugRandomConfig({
+      total: generated.configs.length,
+      index: index + 1,
+      symbol,
+      version: backtestVersion,
+      payload: generated.configs[index]
+    });
+    setDebugRandomConfigOpened(true);
+  };
+
   const handleValidateData = async () => {
     if (!validation.valid) {
       alert(`Ошибка валидации:\n${validation.error}`);
@@ -977,6 +1047,21 @@ export function BacktesterView({
                 )}
               </Group>
 
+              {debug_mode && (
+                <Button
+                  size="md"
+                  color="grape"
+                  variant="light"
+                  fullWidth
+                  leftSection={<IconBug size={18} />}
+                  onClick={handleShowRandomConfig}
+                  disabled={isRunning}
+                  mt="sm"
+                >
+                  Рандомный конфиг
+                </Button>
+              )}
+
               {isRunning && (
                 <Button
                   color="red"
@@ -1060,6 +1145,33 @@ export function BacktesterView({
           </div>
         </aside>
       </div>
+
+      <Modal
+        opened={debugRandomConfigOpened}
+        onClose={() => setDebugRandomConfigOpened(false)}
+        title="Рандомный конфиг"
+        size="xl"
+        centered
+      >
+        {debugRandomConfig && (
+          <Stack gap="sm">
+            <Group gap="md">
+              <Text size="sm">
+                Кандидат: <strong>{debugRandomConfig.index}</strong> из <strong>{debugRandomConfig.total}</strong>
+              </Text>
+              <Text size="sm">
+                Актив: <strong>{debugRandomConfig.symbol}</strong>
+              </Text>
+              <Text size="sm">
+                Версия: <strong>{debugRandomConfig.version}</strong>
+              </Text>
+            </Group>
+            <ScrollArea h={520} type="auto" offsetScrollbars>
+              <Code block>{JSON.stringify(debugRandomConfig.payload, null, 2)}</Code>
+            </ScrollArea>
+          </Stack>
+        )}
+      </Modal>
 
     </Container>
   );

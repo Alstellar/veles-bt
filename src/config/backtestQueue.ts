@@ -1,6 +1,7 @@
 export const DEFAULT_TEST_QUEUE = 5;
 export const MIN_TEST_QUEUE = 1;
 export const MAX_V2_TEST_QUEUE = 5;
+export const debug_mode = false;
 
 export function clampV2TestQueue(queue: number): number {
   if (!Number.isFinite(queue)) return DEFAULT_TEST_QUEUE;

@@ -1,12 +1,18 @@
 import { useState } from 'react';
 import { 
   Paper, Group, Text, Button, ActionIcon, Table, 
-  NumberInput, Badge, Tooltip, ThemeIcon, SimpleGrid, Stack, Select 
+  NumberInput, Badge, Tooltip, ThemeIcon, SimpleGrid, Stack, Select, SegmentedControl
 } from '@mantine/core';
 import { IconPlus, IconTrash, IconCalculator } from '@tabler/icons-react';
 
 import { MultiInput } from '../MultiInput'; 
 import type { ProfitMultipleConfig, ProfitCustomOrderLine, BreakevenType } from '../../types';
+import {
+  CUSTOM_VOLUME_STEP,
+  generateCustomVolumeDistributions,
+  getCustomOrderVolumeRange,
+  getCustomOrderVolumeValues
+} from '../../utils/customOrderVolumes';
 
 const randomId = () => Math.random().toString(36).substr(2, 9);
 
@@ -31,11 +37,49 @@ export function ProfitCustom({ config, onChange }: Props) {
     updateConfig({ orders: newOrders });
   };
 
+  const withVolumeDefaults = (order: ProfitCustomOrderLine, isLast: boolean): ProfitCustomOrderLine => ({
+    ...order,
+    volumeRange: order.volumeRange ?? {
+      from: String(order.volume || 0),
+      to: String(order.volume || 0),
+      step: String(CUSTOM_VOLUME_STEP)
+    },
+    volumeValues: order.volumeValues ?? (!isLast && order.volume > 0 ? [String(order.volume)] : [])
+  });
+
+  const changeVolumeMode = (value: ProfitMultipleConfig['volumeMode']) => {
+    updateConfig({
+      volumeMode: value,
+      orders: config.orders.map((order, index) => withVolumeDefaults(order, index === config.orders.length - 1))
+    });
+  };
+
+  const updateVolumeRange = (id: string, field: 'from' | 'to' | 'step', value: string | number) => {
+    const newOrders = config.orders.map((order) => {
+      if (order.id !== id) return order;
+      const currentRange = getCustomOrderVolumeRange(order);
+      return {
+        ...order,
+        volumeRange: {
+          ...currentRange,
+          [field]: String(value)
+        }
+      };
+    });
+    updateConfig({ orders: newOrders });
+  };
+
+  const updateVolumeValues = (id: string, values: string[]) => {
+    updateOrder(id, 'volumeValues', values);
+  };
+
   const addOrder = () => {
     const newOrder: ProfitCustomOrderLine = {
       id: randomId(),
       indent: [], 
-      volume: 10
+      volume: 10,
+      volumeRange: { from: '0', to: '0', step: String(CUSTOM_VOLUME_STEP) },
+      volumeValues: []
     };
     updateConfig({ orders: [...config.orders, newOrder] });
   };
@@ -82,9 +126,109 @@ export function ProfitCustom({ config, onChange }: Props) {
   const currentTotalVolume = Number(
     config.orders.reduce((acc, o) => acc + (o.volume || 0), 0).toFixed(2)
   );
+  const volumeMode = config.volumeMode ?? 'FIXED';
+  const volumeDistributionResult = volumeMode !== 'FIXED'
+    ? generateCustomVolumeDistributions(config.orders, volumeMode)
+    : null;
+
+  const renderVolumeInput = (order: ProfitCustomOrderLine, index: number) => {
+    const isLast = index === config.orders.length - 1;
+
+    if (volumeMode === 'LIST' && !isLast) {
+      return (
+        <MultiInput
+          label="Значения"
+          placeholder="Объем"
+          value={getCustomOrderVolumeValues(order)}
+          onChange={(values) => updateVolumeValues(order.id, values)}
+        />
+      );
+    }
+
+    if (volumeMode !== 'FIXED' && isLast) {
+      return (
+        <SimpleGrid cols={2} spacing={4}>
+          <NumberInput
+            label="От"
+            size="xs"
+            min={0.01}
+            step={CUSTOM_VOLUME_STEP}
+            value={Number(getCustomOrderVolumeRange(order).from)}
+            onChange={(v) => updateVolumeRange(order.id, 'from', v || 0)}
+          />
+          <NumberInput
+            label="До"
+            size="xs"
+            min={0.01}
+            step={CUSTOM_VOLUME_STEP}
+            value={Number(getCustomOrderVolumeRange(order).to)}
+            onChange={(v) => updateVolumeRange(order.id, 'to', v || 0)}
+          />
+        </SimpleGrid>
+      );
+    }
+
+    if (volumeMode === 'RANGE') {
+      return (
+        <SimpleGrid cols={3} spacing={4}>
+          <NumberInput
+            label="От"
+            size="xs"
+            min={CUSTOM_VOLUME_STEP}
+            step={CUSTOM_VOLUME_STEP}
+            value={Number(getCustomOrderVolumeRange(order).from)}
+            onChange={(v) => updateVolumeRange(order.id, 'from', v || 0)}
+          />
+          <NumberInput
+            label="До"
+            size="xs"
+            min={CUSTOM_VOLUME_STEP}
+            step={CUSTOM_VOLUME_STEP}
+            value={Number(getCustomOrderVolumeRange(order).to)}
+            onChange={(v) => updateVolumeRange(order.id, 'to', v || 0)}
+          />
+          <NumberInput
+            label="Шаг"
+            size="xs"
+            min={CUSTOM_VOLUME_STEP}
+            step={CUSTOM_VOLUME_STEP}
+            value={Number(getCustomOrderVolumeRange(order).step)}
+            onChange={(v) => updateVolumeRange(order.id, 'step', v || CUSTOM_VOLUME_STEP)}
+          />
+        </SimpleGrid>
+      );
+    }
+
+    return (
+      <NumberInput
+        size="sm"
+        variant="unstyled"
+        value={order.volume}
+        onChange={(v) => updateOrder(order.id, 'volume', Number(v))}
+        style={{ textAlign: 'center' }}
+        styles={{ input: { textAlign: 'center' } }}
+        min={0}
+        max={100}
+        allowNegative={false}
+      />
+    );
+  };
 
   return (
     <Paper p="md" withBorder bg="white">
+      <Group justify="space-between" align="center" mb="md">
+        <Text size="sm" fw={600}>Распределение объемов</Text>
+        <SegmentedControl
+          size="xs"
+          value={volumeMode}
+          onChange={(value) => changeVolumeMode(value as ProfitMultipleConfig['volumeMode'])}
+          data={[
+            { value: 'FIXED', label: 'Мартингейл / фикс.' },
+            { value: 'LIST', label: 'Списки' },
+            { value: 'RANGE', label: 'Диапазоны' }
+          ]}
+        />
+      </Group>
       
       {/* ВЕРХНЯЯ ПАНЕЛЬ: Калькулятор и Б/У */}
       <SimpleGrid cols={2} spacing="md" mb="md">
@@ -100,12 +244,14 @@ export function ProfitCustom({ config, onChange }: Props) {
                     value={calcMartingale} 
                     onChange={(v) => setCalcMartingale(Number(v))} 
                     min={0}
+                    disabled={volumeMode !== 'FIXED'}
                 />
                 <Button 
                   size="sm" // Увеличили кнопку под инпут
                   variant="filled" 
                   color="blue" 
                   onClick={applyCalculator}
+                  disabled={volumeMode !== 'FIXED'}
                   leftSection={<IconCalculator size={16} />}
                   style={{ flexShrink: 0 }}
                 >
@@ -143,7 +289,13 @@ export function ProfitCustom({ config, onChange }: Props) {
       </SimpleGrid>
 
       {/* ТАБЛИЦА ОРДЕРОВ */}
-      <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm">
+      <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm" style={{ tableLayout: 'fixed', width: '100%' }}>
+        <colgroup>
+          <col style={{ width: 50 }} />
+          <col style={{ width: '50%' }} />
+          <col style={{ width: '42%' }} />
+          <col style={{ width: 70 }} />
+        </colgroup>
         <Table.Thead bg="gray.1">
           <Table.Tr>
             <Table.Th w={50} ta="center">№</Table.Th>
@@ -167,24 +319,16 @@ export function ProfitCustom({ config, onChange }: Props) {
                 <Table.Td ta="center">
                   <Text fw={500} size="sm">{index + 1}</Text>
                 </Table.Td>
-                <Table.Td>
+                <Table.Td style={{ minWidth: 0 }}>
                   <MultiInput
-                    label=""
+                    label={volumeMode !== 'FIXED' ? 'Значения' : ''}
                     value={order.indent}
                     onChange={(v) => updateOrder(order.id, 'indent', v)}
                     placeholder="Напр: 1.0"
                   />
                 </Table.Td>
                 <Table.Td>
-                  <NumberInput
-                    size="sm" variant="unstyled"
-                    value={order.volume}
-                    onChange={(v) => updateOrder(order.id, 'volume', Number(v))}
-                    style={{ textAlign: 'center' }}
-                    styles={{ input: { textAlign: 'center' } }}
-                    min={0} max={100}
-                    allowNegative={false}
-                  />
+                  {renderVolumeInput(order, index)}
                 </Table.Td>
                 <Table.Td>
                   <ActionIcon color="red" variant="subtle" onClick={() => removeOrder(order.id)}>
@@ -206,20 +350,40 @@ export function ProfitCustom({ config, onChange }: Props) {
         >
           Добавить ордер
         </Button>
-        <Group gap="xs">
-          <Text size="sm">Итого:</Text>
-          <Badge 
-            size="lg" color={Math.abs(currentTotalVolume - 100) < 0.1 ? 'green' : 'red'}
-            variant="filled"
-          >
-            {currentTotalVolume}%
-          </Badge>
-          {Math.abs(currentTotalVolume - 100) >= 0.1 && (
-             <Tooltip label="Сумма объемов должна быть равна 100%">
+        {volumeMode !== 'FIXED' && (
+          <Group gap="xs">
+            <Text size="sm">Валидных распределений:</Text>
+            <Badge
+              size="lg"
+              color={volumeDistributionResult?.error || volumeDistributionResult?.tooMany ? 'red' : 'green'}
+              variant="filled"
+            >
+              {volumeDistributionResult?.tooMany ? '10000+' : volumeDistributionResult?.distributions.length ?? 0}
+            </Badge>
+            {(volumeDistributionResult?.error || volumeDistributionResult?.tooMany) && (
+              <Tooltip label={volumeDistributionResult.tooMany ? 'Слишком много распределений. Увеличьте шаг или сузьте диапазоны.' : volumeDistributionResult.error}>
                 <ThemeIcon color="red" variant="light" size="sm">!</ThemeIcon>
-             </Tooltip>
-          )}
-        </Group>
+              </Tooltip>
+            )}
+          </Group>
+        )}
+        {volumeMode === 'FIXED' && (
+          <Group gap="xs">
+            <Text size="sm">Итого:</Text>
+            <Badge
+              size="lg"
+              color={Math.abs(currentTotalVolume - 100) < 0.1 ? 'green' : 'red'}
+              variant="filled"
+            >
+              {currentTotalVolume}%
+            </Badge>
+            {Math.abs(currentTotalVolume - 100) >= 0.1 && (
+              <Tooltip label="Сумма объемов должна быть равна 100%">
+                <ThemeIcon color="red" variant="light" size="sm">!</ThemeIcon>
+              </Tooltip>
+            )}
+          </Group>
+        )}
       </Group>
 
     </Paper>

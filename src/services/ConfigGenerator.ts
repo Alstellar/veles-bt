@@ -8,6 +8,7 @@ import type {
 import type { VelesConfigPayload, VelesCondition, VelesOrder } from '../types/veles';
 import { getIndicatorSettings, toApiIndicatorCode } from '../utils/indicatorMapping';
 import { toIsoDateTime } from '../utils/datePolicy';
+import { generateCustomVolumeDistributions } from '../utils/customOrderVolumes';
 
 // --- HELPERS ---
 
@@ -128,6 +129,15 @@ export class ConfigGenerator {
                  space[`o_cust_ord_${o.id}_indent`] = o.indent;
              }
         });
+        if (orderState.custom.volumeMode === 'RANGE' || orderState.custom.volumeMode === 'LIST') {
+            const volumeResult = generateCustomVolumeDistributions(
+                orderState.custom.orders,
+                orderState.custom.volumeMode
+            );
+            if (volumeResult.distributions.length > 0) {
+                space['o_cust_volumes'] = volumeResult.distributions;
+            }
+        }
     }
     else if (orderState.mode === 'SIGNAL') {
         if (orderState.signal.baseOrder.indent.length) {
@@ -143,6 +153,15 @@ export class ConfigGenerator {
                 }
             });
         });
+        if (orderState.signal.volumeMode === 'RANGE' || orderState.signal.volumeMode === 'LIST') {
+            const volumeResult = generateCustomVolumeDistributions(
+                [orderState.signal.baseOrder, ...orderState.signal.orders],
+                orderState.signal.volumeMode
+            );
+            if (volumeResult.distributions.length > 0) {
+                space['o_sig_volumes'] = volumeResult.distributions;
+            }
+        }
     }
 
     // C. PROFIT
@@ -153,6 +172,15 @@ export class ConfigGenerator {
         exitCfg.profitMultiple.orders.forEach(o => {
             if(o.indent.length) space[`p_mult_ord_${o.id}_indent`] = o.indent;
         });
+        if (exitCfg.profitMultiple.volumeMode === 'RANGE' || exitCfg.profitMultiple.volumeMode === 'LIST') {
+            const volumeResult = generateCustomVolumeDistributions(
+                exitCfg.profitMultiple.orders,
+                exitCfg.profitMultiple.volumeMode
+            );
+            if (volumeResult.distributions.length > 0) {
+                space['p_mult_volumes'] = volumeResult.distributions;
+            }
+        }
     }
     else if (exitCfg.profitMode === 'SIGNAL') {
         if(exitCfg.profitSignal.checkPnl.length) space['p_sig_pnl'] = exitCfg.profitSignal.checkPnl;
@@ -243,7 +271,11 @@ export class ConfigGenerator {
           };
           
           // Проходим по единому списку ордеров
-          orderState.custom.orders.forEach(o => {
+          const volumeDistribution = Array.isArray(comb['o_cust_volumes'])
+              ? comb['o_cust_volumes']
+              : null;
+
+          orderState.custom.orders.forEach((o, orderIndex) => {
               // Пытаемся найти значение в комбинации (если был Grid Search)
               const combKey = `o_cust_ord_${o.id}_indent`;
               let indentVal = 0;
@@ -257,22 +289,26 @@ export class ConfigGenerator {
 
               settings.orders.push({
                   indent: indentVal,
-                  volume: o.volume
+                  volume: volumeDistribution ? volumeDistribution[orderIndex] : o.volume
               });
           });
       }
       else if (orderState.mode === 'SIGNAL') {
+          const volumeDistribution = Array.isArray(comb['o_sig_volumes'])
+              ? comb['o_sig_volumes']
+              : null;
+
           settings = {
               type: 'SIGNAL',
               indentType: orderState.signal.indentType, 
               includePosition: true,
               baseOrder: { 
                   indent: Number(comb['o_sig_base_indent'] || 0), 
-                  volume: orderState.signal.baseOrder.volume 
+                  volume: volumeDistribution ? volumeDistribution[0] : orderState.signal.baseOrder.volume
               },
               orders: [] as VelesOrder[]
           };
-          settings.orders = orderState.signal.orders.map(o => {
+          settings.orders = orderState.signal.orders.map((o, orderIndex) => {
               const ordConditions: VelesCondition[] = [];
               o.filterSlots.forEach((_, sIdx) => {
                   const key = `o_sig_ord_${o.id}_slot_${sIdx}`;
@@ -280,7 +316,7 @@ export class ConfigGenerator {
               });
               return {
                   indent: Number(comb[`o_sig_ord_${o.id}_indent`]),
-                  volume: o.volume,
+                  volume: volumeDistribution ? volumeDistribution[orderIndex + 1] : o.volume,
                   conditions: ordConditions
               };
           });
@@ -294,11 +330,15 @@ export class ConfigGenerator {
           profit.trailing = null; 
       }
       else if (exitCfg.profitMode === 'MULTIPLE') {
+          const profitVolumeDistribution = Array.isArray(comb['p_mult_volumes'])
+              ? comb['p_mult_volumes']
+              : null;
+
           profit.type = 'MULTIPLE';
           profit.breakeven = exitCfg.profitMultiple.breakeven;
-          profit.orders = exitCfg.profitMultiple.orders.map(o => ({
+          profit.orders = exitCfg.profitMultiple.orders.map((o, orderIndex) => ({
               indent: Number(comb[`p_mult_ord_${o.id}_indent`]),
-              volume: o.volume
+              volume: profitVolumeDistribution ? profitVolumeDistribution[orderIndex] : o.volume
           }));
       }
       else if (exitCfg.profitMode === 'SIGNAL') {

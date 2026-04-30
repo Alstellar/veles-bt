@@ -34,6 +34,7 @@ import {
 import dayjs from 'dayjs';
 
 import { ConnectionAlert } from '../ConnectionAlert';
+import { BacktestVersionSettings } from '../BacktestVersionSettings';
 import { StorageService } from '../../services/StorageService';
 import { LogService } from '../../services/LogService';
 import {
@@ -43,7 +44,9 @@ import {
   fetchLimitations
 } from '../../services/apiService';
 import type { BacktestQueueController, QueueItem } from '../../hooks/useBacktestQueue';
+import type { BacktestQueueControllerV2, QueueItemV2 } from '../../hooks/useBacktestQueueV2';
 import type {
+  BacktestVersion,
   BacktestsResumeSource,
   BacktestsResumeTemplate,
   ExchangeInfo,
@@ -70,7 +73,14 @@ import styles from './BacktestsView.module.css';
 
 interface BacktestsViewProps {
   queueController: BacktestQueueController;
-  onOpenLiveResultsModal: (title?: string) => void;
+  queueControllerV2: BacktestQueueControllerV2;
+  backtestVersion: BacktestVersion;
+  onBacktestVersionChange: (version: BacktestVersion) => void;
+  testQueue: number;
+  onTestQueueChange: (queue: number) => void;
+  testIntervalSeconds: number;
+  onTestIntervalChange: (seconds: number) => void;
+  onOpenLiveResultsModal: (title?: string, version?: BacktestVersion, batchId?: string | null) => void;
   resumeBatchId?: string | null;
   onResumeHandled?: () => void;
   connectionError?: string | null;
@@ -136,7 +146,7 @@ const fnv1a32 = (input: string): number => {
   return hash >>> 0;
 };
 
-const buildQueueFingerprint = (items: QueueItem[]): string => {
+const buildQueueFingerprint = (items: Array<QueueItem | QueueItemV2>): string => {
   let hash = 0x811c9dc5;
   for (let i = 0; i < items.length; i += 1) {
     const item = items[i];
@@ -144,6 +154,17 @@ const buildQueueFingerprint = (items: QueueItem[]): string => {
     hash = fnv1a32(`${hash}:${payload}`);
   }
   return `${items.length}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+};
+
+const toQueueItemsV2 = (items: QueueItem[]): QueueItemV2[] => {
+  return items.map((item) => ({
+    ...item,
+    config: {
+      ...item.config,
+      id: null,
+      apiKey: 0
+    }
+  }));
 };
 
 const compareNullableNumber = (a: number | null, b: number | null, dir: AssetsSortDir): number => {
@@ -204,17 +225,25 @@ const resolveResumeLeverage = (source: BacktestsResumeSource): number => {
 
 export function BacktestsView({
   queueController,
+  queueControllerV2,
+  backtestVersion,
+  onBacktestVersionChange,
+  testQueue,
+  onTestQueueChange,
+  testIntervalSeconds,
+  onTestIntervalChange,
   onOpenLiveResultsModal,
   resumeBatchId,
   onResumeHandled,
   connectionError
 }: BacktestsViewProps) {
+  const activeQueueController = backtestVersion === 'v2' ? queueControllerV2 : queueController;
   const {
-    run,
     stop,
     isRunning,
-    progress
-  } = queueController;
+    progress,
+    currentBatchId
+  } = activeQueueController;
 
   const [nameTemplate, setNameTemplate] = useState(DEFAULT_BACKTESTS_NAME_TEMPLATE);
   const [dateFrom, setDateFrom] = useState<Date | null>(dayjs().subtract(1, 'year').toDate());
@@ -649,15 +678,16 @@ export function BacktestsView({
 
       const batchId = makeBatchId();
       const built = buildQueueItemsFromBacktestsSource(batchId, result.source);
+      const queueItems = backtestVersion === 'v2' ? toQueueItemsV2(built.items) : built.items;
 
-      if (built.items.length === 0) {
+      if (queueItems.length === 0) {
         alert('После проверок не осталось валидных комбинаций для запуска.');
         return;
       }
 
       const confirmed = window.confirm(
         [
-          `Комбинаций к запуску: ${built.items.length}`,
+          `Комбинаций к запуску: ${queueItems.length}`,
           `Пропущено (ограничения): ${built.skipped.length}`,
           `Депозит: ${result.source.deposit ?? '-'}`,
           isSpot(result.source.exchange)
@@ -675,10 +705,12 @@ export function BacktestsView({
       await StorageService.saveBatch({
         id: batchId,
         timestamp: Date.now(),
+        backtestVersion,
+        apiVersion: backtestVersion === 'v2' ? 'v2' : 'v1',
         namePrefix,
         symbol: batchSymbol,
         exchange: result.source.exchange,
-        totalTests: built.items.length,
+        totalTests: queueItems.length,
         velesIds: [],
         mode: 'BACKTESTS',
         backtestsSource: result.source,
@@ -689,9 +721,13 @@ export function BacktestsView({
       const snapshotId = await LogService.createSnapshot('backtests.run_input', {
         batchId,
         mode: 'BACKTESTS',
+        backtestVersion,
+        apiVersion: backtestVersion === 'v2' ? 'v2' : 'v1',
+        testQueue,
+        testIntervalSeconds,
         namePrefix,
         exchange: result.source.exchange,
-        totalGenerated: built.items.length,
+        totalGenerated: queueItems.length,
         skippedByLimitations: built.skipped.length,
         source: result.source
       }, { batchId, runId: batchId });
@@ -705,13 +741,20 @@ export function BacktestsView({
         code: 'RUN_PREPARED',
         snapshotId,
         context: {
-          totalTests: built.items.length,
-          skipped: built.skipped.length
+          totalTests: queueItems.length,
+          skipped: built.skipped.length,
+          backtestVersion,
+          testQueue,
+          testIntervalSeconds
         }
       });
 
-      onOpenLiveResultsModal(`${namePrefix} (${batchId})`);
-      run(batchId, built.items);
+      onOpenLiveResultsModal(`${namePrefix} (${batchId})`, backtestVersion, batchId);
+      if (backtestVersion === 'v2') {
+        queueControllerV2.run(batchId, queueItems as QueueItemV2[]);
+        return;
+      }
+      queueController.run(batchId, queueItems as QueueItem[]);
     } catch (error) {
       await LogService.captureError(error, {
         source: 'backtests',
@@ -745,10 +788,17 @@ export function BacktestsView({
       }
 
       const source = batch.backtestsSource;
+      const targetVersion: BacktestVersion =
+        runtime.backtestVersion ??
+        batch.backtestVersion ??
+        (runtime.apiVersion === 'v2' || batch.apiVersion === 'v2' ? 'v2' : 'v1');
+      onBacktestVersionChange(targetVersion);
+
       const regenerated = buildQueueItemsFromBacktestsSource(batchId, source);
+      const regeneratedItems = targetVersion === 'v2' ? toQueueItemsV2(regenerated.items) : regenerated.items;
       const expectedTotal = runtime.total || regenerated.items.length;
 
-      if (regenerated.items.length !== expectedTotal) {
+      if (regeneratedItems.length !== expectedTotal) {
         await StorageService.updateBatchRunState(batchId, 'STOP', {
           stopReason: 'runtime_error',
           lastError: 'Resume mismatch: generated combinations count differs'
@@ -756,28 +806,28 @@ export function BacktestsView({
         await LogService.error('backtests', 'run.resume_mismatch', new Error('Resume mismatch: generated combinations count differs'), {
           batchId,
           expectedTotal,
-          regeneratedTotal: regenerated.items.length
+          regeneratedTotal: regeneratedItems.length
         }, batchId);
         alert('Продолжить запуск нельзя: изменился размер матрицы комбинаций.');
         return;
       }
 
-      let preparedItems: QueueItem[] = regenerated.items;
-      const runOptions: Parameters<typeof run>[2] = {};
-      const regeneratedFingerprint = buildQueueFingerprint(regenerated.items);
+      let preparedItems: Array<QueueItem | QueueItemV2> = regeneratedItems;
+      const runOptions: Parameters<BacktestQueueController['run']>[2] = {};
+      const regeneratedFingerprint = buildQueueFingerprint(regeneratedItems);
       const runtimeFingerprint = runtime.fingerprint;
       const canRestoreRuntimeState =
         runtime.version === 2 &&
         !!runtimeFingerprint &&
         runtimeFingerprint === regeneratedFingerprint &&
         runtime.items &&
-        runtime.items.length === regenerated.items.length;
+        runtime.items.length === regeneratedItems.length;
 
       if (runtime.version === 2 && runtimeFingerprint && runtimeFingerprint !== regeneratedFingerprint) {
-        preparedItems = regenerated.items;
+        preparedItems = regeneratedItems;
       } else if (canRestoreRuntimeState) {
         const activeIndices = new Set((runtime.activeRuns ?? []).map((item) => item.index));
-        preparedItems = regenerated.items.map((item, index) => {
+        preparedItems = regeneratedItems.map((item, index) => {
           const runtimeItem = runtime.items?.[index];
           if (!runtimeItem) return item;
 
@@ -807,8 +857,8 @@ export function BacktestsView({
         runOptions.resumeLastLaunchAt = runtime.lastLaunchAt ?? 0;
         runOptions.resumeFingerprint = runtimeFingerprint;
       } else {
-        const nextIndex = Math.max(0, Math.min(runtime.nextIndex, regenerated.items.length));
-        preparedItems = regenerated.items.map((item, index) => (
+        const nextIndex = Math.max(0, Math.min(runtime.nextIndex, regeneratedItems.length));
+        preparedItems = regeneratedItems.map((item, index) => (
           index < nextIndex
             ? { ...item, status: 'FINISHED' }
             : item
@@ -839,23 +889,28 @@ export function BacktestsView({
         source,
         templatesCount: source.templates.length,
         symbolsCount: source.symbols.length,
-        queueSize: regenerated.items.length,
+        queueSize: regeneratedItems.length,
         invalidLinks: [],
         unreadableLinks: [],
         missingSymbols: [],
         skippedPairs: regenerated.skipped
       });
 
-      onOpenLiveResultsModal(`${batch.namePrefix} (${batch.id})`);
+      onOpenLiveResultsModal(`${batch.namePrefix} (${batch.id})`, targetVersion, batchId);
       await LogService.info('backtests', 'run.resume_started', {
         batchId,
         total: preparedItems.length,
         resumeFrom: runOptions.resumeFrom ?? 0,
-        restoredActiveRuns: (runOptions.resumeActiveRuns ?? []).length
+        restoredActiveRuns: (runOptions.resumeActiveRuns ?? []).length,
+        backtestVersion: targetVersion
       }, batchId);
-      run(batchId, preparedItems, runOptions);
+      if (targetVersion === 'v2') {
+        queueControllerV2.run(batchId, preparedItems as QueueItemV2[], runOptions);
+        return;
+      }
+      queueController.run(batchId, preparedItems as QueueItem[], runOptions);
     },
-    [run, onOpenLiveResultsModal]
+    [onBacktestVersionChange, onOpenLiveResultsModal, queueController, queueControllerV2]
   );
 
   useEffect(() => {
@@ -991,6 +1046,19 @@ export function BacktestsView({
             </SimpleGrid>
           </Stack>
         </Paper>
+
+        <div className={styles.sectionGlass}>
+          <BacktestVersionSettings
+            backtestVersion={backtestVersion}
+            onBacktestVersionChange={onBacktestVersionChange}
+            testQueue={testQueue}
+            onTestQueueChange={onTestQueueChange}
+            testIntervalSeconds={testIntervalSeconds}
+            onTestIntervalChange={onTestIntervalChange}
+            headerVariant="section"
+            titleClassName={styles.sectionTitle}
+          />
+        </div>
 
         <div className={styles.columnsGrid}>
           <div className={styles.columnSection}>
@@ -1282,7 +1350,7 @@ export function BacktestsView({
                 size="md"
                 color="blue"
                 leftSection={<IconList size={20} />}
-                onClick={() => onOpenLiveResultsModal()}
+                onClick={() => onOpenLiveResultsModal(undefined, backtestVersion, currentBatchId ?? null)}
               >
                 Открыть таблицу (выполняется...)
               </Button>

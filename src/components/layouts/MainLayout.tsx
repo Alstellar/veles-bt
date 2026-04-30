@@ -6,7 +6,8 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { 
   IconLayoutDashboard, IconTestPipe, IconHistory, IconTemplate,
-  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh, IconCoins, IconList
+  IconBrandGithub, IconBrandTelegram, IconHeart, IconCheck, IconSettings, IconAlertCircle, IconPlugConnected, IconRefresh, IconCoins, IconList,
+  IconSettingsAutomation
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 
@@ -639,7 +640,16 @@ export function MainLayout() {
                 className={styles.navItem}
             />
             <NavLink 
-                label="Шаблоны" 
+                label="Направленный поиск"
+                leftSection={<IconSettingsAutomation size={20} stroke={1.5} />}
+                active={activeTab === 'directed-search'}
+                onClick={() => setActiveTab('directed-search')}
+                variant="light"
+                style={{ display: 'none' }}
+                className={styles.navItem}
+            />
+            <NavLink
+                label="Шаблоны"
                 leftSection={<IconTemplate size={20} stroke={1.5} />}
                 active={activeTab === 'templates'}
                 onClick={() => setActiveTab('templates')}
@@ -764,6 +774,13 @@ export function MainLayout() {
          {activeTab === 'backtests' && (
            <BacktestsView
              queueController={queueController}
+             queueControllerV2={queueControllerV2}
+             backtestVersion={backtestVersion}
+             onBacktestVersionChange={handleBacktestVersionChange}
+             testQueue={testQueue}
+             onTestQueueChange={handleTestQueueChange}
+             testIntervalSeconds={testIntervalSeconds}
+             onTestIntervalChange={handleTestIntervalChange}
              onOpenLiveResultsModal={openLiveResultsModal}
              resumeBatchId={resumeBacktestsBatchId}
              onResumeHandled={() => setResumeBacktestsBatchId(null)}

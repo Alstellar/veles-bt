@@ -27,14 +27,82 @@
   margin-inline: auto;
 }
 
-.mainGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
 .mainCard {
   overflow: hidden;
+}
+
+.supportCard {
+  display: grid;
+  gap: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 248, 226, 0.9), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  border-color: #f0dfb8;
+}
+
+.supportHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.supportBody {
+  max-width: 920px;
+  margin-inline: auto;
+}
+
+.supportText {
+  line-height: 1.6;
+}
+
+.supportText strong {
+  color: #263b55;
+  font-weight: 700;
+}
+
+.supportBonus {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: #f0dfb8;
+}
+
+.supportThanks {
+  line-height: 1.6;
+}
+
+.referralCta {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.referralLabel {
+  color: #29435f;
+  text-align: center;
+}
+
+.referralCopyRow {
+  width: min(560px, 100%);
+}
+
+.referralField {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid #c9d9eb;
+  border-radius: 8px;
+  background: #f6f9fc;
+  color: #29435f;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
 }
 
 .whatsNewCard {
@@ -109,7 +177,17 @@
     min-width: 0;
   }
 
-  .mainGrid {
-    grid-template-columns: 1fr;
+  .supportHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .referralCopyRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .referralField {
+    width: 100%;
   }
 }
