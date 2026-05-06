@@ -12,6 +12,7 @@ export type ExchangeType =
   | 'OKX_FUTURES'
   | 'BINGX_FUTURES'
   | 'BITGET_FUTURES'
+  | 'HYPERLIQUID_FUTURES'
   | 'GATE_IO_SPOT'
   | 'GATE_IO_FUTURES'
   | 'HUOBI_SPOT';

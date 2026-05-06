@@ -37,6 +37,7 @@ import { ConnectionAlert } from '../ConnectionAlert';
 import { BacktestVersionSettings } from '../BacktestVersionSettings';
 import { StorageService } from '../../services/StorageService';
 import { LogService } from '../../services/LogService';
+import { BacktestNameValidationService } from '../../services/BacktestNameValidationService';
 import {
   fetchAvailability,
   fetchExchanges,
@@ -117,6 +118,7 @@ const FALLBACK_EXCHANGES: ExchangeInfo[] = [
   { name: 'OKX Spot', key: 'OKX_SPOT', type: 'SPOT' },
   { name: 'BingX Futures', key: 'BINGX_FUTURES', type: 'FUTURES' },
   { name: 'Bitget Futures', key: 'BITGET_FUTURES', type: 'FUTURES' },
+  { name: 'Hyperliquid Futures', key: 'HYPERLIQUID_FUTURES', type: 'FUTURES' },
   { name: 'Gate.io Spot', key: 'GATE_IO_SPOT', type: 'SPOT' },
   { name: 'Gate.io Futures', key: 'GATE_IO_FUTURES', type: 'FUTURES' },
   { name: 'HTX Spot', key: 'HUOBI_SPOT', type: 'SPOT' }
@@ -346,8 +348,8 @@ export function BacktestsView({
   }, [availability]);
 
   const manualSymbolsResult = useMemo(
-    () => parseSymbolsInput(assetsInputText, limitations),
-    [assetsInputText, limitations]
+    () => parseSymbolsInput(assetsInputText, limitations, exchange),
+    [assetsInputText, exchange, limitations]
   );
 
   const filteredSymbols = useMemo(() => {
@@ -359,9 +361,10 @@ export function BacktestsView({
         availableFromMin: availableFromMin ? dayjs(availableFromMin).format('YYYY-MM-DD') : null,
         availableFromMax: availableFromMax ? dayjs(availableFromMax).format('YYYY-MM-DD') : null
       },
-      availabilityMap
+      availabilityMap,
+      exchange
     );
-  }, [availabilityMap, availableFromMax, availableFromMin, leverageMax, leverageMin, limitations]);
+  }, [availabilityMap, availableFromMax, availableFromMin, exchange, leverageMax, leverageMin, limitations]);
 
   useEffect(() => {
     setSelectedFilteredSymbols((prev) => {
@@ -599,10 +602,14 @@ export function BacktestsView({
     };
 
     const preview = buildQueueItemsFromBacktestsSource('#PREVIEW', source);
+    const previewNameValidation = BacktestNameValidationService.validateQueueItems(preview.items);
+    if (!previewNameValidation.ok) {
+      errors.push(BacktestNameValidationService.formatQueueValidationError(previewNameValidation, 'комбинаций'));
+    }
 
     return {
-      ok: true,
-      errors: [],
+      ok: errors.length === 0,
+      errors,
       source,
       templatesCount: templates.length,
       symbolsCount: symbols.length,
@@ -685,6 +692,13 @@ export function BacktestsView({
         return;
       }
 
+
+      const nameValidation = BacktestNameValidationService.validateQueueItems(queueItems);
+      if (!nameValidation.ok) {
+        alert(BacktestNameValidationService.formatQueueValidationError(nameValidation, 'комбинаций'));
+        return;
+      }
+
       const confirmed = window.confirm(
         [
           `Комбинаций к запуску: ${queueItems.length}`,
@@ -718,19 +732,6 @@ export function BacktestsView({
         runStatus: 'STOP'
       });
 
-      const snapshotId = await LogService.createSnapshot('backtests.run_input', {
-        batchId,
-        mode: 'BACKTESTS',
-        backtestVersion,
-        apiVersion: backtestVersion === 'v2' ? 'v2' : 'v1',
-        testQueue,
-        testIntervalSeconds,
-        namePrefix,
-        exchange: result.source.exchange,
-        totalGenerated: queueItems.length,
-        skippedByLimitations: built.skipped.length,
-        source: result.source
-      }, { batchId, runId: batchId });
       await LogService.log({
         level: 'info',
         source: 'backtests',
@@ -739,7 +740,6 @@ export function BacktestsView({
         runId: batchId,
         stage: 'prepare',
         code: 'RUN_PREPARED',
-        snapshotId,
         context: {
           totalTests: queueItems.length,
           skipped: built.skipped.length,
@@ -864,6 +864,12 @@ export function BacktestsView({
             : item
         ));
         runOptions.resumeFrom = nextIndex;
+      }
+
+      const resumeNameValidation = BacktestNameValidationService.validateQueueItems(preparedItems);
+      if (!resumeNameValidation.ok) {
+        alert(BacktestNameValidationService.formatQueueValidationError(resumeNameValidation, 'комбинаций'));
+        return;
       }
 
       setExchange(source.exchange);

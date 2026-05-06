@@ -7,6 +7,8 @@ import type {
   VelesEntriesCountPayload,
   VelesEntriesCountResponse
 } from '../types/veles';
+import type { VelesHttpTrace } from '../types/velesTrace';
+import { maskTraceHeaders } from '../types/velesTrace';
 import { VELES_HOST_PATTERNS, getVelesOriginFromUrl } from '../config/velesDomains';
 
 import {
@@ -17,6 +19,44 @@ import {
   injectedGetStatisticsPage,
   injectedCountEntries
 } from './VelesInjections';
+
+function stringifyVelesFailure(status: number | undefined, body: unknown, fallback: unknown): string {
+  if (typeof fallback === 'string' && fallback.trim()) return fallback;
+  if (body !== undefined && body !== null) {
+    try {
+      const serialized = JSON.stringify(body);
+      if (serialized && serialized !== '{}' && serialized !== 'null') return serialized;
+    } catch {
+      return String(body);
+    }
+  }
+  if (Number.isFinite(status)) return `HTTP ${status}`;
+  return 'Injection failed';
+}
+
+function prepareTrace(trace: VelesHttpTrace | undefined): VelesHttpTrace | undefined {
+  if (!trace) return undefined;
+  return {
+    ...trace,
+    request: {
+      ...trace.request,
+      headers: maskTraceHeaders(trace.request.headers)
+    }
+  };
+}
+
+function scriptErrorTrace(method: string, url: string, error: unknown, body?: unknown): VelesHttpTrace {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    method,
+    url,
+    request: body === undefined ? {} : { body },
+    error: error instanceof Error
+      ? { name: error.name, message: message || error.name, stack: error.stack }
+      : { message },
+    durationMs: 0
+  };
+}
 
 export class VelesService {
   static async findTabs(): Promise<chrome.tabs.Tab[]> {
@@ -74,12 +114,26 @@ export class VelesService {
     }
   }
 
-  static async runTest(tabId: number, token: string, payload: VelesConfigPayload): Promise<{ success: boolean; status: number; id?: number; error?: string }> {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: injectedRunTest,
-      args: [payload, token]
-    });
+  static async runTest(
+    tabId: number,
+    token: string,
+    payload: VelesConfigPayload
+  ): Promise<{ success: boolean; status: number; id?: number; error?: string; trace?: VelesHttpTrace }> {
+    let result: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof injectedRunTest>>>[];
+    try {
+      result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: injectedRunTest,
+        args: [payload, token]
+      });
+    } catch (error) {
+      return {
+        success: false,
+        status: 0,
+        error: error instanceof Error ? error.message : String(error),
+        trace: scriptErrorTrace('POST', '/api/backtests/', error, payload)
+      };
+    }
 
     const res = result[0]?.result;
     if (res && res.success && res.body?.id) {
@@ -89,26 +143,68 @@ export class VelesService {
     return {
       success: false,
       status: res?.status || 0,
-      error: res?.error || JSON.stringify(res?.body)
+      error: stringifyVelesFailure(res?.status, res?.body, res?.error),
+      trace: prepareTrace(res?.trace as VelesHttpTrace | undefined)
     };
   }
 
-  static async checkStatus(tabId: number, token: string, backtestId: number): Promise<BacktestStatusResponse> {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: injectedCheckStatus,
-      args: [backtestId, token]
-    });
-    return result[0]?.result || { success: false, error: 'Injection failed' };
+  static async checkStatus(
+    tabId: number,
+    token: string,
+    backtestId: number
+  ): Promise<BacktestStatusResponse & { trace?: VelesHttpTrace }> {
+    let result: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof injectedCheckStatus>>>[];
+    try {
+      result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: injectedCheckStatus,
+        args: [backtestId, token]
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        trace: scriptErrorTrace('GET', `/api/backtests/${backtestId}`, error)
+      };
+    }
+    const res = result[0]?.result;
+    if (res?.success) {
+      return res as BacktestStatusResponse;
+    }
+    return {
+      ...(res || { success: false, error: 'Injection failed' }),
+      error: stringifyVelesFailure(res?.status, res?.body, res?.error),
+      trace: prepareTrace(res?.trace as VelesHttpTrace | undefined)
+    };
   }
 
-  static async getStats(tabId: number, backtestId: number): Promise<{ success: boolean; stats?: BacktestStats; shareToken?: string; error?: string }> {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: injectedGetStats,
-      args: [backtestId]
-    });
-    return result[0]?.result || { success: false, error: 'Injection failed' };
+  static async getStats(
+    tabId: number,
+    backtestId: number
+  ): Promise<{ success: boolean; stats?: BacktestStats; shareToken?: string; error?: string; trace?: VelesHttpTrace }> {
+    let result: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof injectedGetStats>>>[];
+    try {
+      result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: injectedGetStats,
+        args: [backtestId]
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        trace: scriptErrorTrace('GET', `/api/backtests/statistics/${backtestId}`, error)
+      };
+    }
+    const res = result[0]?.result;
+    if (res?.success) {
+      return res;
+    }
+    return {
+      ...(res || { success: false, error: 'Injection failed' }),
+      error: stringifyVelesFailure(res?.status, res?.body, res?.error),
+      trace: prepareTrace(res?.trace as VelesHttpTrace | undefined)
+    };
   }
 
   static async getProfile(tabId: number, token?: string): Promise<{ success: boolean; data?: UserProfile; error?: string }> {

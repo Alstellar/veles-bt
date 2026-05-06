@@ -9,6 +9,12 @@ import { isSpot } from '../types';
 import type { VelesConfigPayload, VelesCondition } from '../types/veles';
 import { parseImportLink } from './ImportSettingsService';
 import { parseDateLike, toIsoDateTime } from '../utils/datePolicy';
+import {
+  buildSymbolLookupKeys,
+  getSymbolBase,
+  isPairForExchange,
+  normalizePairForExchange
+} from '../utils/exchangeQuote';
 
 export const DEFAULT_BACKTESTS_NAME_TEMPLATE = '{template} {symbol} | {n}/{total} | VH {batch}';
 
@@ -73,26 +79,6 @@ const clonePayload = (payload: VelesConfigPayload): VelesConfigPayload => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-};
-
-const normalizePair = (value: string): string | null => {
-  const raw = value.trim().toUpperCase();
-  if (!raw) return null;
-  const cleaned = raw.replace(/['"`]/g, '').replace(/\s+/g, '');
-  if (!cleaned) return null;
-
-  if (cleaned.includes('/')) {
-    const [base, quoteRaw] = cleaned.split('/');
-    const quote = quoteRaw || 'USDT';
-    if (!base) return null;
-    return `${base}/${quote}`;
-  }
-
-  if (cleaned.endsWith('USDT') && cleaned.length > 4) {
-    return `${cleaned.slice(0, -4)}/USDT`;
-  }
-
-  return `${cleaned}/USDT`;
 };
 
 const normalizeTemplateName = (value: string): string => {
@@ -226,16 +212,10 @@ const renderNameTemplate = (template: string, ctx: NameContext): string => {
     .replace(/\{batch\}/gi, ctx.batch);
 };
 
-const getBaseSymbol = (pair: string): string => {
-  return pair.includes('/') ? pair.split('/')[0] : pair;
-};
-
-const isUsdtPair = (pair: string): boolean => {
+const isSupportedExchangePair = (pair: string, exchange?: ExchangeType): boolean => {
   const normalized = pair.trim().toUpperCase();
   if (!normalized) return false;
-  if (!normalized.includes('/')) return normalized.endsWith('USDT') && normalized.length > 4;
-  const [base, quote] = normalized.split('/');
-  return Boolean(base) && quote === 'USDT';
+  return isPairForExchange(normalized, exchange ?? 'BINANCE_FUTURES');
 };
 
 const mapLimitationsByKey = (limitations: SymbolLimitation[]): Map<string, string> => {
@@ -243,7 +223,7 @@ const mapLimitationsByKey = (limitations: SymbolLimitation[]): Map<string, strin
   limitations.forEach((item) => {
     const pair = item.symbol.toUpperCase();
     const noSlash = pair.replace('/', '');
-    const base = getBaseSymbol(pair);
+    const base = getSymbolBase(pair);
     map.set(pair, pair);
     map.set(noSlash, pair);
     map.set(base, pair);
@@ -295,7 +275,8 @@ export const parseTemplateLinksInput = (input: string): ParsedTemplateLinksResul
 
 export const parseSymbolsInput = (
   input: string,
-  limitations: SymbolLimitation[]
+  limitations: SymbolLimitation[],
+  exchange: ExchangeType = 'BINANCE_FUTURES'
 ): ParsedSymbolsResult => {
   const parts = input
     .split(/[\s,;]+/g)
@@ -308,18 +289,13 @@ export const parseSymbolsInput = (
   const seenResolved = new Set<string>();
 
   parts.forEach((token) => {
-    const pairCandidate = normalizePair(token);
+    const pairCandidate = normalizePairForExchange(token, exchange);
     if (!pairCandidate) {
       missing.push(token);
       return;
     }
 
-    const lookupKeys = [
-      pairCandidate,
-      pairCandidate.replace('/', ''),
-      getBaseSymbol(pairCandidate),
-      token.trim().toUpperCase().replace(/\s+/g, '')
-    ];
+    const lookupKeys = buildSymbolLookupKeys(pairCandidate, exchange);
 
     let resolvedPair: string | undefined;
     for (const key of lookupKeys) {
@@ -358,7 +334,7 @@ export const extractTemplateFromPayload = (
   const symbolsRaw = Array.isArray(raw.symbols) ? raw.symbols : [];
   const firstSymbol = typeof symbolsRaw[0] === 'string' ? symbolsRaw[0] : undefined;
   const symbolRaw = asString(firstSymbol ?? raw.symbol, 'BTC/USDT');
-  const pair = normalizePair(symbolRaw) ?? 'BTC/USDT';
+  const pair = normalizePairForExchange(symbolRaw, 'BINANCE_FUTURES') ?? 'BTC/USDT';
 
   const depositRaw = isRecord(raw.deposit) ? raw.deposit : {};
   const settingsRaw = isRecord(raw.settings) ? raw.settings : {};
@@ -406,12 +382,13 @@ export const getExchangeFilteredSymbols = (
     availableFromMin?: string | null;
     availableFromMax?: string | null;
   },
-  availabilityMap: Record<string, string | null>
+  availabilityMap: Record<string, string | null>,
+  exchange?: ExchangeType
 ): string[] => {
   const result: string[] = [];
   limitations.forEach((item) => {
     const pair = item.symbol.toUpperCase();
-    if (!isUsdtPair(pair)) return;
+    if (!isSupportedExchangePair(pair, exchange)) return;
     const leverage = Number(item.leverage ?? 1);
     const availableFrom = availabilityMap[pair] ?? null;
 
@@ -511,7 +488,7 @@ export const buildQueueItemsFromBacktestsSource = (
   const items: QueueItem[] = validPairs.map((pair, index) => {
     const config = clonePayload(pair.template.config);
     const symbolPair = pair.symbol.toUpperCase();
-    const symbolBase = getBaseSymbol(symbolPair);
+    const symbolBase = getSymbolBase(symbolPair);
 
     config.exchange = source.exchange as ExchangeType;
     config.symbol = symbolPair;

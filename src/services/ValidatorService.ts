@@ -8,6 +8,7 @@ import type {
 import { getIndicatorSettings, resolveIndicator } from '../utils/indicatorMapping';
 import { parseDateLike } from '../utils/datePolicy';
 import { generateCustomVolumeDistributions } from '../utils/customOrderVolumes';
+import { BacktestNameValidationService } from './BacktestNameValidationService';
 
 export interface ValidationSections {
   static: boolean;
@@ -102,6 +103,10 @@ export class ValidatorService {
   ): ValidationResult {
     if (!staticCfg.namePrefix.trim()) {
       return this.fail('static', 'Базовые настройки: укажите имя теста (префикс).');
+    }
+    const prefixValidation = BacktestNameValidationService.validatePrefix(staticCfg.namePrefix);
+    if (!prefixValidation.ok) {
+      return this.fail('static', `Базовые настройки: ${prefixValidation.message}`);
     }
     if (!staticCfg.exchange) {
       return this.fail('static', 'Базовые настройки: выберите биржу.');

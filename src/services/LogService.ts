@@ -50,8 +50,10 @@ const MAX_DAYS_TO_KEEP = 7;
 const MAX_SNAPSHOTS_TO_KEEP = 300;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 const MAX_FIELD_LENGTH = 3000;
+const MAX_SNAPSHOT_FIELD_LENGTH = 1024 * 1024;
 const MAX_ARRAY_ITEMS = 100;
 const MAX_NESTING_DEPTH = 8;
+const MAX_SNAPSHOT_NESTING_DEPTH = 20;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -88,17 +90,24 @@ function toStringSafe(value: unknown): string {
   }
 }
 
-function sanitizeValue(value: unknown, depth = 0): unknown {
+function sanitizeValue(
+  value: unknown,
+  depth = 0,
+  maxFieldLength = MAX_FIELD_LENGTH,
+  maxNestingDepth = MAX_NESTING_DEPTH
+): unknown {
   if (value === null || value === undefined) return value;
-  if (depth > MAX_NESTING_DEPTH) return '[depth-limited]';
+  if (depth > maxNestingDepth) return '[depth-limited]';
 
   if (typeof value === 'string') {
-    return value.length > MAX_FIELD_LENGTH ? `${value.slice(0, MAX_FIELD_LENGTH)}...[truncated]` : value;
+    return value.length > maxFieldLength ? `${value.slice(0, maxFieldLength)}...[truncated]` : value;
   }
   if (typeof value === 'number' || typeof value === 'boolean') return value;
 
   if (Array.isArray(value)) {
-    const sliced = value.slice(0, MAX_ARRAY_ITEMS).map((item) => sanitizeValue(item, depth + 1));
+    const sliced = value
+      .slice(0, MAX_ARRAY_ITEMS)
+      .map((item) => sanitizeValue(item, depth + 1, maxFieldLength, maxNestingDepth));
     if (value.length > MAX_ARRAY_ITEMS) sliced.push(`[${value.length - MAX_ARRAY_ITEMS} more items]`);
     return sliced;
   }
@@ -119,7 +128,7 @@ function sanitizeValue(value: unknown, depth = 0): unknown {
         output[key] = '[masked]';
         return;
       }
-      output[key] = sanitizeValue(source[key], depth + 1);
+      output[key] = sanitizeValue(source[key], depth + 1, maxFieldLength, maxNestingDepth);
     });
     return output;
   }
@@ -144,14 +153,15 @@ function serializeError(error: unknown): LogEntry['error'] {
   };
 
   if (error instanceof Error) {
+    const message = normalizeMessage(error.message || error.stack?.split('\n')[0] || error.name || 'Unknown error');
     return {
       name: error.name,
-      message: normalizeMessage(error.message),
+      message,
       stack: error.stack?.slice(0, MAX_FIELD_LENGTH)
     };
   }
 
-  return { message: normalizeMessage(error) };
+  return { message: normalizeMessage(error || 'Unknown error') };
 }
 
 export class LogService {
@@ -280,10 +290,6 @@ export class LogService {
 
     const infoAllowlist = new Set([
       'app.initialized',
-      'queue.started',
-      'queue.finished',
-      'test.start',
-      'test.finished',
       'bug_report.exported'
     ]);
     return infoAllowlist.has(event);
@@ -392,7 +398,7 @@ export class LogService {
       batchId: meta?.batchId,
       runId: meta?.runId,
       testId: meta?.testId,
-      data: sanitizeValue(data)
+      data: sanitizeValue(data, 0, MAX_SNAPSHOT_FIELD_LENGTH, MAX_SNAPSHOT_NESTING_DEPTH)
     };
 
     await this.enqueueWrite(async () => {
@@ -740,4 +746,3 @@ export class LogService {
     });
   }
 }
-

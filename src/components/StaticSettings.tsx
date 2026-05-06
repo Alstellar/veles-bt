@@ -13,6 +13,8 @@ import type { StaticConfig, AlgoType, SymbolLimitation, SymbolAvailability, Exch
 import { isSpot } from '../types';
 import { fetchLimitations, fetchAvailability, fetchExchanges } from '../services/apiService';
 import { parseDateLike, toIsoDateTime } from '../utils/datePolicy';
+import { BACKTEST_NAME_PREFIX_MAX_LENGTH, BacktestNameValidationService } from '../services/BacktestNameValidationService';
+import { buildSymbolLookupKeys, getExchangeQuoteCurrency, getSymbolBase } from '../utils/exchangeQuote';
 
 interface Props {
   config: StaticConfig;
@@ -30,6 +32,7 @@ const FALLBACK_EXCHANGES: ExchangeInfo[] = [
   { name: 'OKX Spot', key: 'OKX_SPOT', type: 'SPOT', includePosition: false, fastApi: true },
   { name: 'BingX Futures', key: 'BINGX_FUTURES', type: 'FUTURES', includePosition: true, fastApi: true },
   { name: 'Bitget Futures', key: 'BITGET_FUTURES', type: 'FUTURES', includePosition: true, fastApi: true },
+  { name: 'Hyperliquid Futures', key: 'HYPERLIQUID_FUTURES', type: 'FUTURES', includePosition: true, fastApi: true },
   { name: 'Gate.io Futures', key: 'GATE_IO_FUTURES', type: 'FUTURES', includePosition: false, fastApi: false },
   { name: 'Gate.io Spot', key: 'GATE_IO_SPOT', type: 'SPOT', includePosition: false, fastApi: false },
   { name: 'HTX Spot', key: 'HUOBI_SPOT', type: 'SPOT', includePosition: false, fastApi: false }
@@ -38,29 +41,22 @@ const FALLBACK_EXCHANGES: ExchangeInfo[] = [
 // --- ХЕЛПЕР ДЛЯ УМНОГО ПОИСКА ---
 function findSmart<T extends { symbol: string; externalId?: string }>(
     list: T[], 
-    userSymbol: string
+    userSymbol: string,
+    exchange: StaticConfig['exchange']
   ): T | undefined {
     if (!userSymbol) return undefined;
-    
-    const search = userSymbol.toUpperCase().trim();
-    const searchWithSlash = `${search}/USDT`;
-    const searchNoSlash = `${search}USDT`;
+    const lookupKeys = new Set(buildSymbolLookupKeys(userSymbol, exchange));
   
     return list.find(item => {
       const itemSym = item.symbol.toUpperCase();
       const itemId = item.externalId ? item.externalId.toUpperCase() : '';
-  
-      return (
-        itemSym === search || 
-        itemSym === searchWithSlash ||
-        itemId === searchNoSlash ||
-        itemSym.startsWith(`${search}/`)
-      );
+
+      return lookupKeys.has(itemSym) || lookupKeys.has(itemSym.replace('/', '')) || lookupKeys.has(itemId);
     });
   }
 
 function normalizeBaseSymbol(value: string): string {
-  return value.replace('/USDT', '').replace(/USDT$/, '').trim().toUpperCase();
+  return getSymbolBase(value);
 }
 
 export function StaticSettings({
@@ -153,14 +149,19 @@ export function StaticSettings({
     return Array.from(new Set(raw.map((item) => String(item).trim().toUpperCase()).filter((item) => item.length > 0)));
   }, [config.selectedSymbols, config.symbol]);
   const currentSymbolForLookup = selectedSymbols.length === 1 ? selectedSymbols[0] : config.symbol;
-  const currentLimitation = useMemo(() => findSmart(limitations, currentSymbolForLookup), [limitations, currentSymbolForLookup]);
-  const currentAvailability = useMemo(() => findSmart(availabilities, currentSymbolForLookup), [availabilities, currentSymbolForLookup]);
+  const currentLimitation = useMemo(() => findSmart(limitations, currentSymbolForLookup, config.exchange), [limitations, currentSymbolForLookup, config.exchange]);
+  const currentAvailability = useMemo(() => findSmart(availabilities, currentSymbolForLookup, config.exchange), [availabilities, currentSymbolForLookup, config.exchange]);
   const currentExchange = useMemo(
     () => exchanges.find((item) => item.key === config.exchange) ?? null,
     [exchanges, config.exchange]
   );
   const currentIsSpot = currentExchange ? currentExchange.type === 'SPOT' : isSpot(config.exchange);
+  const quoteCurrency = getExchangeQuoteCurrency(config.exchange);
   const maxLeverage = currentLimitation?.leverage || 125;
+  const namePrefixValidation = useMemo(
+    () => BacktestNameValidationService.validatePrefix(config.namePrefix),
+    [config.namePrefix]
+  );
   const exchangeOptions = useMemo(
     () => exchanges.map((item) => ({ value: item.key, label: item.name })),
     [exchanges]
@@ -260,7 +261,7 @@ export function StaticSettings({
     );
 
   const handleCoinInputChange = (rawValue: string) => {
-    const next = rawValue.toUpperCase().replace('/USDT', '').trim();
+    const next = normalizeBaseSymbol(rawValue);
     setSymbolSearch(next);
     if (!next) return;
     const found = allSymbols.find((item) => item.base.startsWith(next) || item.base.includes(next));
@@ -299,7 +300,7 @@ export function StaticSettings({
 
     symbols.forEach((symbol) => {
       const base = normalizeBaseSymbol(symbol);
-      const availability = findSmart(availabilities, base);
+      const availability = findSmart(availabilities, base, config.exchange);
       const availableFromIso = toIsoDateTime(availability?.availableFrom);
       if (!availableFromIso) return;
 
@@ -335,12 +336,12 @@ export function StaticSettings({
       );
     }
 
-    if (!config.symbol) return <Text size="xs" c="dimmed">/USDT</Text>;
+    if (!config.symbol) return <Text size="xs" c="dimmed">/{quoteCurrency}</Text>;
 
     if (currentLimitation) {
         return (
             <Group gap={4} wrap="nowrap">
-                <Text size="xs" c="dimmed">/USDT</Text>
+                <Text size="xs" c="dimmed">/{quoteCurrency}</Text>
                 <Tooltip label={`Найдено: ${currentLimitation.symbol}`}>
                     <IconCheck size={16} color="green" />
                 </Tooltip>
@@ -350,7 +351,7 @@ export function StaticSettings({
 
     return (
         <Group gap={4} wrap="nowrap">
-            <Text size="xs" c="dimmed">/USDT</Text>
+            <Text size="xs" c="dimmed">/{quoteCurrency}</Text>
             <Tooltip label="Монета не найдена в словаре Veles">
                 <IconX size={16} color="red" />
             </Tooltip>
@@ -394,10 +395,23 @@ export function StaticSettings({
       {/* Имя и Биржа */}
       <SimpleGrid cols={2} spacing="xs" mb="sm">
         <TextInput
-          label="Имя теста (Префикс)"
+          label={(
+            <Group justify="space-between" gap="xs" wrap="nowrap">
+              <Text component="span" size="sm" fw={500}>Имя теста (Префикс)</Text>
+              <Text
+                component="span"
+                size="xs"
+                c={namePrefixValidation.ok ? 'dimmed' : 'red'}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {namePrefixValidation.length}/{BACKTEST_NAME_PREFIX_MAX_LENGTH}
+              </Text>
+            </Group>
+          )}
           placeholder="MyStrategy"
           value={config.namePrefix}
           onChange={(e) => update('namePrefix', e.currentTarget.value)}
+          error={!namePrefixValidation.ok ? namePrefixValidation.message : undefined}
           // Динамический суффикс
           rightSectionWidth={160}
           rightSection={
@@ -504,7 +518,7 @@ export function StaticSettings({
               data={symbolOptions}
               value={selectedSymbols[0] ?? config.symbol}
               onChange={(value) => {
-                const normalized = value.toUpperCase().replace('/USDT', '').trim();
+                const normalized = normalizeBaseSymbol(value);
                 onChange({
                   ...config,
                   symbol: normalized,

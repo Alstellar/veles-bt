@@ -19,6 +19,7 @@ import { ConfigGeneratorV2 } from '../../services/ConfigGeneratorV2';
 import { ValidatorService } from '../../services/ValidatorService';
 import { StorageService } from '../../services/StorageService';
 import { LogService } from '../../services/LogService';
+import { BacktestNameValidationService } from '../../services/BacktestNameValidationService';
 import { fetchAvailability, fetchLimitations } from '../../services/apiService';
 import { ConnectionService } from '../../services/ConnectionService';
 import { VelesService } from '../../services/VelesService';
@@ -37,6 +38,7 @@ import { generateCustomVolumeDistributions } from '../../utils/customOrderVolume
 import { isSpot } from '../../types';
 import { makeBatchId } from '../../utils/batchId';
 import { parseDateLike, toIsoDateTime } from '../../utils/datePolicy';
+import { buildSymbolLookupKeys, getSymbolBase } from '../../utils/exchangeQuote';
 import { debug_mode } from '../../config/backtestQueue';
 import styles from './BacktesterView.module.css';
 
@@ -184,57 +186,33 @@ function calculateStats(entryConfig: EntryConfig, orderState: OrderState, exitCo
   };
 }
 
-function hasSymbolInLimitations(limitations: SymbolLimitation[], userSymbol: string): boolean {
-  const search = userSymbol.toUpperCase().trim();
-  if (!search) return false;
-
-  const searchWithSlash = `${search}/USDT`;
-  const searchNoSlash = `${search}USDT`;
-
-  return limitations.some((item) => {
-    const itemSym = item.symbol.toUpperCase();
-    const itemId = item.externalId ? item.externalId.toUpperCase() : '';
-
-    return (
-      itemSym === search ||
-      itemSym === searchWithSlash ||
-      itemId === searchNoSlash ||
-      itemSym.startsWith(`${search}/`)
-    );
-  });
-}
-
-function normalizeBaseSymbol(value: string): string {
-  return value.replace('/USDT', '').trim().toUpperCase();
+function hasSymbolInLimitations(staticConfig: StaticConfig, limitations: SymbolLimitation[], userSymbol: string): boolean {
+  return resolveLimitationBySymbol(staticConfig, limitations, userSymbol) !== null;
 }
 
 function getConfiguredSymbols(staticConfig: StaticConfig): string[] {
   const selected = Array.isArray(staticConfig.selectedSymbols)
-    ? staticConfig.selectedSymbols.map((item) => normalizeBaseSymbol(String(item))).filter((item) => item.length > 0)
+    ? staticConfig.selectedSymbols.map((item) => getSymbolBase(String(item))).filter((item) => item.length > 0)
     : [];
   if (selected.length > 0) return Array.from(new Set(selected));
-  const single = normalizeBaseSymbol(staticConfig.symbol || '');
+  const single = getSymbolBase(staticConfig.symbol || '');
   return single ? [single] : [];
 }
 
-function resolveLimitationBySymbol(limitations: SymbolLimitation[], userSymbol: string): SymbolLimitation | null {
-  const search = normalizeBaseSymbol(userSymbol);
-  const withSlash = `${search}/USDT`;
-  const noSlash = `${search}USDT`;
+function resolveLimitationBySymbol(staticConfig: StaticConfig, limitations: SymbolLimitation[], userSymbol: string): SymbolLimitation | null {
+  const lookupKeys = new Set(buildSymbolLookupKeys(userSymbol, staticConfig.exchange));
   return limitations.find((item) => {
     const itemSym = item.symbol.toUpperCase();
     const itemId = item.externalId ? item.externalId.toUpperCase() : '';
-    return itemSym === search || itemSym === withSlash || itemId === noSlash || itemSym.startsWith(`${search}/`);
+    return lookupKeys.has(itemSym) || lookupKeys.has(itemSym.replace('/', '')) || lookupKeys.has(itemId);
   }) ?? null;
 }
 
-function resolveAvailabilityBySymbol(availabilities: SymbolAvailability[], userSymbol: string): SymbolAvailability | null {
-  const search = normalizeBaseSymbol(userSymbol);
-  const withSlash = `${search}/USDT`;
-  const noSlash = `${search}USDT`;
+function resolveAvailabilityBySymbol(staticConfig: StaticConfig, availabilities: SymbolAvailability[], userSymbol: string): SymbolAvailability | null {
+  const lookupKeys = new Set(buildSymbolLookupKeys(userSymbol, staticConfig.exchange));
   return availabilities.find((item) => {
     const itemSym = item.symbol.toUpperCase();
-    return itemSym === search || itemSym === withSlash || itemSym === noSlash || itemSym.startsWith(`${search}/`);
+    return lookupKeys.has(itemSym) || lookupKeys.has(itemSym.replace('/', ''));
   }) ?? null;
 }
 
@@ -243,7 +221,7 @@ function resolveDateFromBySymbol(
   symbol: string,
   availabilities: SymbolAvailability[]
 ): { dateFrom: Date | null; skipped: boolean } {
-  const base = normalizeBaseSymbol(symbol);
+  const base = getSymbolBase(symbol);
   const configuredFrom = parseDateLike(staticConfig.dateFrom as unknown as Date | string | number);
   const configuredTo = parseDateLike(staticConfig.dateTo as unknown as Date | string | number);
   if (!configuredFrom || !configuredTo) return { dateFrom: null, skipped: true };
@@ -252,7 +230,7 @@ function resolveDateFromBySymbol(
     staticConfig.wholePeriodMode ? staticConfig.wholePeriodFromBySymbol?.[base] : undefined
   );
   const savedFrom = parseDateLike(savedFromIso);
-  const availability = resolveAvailabilityBySymbol(availabilities, base);
+  const availability = resolveAvailabilityBySymbol(staticConfig, availabilities, base);
   const availableFrom = parseDateLike(availability?.availableFrom);
 
   let dateFrom = staticConfig.wholePeriodMode
@@ -278,7 +256,7 @@ function collectRunnableSymbols(staticConfig: StaticConfig, limitations: SymbolL
   const spotExchange = isSpot(staticConfig.exchange);
 
   configured.forEach((symbol) => {
-    const limitation = resolveLimitationBySymbol(limitations, symbol);
+    const limitation = resolveLimitationBySymbol(staticConfig, limitations, symbol);
     if (!limitation) {
       invalid.push(symbol);
       return;
@@ -289,7 +267,7 @@ function collectRunnableSymbols(staticConfig: StaticConfig, limitations: SymbolL
       return;
     }
 
-    runnable.push(symbol);
+    runnable.push(limitation.symbol.toUpperCase());
   });
 
   return { configured, invalid, leverageMismatch, runnable };
@@ -652,7 +630,7 @@ export function BacktesterView({
     const validateSymbol = async () => {
       try {
         const limitations = await fetchLimitations(staticConfig.exchange);
-        const valid = configuredSymbols.every((symbol) => hasSymbolInLimitations(limitations, symbol));
+        const valid = configuredSymbols.every((symbol) => hasSymbolInLimitations(staticConfig, limitations, symbol));
         if (!cancelled) setIsSymbolValid(valid);
       } catch {
         if (!cancelled) setIsSymbolValid(null);
@@ -795,7 +773,7 @@ export function BacktesterView({
           return false;
         }
 
-        dateFromBySymbol[normalizeBaseSymbol(symbol)] = period.dateFrom.toISOString();
+        dateFromBySymbol[getSymbolBase(symbol)] = period.dateFrom.toISOString();
         return true;
       });
       symbolsToRun = runnableByDate;
@@ -818,7 +796,7 @@ export function BacktesterView({
       const namePrefix = staticConfig.namePrefix || 'Backtest';
 
       const configs = symbolsToRun.flatMap((symbol) => {
-        const symbolDateFrom = parseDateLike(dateFromBySymbol[normalizeBaseSymbol(symbol)]) ?? staticConfig.dateFrom;
+        const symbolDateFrom = parseDateLike(dateFromBySymbol[getSymbolBase(symbol)]) ?? staticConfig.dateFrom;
         const staticConfigForSymbol: StaticConfig = {
           ...staticConfig,
           symbol,
@@ -836,15 +814,6 @@ export function BacktesterView({
         return;
       }
 
-      const skippedSuffix = skippedSymbols.length > 0
-        ? `\nПропущено активов: ${skippedSymbols.length} (${skippedSymbols.join(', ')})`
-        : '';
-      const dateSkippedSuffix = dateSkippedSymbols.length > 0
-        ? `\nПропущено по периоду истории: ${dateSkippedSymbols.length} (${dateSkippedSymbols.join(', ')})`
-        : '';
-      const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\nАктивов к запуску: ${symbolsToRun.length}.${skippedSuffix}${dateSkippedSuffix}\n\nЗапустить выполнение?`);
-      if (!confirmed) return;
-
       const queueItems = configs.map((cfg) => {
         const realName = cfg.name.replace('#TEMP', batchId);
         return {
@@ -853,6 +822,20 @@ export function BacktesterView({
           status: 'PENDING'
         };
       });
+      const nameValidation = BacktestNameValidationService.validateQueueItems(queueItems);
+      if (!nameValidation.ok) {
+        alert(BacktestNameValidationService.formatQueueValidationError(nameValidation));
+        return;
+      }
+
+      const skippedSuffix = skippedSymbols.length > 0
+        ? `\nПропущено активов: ${skippedSymbols.length} (${skippedSymbols.join(', ')})`
+        : '';
+      const dateSkippedSuffix = dateSkippedSymbols.length > 0
+        ? `\nПропущено по периоду истории: ${dateSkippedSymbols.length} (${dateSkippedSymbols.join(', ')})`
+        : '';
+      const confirmed = window.confirm(`Сгенерировано тестов: ${configs.length}.\nАктивов к запуску: ${symbolsToRun.length}.${skippedSuffix}${dateSkippedSuffix}\n\nЗапустить выполнение?`);
+      if (!confirmed) return;
 
       const parsedFromIso = toIsoDateTime(parseDateLike(staticConfig.dateFrom as unknown as Date | string | number));
       const parsedToIso = toIsoDateTime(parseDateLike(staticConfig.dateTo as unknown as Date | string | number));
@@ -890,31 +873,6 @@ export function BacktesterView({
         }
       });
 
-      const snapshotId = await LogService.createSnapshot('configurator.run_input', {
-        batchId,
-        namePrefix,
-        mode: 'CONFIGURATOR',
-        backtestVersion,
-        apiVersion: backtestVersion === 'v2' ? 'v2' : 'v1',
-        testQueue,
-        testIntervalSeconds,
-        totalGenerated: configs.length,
-        requestedSymbols: configuredSymbols,
-        runnableSymbols: symbolsToRun,
-        skippedSymbols,
-        staticConfig: {
-          ...staticConfig,
-          symbol: symbolsToRun[0],
-          selectedSymbols: symbolsToRun,
-          dateFromBySymbol,
-          wholePeriodFromBySymbol: staticConfig.wholePeriodMode ? dateFromBySymbol : staticConfig.wholePeriodFromBySymbol,
-          dateFrom: parsedFromIso,
-          dateTo: parsedToIso
-        },
-        entryConfig,
-        orderState,
-        exitConfig
-      }, { batchId, runId: batchId });
       await LogService.log({
         level: 'info',
         source: 'configurator',
@@ -923,7 +881,6 @@ export function BacktesterView({
         runId: batchId,
         stage: 'prepare',
         code: 'RUN_PREPARED',
-        snapshotId,
         context: {
           totalTests: configs.length,
           symbolsCount: symbolsToRun.length,

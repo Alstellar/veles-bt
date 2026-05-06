@@ -8,24 +8,20 @@ import type {
 import { ConnectionService } from './ConnectionService';
 import { DatabaseService, type ReferenceCacheRecord, type ReferenceCacheExchangeRecord } from './DatabaseService';
 import { getVelesApiUrl } from '../config/velesDomains';
+import { isPairForExchange } from '../utils/exchangeQuote';
 
 const DICTIONARY_TTL_MS = 24 * 60 * 60 * 1000;
 const REFERENCE_WARMUP_CHUNK = 4;
 let dictionariesWarmupPromise: Promise<void> | null = null;
 
-const isUsdtPair = (value: unknown): boolean => {
-  if (typeof value !== 'string') return false;
-  const normalized = value.trim().toUpperCase();
-  if (!normalized) return false;
+const shouldKeepLimitation = (item: Partial<SymbolLimitation> | null | undefined, exchange: ExchangeType): boolean => {
+  if (!item) return false;
+  return isPairForExchange(item.symbol, exchange) || isPairForExchange(item.externalId, exchange);
+};
 
-  if (normalized.includes('/')) {
-    const parts = normalized.split('/');
-    if (parts.length !== 2) return false;
-    const [base, quote] = parts;
-    return Boolean(base) && quote === 'USDT';
-  }
-
-  return normalized.endsWith('USDT') && normalized.length > 4;
+const shouldKeepAvailability = (item: Partial<SymbolAvailability> | null | undefined, exchange: ExchangeType): boolean => {
+  if (!item) return false;
+  return isPairForExchange(item.symbol, exchange);
 };
 
 const getHeaders = (token: string): HeadersInit => ({
@@ -98,9 +94,7 @@ const fetchLimitationsNetwork = async (exchange: ExchangeType): Promise<SymbolLi
   const payload = unwrapPayload<SymbolLimitation[]>(await response.json());
   if (!Array.isArray(payload)) return [];
 
-  return payload.filter((item) => {
-    return isUsdtPair(item?.symbol) || isUsdtPair(item?.externalId);
-  });
+  return payload.filter((item) => shouldKeepLimitation(item, exchange));
 };
 
 const fetchAvailabilityNetwork = async (exchange: ExchangeType): Promise<SymbolAvailability[]> => {
@@ -120,7 +114,7 @@ const fetchAvailabilityNetwork = async (exchange: ExchangeType): Promise<SymbolA
 
   const payload = unwrapPayload<SymbolAvailability[]>(await response.json());
   if (!Array.isArray(payload)) return [];
-  return payload.filter((item) => isUsdtPair(item?.symbol));
+  return payload.filter((item) => shouldKeepAvailability(item, exchange));
 };
 
 const isDictionariesCacheFresh = (cache: ReferenceCacheRecord | null): boolean => {

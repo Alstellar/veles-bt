@@ -6,6 +6,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { VelesService } from '../services/VelesService';
 import type { VelesConfigPayload } from '../types/veles';
+import type { VelesHttpTrace } from '../types/velesTrace';
 import type { BatchRuntimeActiveRun, BatchStopReason } from '../types';
 import { StorageService } from '../services/StorageService';
 import { DatabaseService } from '../services/DatabaseService';
@@ -14,8 +15,15 @@ import { LogService } from '../services/LogService';
 import { QueueLockService } from '../services/QueueLockService';
 import { ConfigGenerator } from '../services/ConfigGenerator';
 import { ConnectionService } from '../services/ConnectionService';
+import { MarketDataHealthService } from '../services/MarketDataHealthService';
 import { configHash } from '../utils/configHash';
 import { parseDateLike, toIsoDateTime } from '../utils/datePolicy';
+import { markNoMarketDataItems } from '../utils/queueErrorActions';
+import {
+  buildQueueErrorSummary,
+  getBacktestNameTooLongStopMessage,
+  isBacktestNameTooLongError
+} from '../utils/velesErrorSummary';
 
 // Импорт утилит
 import {
@@ -672,6 +680,121 @@ export function useBacktestQueue() {
           statusNetworkRetryAt.delete(index);
         };
 
+        const getErrorTrace = (error: unknown): VelesHttpTrace | undefined => {
+          return typeof error === 'object' && error !== null
+            ? (error as { trace?: VelesHttpTrace }).trace
+            : undefined;
+        };
+
+        const logTestFailure = async (
+          stage: 'launch' | 'status' | 'stats',
+          index: number,
+          item: QueueItem,
+          error: unknown,
+          status: QueueItem['status'],
+          trace?: VelesHttpTrace,
+          extra?: Record<string, unknown>
+        ) => {
+          const errorSummary = buildQueueErrorSummary({
+            stage,
+            index: index + 1,
+            total,
+            fallback: error,
+            trace
+          });
+          const snapshotId = await LogService.createSnapshot(`queue.${stage}_failure`, {
+            stage,
+            batchId,
+            index: index + 1,
+            status,
+            errorSummary,
+            configHash: configHash(item.config),
+            queueItem: {
+              index: index + 1,
+              name: item.config.name,
+              configHash: configHash(item.config),
+              payload: item.config
+            },
+            trace: trace ?? null,
+            ...(extra ?? {})
+          }, { batchId, runId: batchId, testId: String(index + 1) });
+
+          await LogService.log({
+            level: 'error',
+            source: 'queue',
+            event: 'test.failed',
+            batchId,
+            runId: batchId,
+            testId: String(index + 1),
+            stage,
+            snapshotId,
+            error: new Error(errorSummary),
+            context: {
+              batchId,
+              index: index + 1,
+              status,
+              errorSummary,
+              configHash: configHash(item.config),
+              httpStatus: trace?.response?.status ?? null,
+              url: trace?.url ?? null
+            }
+          });
+        };
+
+        const buildNoMarketDataMessage = (item: QueueItem): string => {
+          return MarketDataHealthService.buildNoMarketDataMessage(item.config);
+        };
+
+        const checkNoMarketDataAfter5xx = async (item: QueueItem) => {
+          try {
+            const classification = await withContextRecovery(batchId, runContextRef, (ctx) =>
+              MarketDataHealthService.classifyNoMarketDataAfterLaunch5xx(ctx.tabId, item.config)
+            );
+            return {
+              noMarketData: classification.classification !== null,
+              message: classification.message,
+              probe: classification.candleProbe
+            };
+          } catch (error) {
+            return {
+              noMarketData: false,
+              message: null,
+              probe: {
+                success: false,
+                alive: null,
+                candlesCount: null,
+                error: error instanceof Error ? error.message : String(error),
+                trace: getErrorTrace(error)
+              }
+            };
+          }
+        };
+
+        const markNoMarketDataSymbol = async (
+          index: number,
+          item: QueueItem,
+          message: string,
+          launchTrace?: VelesHttpTrace,
+          candleProbe?: unknown
+        ) => {
+          clearLaunchRetryState();
+          const skipped = markNoMarketDataItems(itemsToRun, index, message, pendingIndices, (markedIndex) => {
+            launchTransientRetryAttempts.delete(markedIndex);
+          });
+          commitQueueState();
+          addLog(`Ошибка запуска теста ${index + 1}/${total}: ${message}`);
+          if (skipped > 0) {
+            addLog(`Пропущено тестов по этому активу: ${skipped}.`);
+          }
+
+          await logTestFailure('launch', index, item, new Error(message), 'ERROR', launchTrace, {
+            classification: 'DELISTED_OR_NO_MARKET_DATA',
+            candleProbe: candleProbe ?? null,
+            skippedSameSymbol: skipped
+          });
+          await syncRunningProgress();
+        };
+
         const scheduleLaunchRetry = (
           index: number,
           reason: LaunchRetryReason,
@@ -800,6 +923,17 @@ export function useBacktestQueue() {
             );
           }
 
+          if ((!statsRes.success || !statsRes.stats) && statsRes.trace) {
+            await logTestFailure(
+              'stats',
+              index,
+              item,
+              new Error(statsRes.error || 'Stats request failed'),
+              'ERROR',
+              statsRes.trace
+            );
+          }
+
           if (!statsRes.success || !statsRes.stats) {
             throw new Error(statsRes.error || 'Не удалось получить статистику');
           }
@@ -917,6 +1051,25 @@ export function useBacktestQueue() {
 
                 if (!result.success) {
                   const parsed = parseApiError(result.error || '');
+                  const userErrorSummary = buildQueueErrorSummary({
+                    stage: 'launch',
+                    index: index + 1,
+                    total,
+                    fallback: parsed.message,
+                    trace: result.trace
+                  });
+                  if (isBacktestNameTooLongError(result.trace)) {
+                    clearLaunchRetryState();
+                    launchTransientRetryAttempts.delete(index);
+                    setQueueItem(index, { status: 'ERROR', error: userErrorSummary });
+                    addLog(userErrorSummary);
+                    await logTestFailure('launch', index, item, new Error(userErrorSummary), 'ERROR', result.trace);
+                    await syncRunningProgress();
+                    forcedStopReason = 'runtime_error';
+                    forcedStopMessage = getBacktestNameTooLongStopMessage();
+                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                    break;
+                  }
                   if (isRateLimit429(parsed)) {
                     addLog(`Ошибка: ${parsed.message}`);
                     launchTransientRetryAttempts.delete(index);
@@ -943,29 +1096,61 @@ export function useBacktestQueue() {
                   if (isValidation412(parsed)) {
                     clearLaunchRetryState();
                     launchTransientRetryAttempts.delete(index);
-                    setQueueItem(index, { status: 'ERROR', error: parsed.message });
+                    setQueueItem(index, { status: 'ERROR', error: userErrorSummary });
+                    addLog(userErrorSummary);
                     addLog(`Ошибка: ${parsed.message}`);
-                    await LogService.error('queue', 'test.failed', new Error(parsed.message), {
-                      batchId,
-                      index: index + 1,
-                      status: 'ERROR',
-                      configHash: configHash(item.config)
-                    }, batchId);
-                    await syncRunningProgress();
+                  await logTestFailure('launch', index, item, new Error(userErrorSummary), 'ERROR', result.trace);
+                  await syncRunningProgress();
+                  if (isBacktestNameTooLongError(result.trace)) {
+                    forcedStopReason = 'runtime_error';
+                    forcedStopMessage = getBacktestNameTooLongStopMessage();
+                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                    break;
+                  }
+                  continue;
+                }
+
+                  if (isServer5xx(parsed)) {
+                    const marketDataProbe = await checkNoMarketDataAfter5xx(item);
+                    if (marketDataProbe.noMarketData) {
+                      const noMarketDataMessage = marketDataProbe.message ?? buildNoMarketDataMessage(item);
+                      await markNoMarketDataSymbol(
+                        index,
+                        item,
+                        noMarketDataMessage,
+                        result.trace,
+                        marketDataProbe.probe
+                      );
+                      continue;
+                    }
+
+                    const attempts = (launchTransientRetryAttempts.get(index) ?? 0) + 1;
+                    launchTransientRetryAttempts.set(index, attempts);
+
+                    if (attempts >= NETWORK_MAX_RETRY_ATTEMPTS) {
+                      forcedStopReason = 'runtime_error';
+                      forcedStopMessage = 'Veles возвращает HTTP 5xx при запуске теста более 10 минут.';
+                      addLog(`Очередь остановлена: ${forcedStopMessage}`);
+                      await logTestFailure('launch', index, item, new Error(userErrorSummary), 'ERROR', result.trace);
+                      await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'STOP', lastLaunchAt);
+                      break;
+                    }
+
+                    setQueueItem(index, { status: 'PENDING', error: undefined });
+                    scheduleLaunchRetry(index, 'SERVER_5XX', attempts, Date.now() + NETWORK_RETRY_WAIT_MS, null);
+                    refreshLiveQueueStatus();
+                    addLog(`Veles вернул HTTP ${parsed.status ?? '5xx'} при запуске теста. Повтор через 60с (${attempts}/${NETWORK_MAX_RETRY_ATTEMPTS})...`);
+                    await saveRuntimeCheckpoint(batchId, itemsToRun, activeRuns, 'RUN', lastLaunchAt);
                     continue;
                   }
 
                   const status: QueueItem['status'] = parsed.status === 412 ? 'ERROR' : 'ERROR';
                   clearLaunchRetryState();
                   launchTransientRetryAttempts.delete(index);
-                  setQueueItem(index, { status, error: parsed.message });
+                  setQueueItem(index, { status, error: userErrorSummary });
+                  addLog(userErrorSummary);
                   addLog(`Ошибка: ${parsed.message}`);
-                  await LogService.error('queue', 'test.failed', new Error(parsed.message), {
-                    batchId,
-                    index: index + 1,
-                    status,
-                    configHash: configHash(item.config)
-                  }, batchId);
+                  await logTestFailure('launch', index, item, new Error(userErrorSummary), status, result.trace);
                   await syncRunningProgress();
                   continue;
                 }
@@ -1054,6 +1239,19 @@ export function useBacktestQueue() {
                 }
 
                 if (isServer5xx(parsed)) {
+                  const marketDataProbe = await checkNoMarketDataAfter5xx(item);
+                  if (marketDataProbe.noMarketData) {
+                    const noMarketDataMessage = marketDataProbe.message ?? buildNoMarketDataMessage(item);
+                    await markNoMarketDataSymbol(
+                      index,
+                      item,
+                      noMarketDataMessage,
+                      getErrorTrace(error),
+                      marketDataProbe.probe
+                    );
+                    continue;
+                  }
+
                   const attempts = (launchTransientRetryAttempts.get(index) ?? 0) + 1;
                   launchTransientRetryAttempts.set(index, attempts);
 
@@ -1081,12 +1279,7 @@ export function useBacktestQueue() {
                 setQueueItem(index, { status, error: rawMsg });
 
                 addLog(`Ошибка: ${rawMsg}`);
-                await LogService.error('queue', 'test.failed', error, {
-                  batchId,
-                  index: index + 1,
-                  status,
-                  configHash: configHash(item.config)
-                }, batchId);
+                await logTestFailure('launch', index, item, error, status, getErrorTrace(error));
 
                 await syncRunningProgress();
               }
@@ -1122,6 +1315,13 @@ export function useBacktestQueue() {
                 const check = await withContextRecovery(batchId, runContextRef, (ctx) =>
                   VelesService.checkStatus(ctx.tabId, ctx.token, runState.velesId)
                 );
+
+                if (!check.success && check.trace) {
+                  throw Object.assign(
+                    new Error(`Status check failed: ${String(check.error)}`),
+                    { trace: check.trace }
+                  );
+                }
 
                 if (!check.success) {
                   throw new Error(`Ошибка проверки статуса: ${String(check.error)}`);
@@ -1199,12 +1399,7 @@ export function useBacktestQueue() {
 
                 addLog(`Ошибка: ${rawMsg}`);
                 refreshLiveQueueStatus();
-                await LogService.error('queue', 'test.failed', error, {
-                  batchId,
-                  index: index + 1,
-                  status: 'ERROR',
-                  configHash: configHash(item.config)
-                }, batchId);
+                await logTestFailure('status', index, item, error, 'ERROR', getErrorTrace(error));
               }
 
               if (!activeRuns.has(index)) {

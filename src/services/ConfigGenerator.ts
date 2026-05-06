@@ -9,6 +9,7 @@ import type { VelesConfigPayload, VelesCondition, VelesOrder } from '../types/ve
 import { getIndicatorSettings, toApiIndicatorCode } from '../utils/indicatorMapping';
 import { toIsoDateTime } from '../utils/datePolicy';
 import { generateCustomVolumeDistributions } from '../utils/customOrderVolumes';
+import { getSymbolBase, normalizePairForExchange } from '../utils/exchangeQuote';
 
 // --- HELPERS ---
 
@@ -226,9 +227,8 @@ export class ConfigGenerator {
   ): VelesConfigPayload {
       
       // Логика тикера
-      let pair = staticCfg.symbol.trim().toUpperCase();
-      if (!pair.includes('/')) pair = `${pair}/USDT`;
-      const ticker = pair.split('/')[0];
+      const pair = normalizePairForExchange(staticCfg.symbol, staticCfg.exchange) ?? staticCfg.symbol.trim().toUpperCase();
+      const ticker = getSymbolBase(pair);
 
       // Формирование имени
       const testName = `${staticCfg.namePrefix} ${ticker} | ${index}/${total} | VH ${batchId}`;

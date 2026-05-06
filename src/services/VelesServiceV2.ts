@@ -4,6 +4,8 @@
  */
 
 import type { VelesConfigPayloadV2, VelesStatusResponseV2, VelesStatsResponseV2 } from '../types/velesV2';
+import type { VelesHttpTrace } from '../types/velesTrace';
+import { maskTraceHeaders } from '../types/velesTrace';
 import { VELES_HOST_PATTERNS, getVelesOriginFromUrl } from '../config/velesDomains';
 import { VelesService } from './VelesService';
 
@@ -12,6 +14,44 @@ import {
   injectedCheckStatusV2,
   injectedGetStatsV2
 } from './VelesInjectionsV2';
+
+function stringifyVelesFailure(status: number | undefined, body: unknown, fallback: unknown): string {
+  if (typeof fallback === 'string' && fallback.trim()) return fallback;
+  if (body !== undefined && body !== null) {
+    try {
+      const serialized = JSON.stringify(body);
+      if (serialized && serialized !== '{}' && serialized !== 'null') return serialized;
+    } catch {
+      return String(body);
+    }
+  }
+  if (Number.isFinite(status)) return `HTTP ${status}`;
+  return 'Injection failed';
+}
+
+function prepareTrace(trace: VelesHttpTrace | undefined): VelesHttpTrace | undefined {
+  if (!trace) return undefined;
+  return {
+    ...trace,
+    request: {
+      ...trace.request,
+      headers: maskTraceHeaders(trace.request.headers)
+    }
+  };
+}
+
+function scriptErrorTrace(method: string, url: string, error: unknown, body?: unknown): VelesHttpTrace {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    method,
+    url,
+    request: body === undefined ? {} : { body },
+    error: error instanceof Error
+      ? { name: error.name, message: message || error.name, stack: error.stack }
+      : { message },
+    durationMs: 0
+  };
+}
 
 export class VelesServiceV2 {
   static async findTabs(): Promise<chrome.tabs.Tab[]> {
@@ -60,12 +100,22 @@ export class VelesServiceV2 {
     tabId: number,
     token: string,
     payload: VelesConfigPayloadV2
-  ): Promise<{ success: boolean; status: number; id?: number; error?: string }> {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: injectedRunTestV2,
-      args: [payload, token]
-    });
+  ): Promise<{ success: boolean; status: number; id?: number; error?: string; trace?: VelesHttpTrace }> {
+    let result: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof injectedRunTestV2>>>[];
+    try {
+      result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: injectedRunTestV2,
+        args: [payload, token]
+      });
+    } catch (error) {
+      return {
+        success: false,
+        status: 0,
+        error: error instanceof Error ? error.message : String(error),
+        trace: scriptErrorTrace('POST', '/api/backtests/v2/', error, payload)
+      };
+    }
 
     const res = result[0]?.result;
     if (res && res.success && res.body?.id) {
@@ -75,7 +125,8 @@ export class VelesServiceV2 {
     return {
       success: false,
       status: res?.status || 0,
-      error: res?.error || JSON.stringify(res?.body)
+      error: stringifyVelesFailure(res?.status, res?.body, res?.error),
+      trace: prepareTrace(res?.trace as VelesHttpTrace | undefined)
     };
   }
 
@@ -83,30 +134,52 @@ export class VelesServiceV2 {
     success: boolean;
     data?: VelesStatusResponseV2;
     error?: string;
+    trace?: VelesHttpTrace;
   }> {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: injectedCheckStatusV2,
-      args: [backtestId, token]
-    });
+    let result: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof injectedCheckStatusV2>>>[];
+    try {
+      result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: injectedCheckStatusV2,
+        args: [backtestId, token]
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        trace: scriptErrorTrace('GET', `/api/backtests/${backtestId}`, error)
+      };
+    }
 
     const res = result[0]?.result;
     if (res?.success && res.data) {
       return { success: true, data: res.data };
     }
-    const err = res?.error;
-    return { success: false, error: typeof err === 'string' ? err : 'Injection failed' };
+    return {
+      success: false,
+      error: stringifyVelesFailure(res?.status, res?.body, res?.error),
+      trace: prepareTrace(res?.trace as VelesHttpTrace | undefined)
+    };
   }
 
   static async getStats(
     tabId: number,
     backtestId: number
-  ): Promise<{ success: boolean; stats?: VelesStatsResponseV2; shareToken?: string; error?: string }> {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: injectedGetStatsV2,
-      args: [backtestId]
-    });
+  ): Promise<{ success: boolean; stats?: VelesStatsResponseV2; shareToken?: string; error?: string; trace?: VelesHttpTrace }> {
+    let result: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof injectedGetStatsV2>>>[];
+    try {
+      result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: injectedGetStatsV2,
+        args: [backtestId]
+      });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        trace: scriptErrorTrace('GET', `/api/backtests/statistics/${backtestId}`, error)
+      };
+    }
 
     const res = result[0]?.result;
     if (res?.success && res.stats) {
@@ -116,7 +189,11 @@ export class VelesServiceV2 {
         shareToken: res.shareToken as string | undefined
       };
     }
-    return { success: false, error: (res?.error as string) || 'Injection failed' };
+    return {
+      success: false,
+      error: stringifyVelesFailure(res?.status, res?.body, res?.error),
+      trace: prepareTrace(res?.trace as VelesHttpTrace | undefined)
+    };
   }
 
   static async isTabAliveWithValidToken(tabId: number): Promise<boolean> {

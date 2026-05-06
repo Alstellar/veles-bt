@@ -30,6 +30,7 @@ import type { ExchangeInfo, ExchangeType, SymbolAvailability, SymbolLimitation }
 import { fetchAvailability, fetchExchanges, fetchLimitations, fetchTopSymbols } from '../../services/apiService';
 import { ConnectionAlert } from '../ConnectionAlert';
 import { parseDateLike, toIsoDateOnly } from '../../utils/datePolicy';
+import { getExchangeQuoteCurrency } from '../../utils/exchangeQuote';
 import styles from './AssetsView.module.css';
 
 interface AssetsViewProps {
@@ -68,6 +69,7 @@ const FALLBACK_EXCHANGES: ExchangeInfo[] = [
   { name: 'OKX Spot', key: 'OKX_SPOT', type: 'SPOT' },
   { name: 'BingX Futures', key: 'BINGX_FUTURES', type: 'FUTURES' },
   { name: 'Bitget Futures', key: 'BITGET_FUTURES', type: 'FUTURES' },
+  { name: 'Hyperliquid Futures', key: 'HYPERLIQUID_FUTURES', type: 'FUTURES' },
   { name: 'Gate.io Spot', key: 'GATE_IO_SPOT', type: 'SPOT' },
   { name: 'Gate.io Futures', key: 'GATE_IO_FUTURES', type: 'FUTURES' },
   { name: 'HTX Spot', key: 'HUOBI_SPOT', type: 'SPOT' }
@@ -166,6 +168,7 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
   const [copyStatus, setCopyStatus] = useState<string>('');
   const [historyFromFocused, setHistoryFromFocused] = useState(false);
   const [historyToFocused, setHistoryToFocused] = useState(false);
+  const quoteCurrency = state.exchange ? getExchangeQuoteCurrency(state.exchange) : 'USDT';
 
   useEffect(() => {
     let mounted = true;
@@ -499,8 +502,8 @@ export function AssetsView({ connectionError }: AssetsViewProps) {
                   onChange={(value) => setField('symbolFormat', (value as SymbolFormat) ?? 'PAIR')}
                   data={[
                     { value: 'BASE', label: 'BTC' },
-                    { value: 'NOSLASH', label: 'BTCUSDT' },
-                    { value: 'PAIR', label: 'BTC/USDT' }
+                    { value: 'NOSLASH', label: `BTC${quoteCurrency}` },
+                    { value: 'PAIR', label: `BTC/${quoteCurrency}` }
                   ]}
                   allowDeselect={false}
                 />

@@ -32,13 +32,19 @@ export function delay(ms: number): Promise<void> {
 }
 
 /**
- * Checks if error is related to missing browser tab
+ * Checks if error is related to a missing, reloaded, or otherwise unavailable browser tab/frame.
  * @param error - Any error object
- * @returns True if error contains 'No tab with id'
+ * @returns True if error is likely recoverable by resolving the Veles tab again
  */
 export function isNoTabError(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error);
-  return msg.includes('No tab with id');
+  const msg = extractErrorMessage(error);
+  return (
+    msg.includes('No tab with id') ||
+    msg.includes('Frame with ID') && msg.includes('was removed') ||
+    msg.includes('The tab was closed') ||
+    msg.includes('Cannot access contents of the page') ||
+    msg.includes('Extension context invalidated')
+  );
 }
 
 /**
@@ -154,9 +160,17 @@ export const MAX_LOGS = 400;
  */
 export function extractErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    return error.message.replace(/^Error:\s*/, '');
+    const message = error.message.replace(/^Error:\s*/, '').trim();
+    if (message) return message;
+
+    const stackFirstLine = error.stack?.split('\n')[0]?.replace(/^Error:?\s*/, '').trim();
+    if (stackFirstLine) return stackFirstLine;
+
+    return error.name || 'Unknown error';
   }
-  return String(error).replace(/^Error:\s*/, '');
+
+  const message = String(error ?? '').replace(/^Error:\s*/, '').trim();
+  return message || 'Unknown error';
 }
 
 /**
