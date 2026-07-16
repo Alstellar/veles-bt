@@ -1,5 +1,8 @@
 // src/background.ts
 import { VELES_API_REQUEST_PATTERNS } from './config/velesDomains';
+import { McpBridgeClient } from './mcp-bridge/McpBridgeClient';
+import { isMcpKeepaliveAlarm } from './mcp-bridge/mcpKeepalive';
+import { SETTINGS_KEY } from './mcp-bridge/mcpSettings';
 
 // Объявляем chrome как any.
 declare const chrome: any;
@@ -139,3 +142,32 @@ chrome.tabs.onRemoved.addListener((tabId: number) => {
     console.log(`[Tab ${tabId}] Cache cleared`);
   }
 });
+
+// --- MCP bridge (Phase A: read tools, popup-independent) ---
+// Top-level listeners only — required for Firefox MV3 event-page restarts.
+void McpBridgeClient.syncFromStorage();
+
+chrome.storage.onChanged.addListener((changes: Record<string, unknown>, areaName: string) => {
+  if (areaName !== 'local') return;
+  if (SETTINGS_KEY in changes) {
+    void McpBridgeClient.syncFromStorage();
+  }
+});
+
+chrome.runtime.onStartup?.addListener(() => {
+  void McpBridgeClient.syncFromStorage();
+});
+
+chrome.runtime.onInstalled?.addListener(() => {
+  void McpBridgeClient.syncFromStorage();
+});
+
+// Firefox terminates the event page after idle; alarms re-wake it so the
+// long-poll bridge can reconnect without opening the popup.
+if (chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener((alarm: { name?: string }) => {
+    if (alarm?.name && isMcpKeepaliveAlarm(alarm.name)) {
+      void McpBridgeClient.ensureRunning();
+    }
+  });
+}

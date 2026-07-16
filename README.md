@@ -90,7 +90,27 @@ npm run watch
 npm run lint
 npm run check:encoding
 npm run fix:encoding
+npm run mcp:install
+npm run mcp:build
+npm run mcp:start
 ```
+
+## MCP Bridge (Phase A, read-only)
+
+Отдельный контур **mcp-bridge**: companion-процесс + клиент в background расширения.
+
+| Часть | Путь |
+|-------|------|
+| Companion (stdio MCP + HTTP long-poll) | `mcp/` (`veles-mcp-bridge`) |
+| Extension client / protocol / keepalive | `src/mcp-bridge/` |
+| Read operations (Phase A tools) | `src/operations/` |
+
+1. `npm run mcp:install && npm run mcp:build && npm run mcp:start`
+2. В расширении: **Настройки → MCP bridge** — enable, port, token из banner companion.
+3. Подключите companion в Cursor/Claude (пример в `mcp/README.md`).
+
+Полное описание tools и checklist: [`mcp/README.md`](./mcp/README.md).  
+Запуск/остановка очереди бектестов через MCP **не входит** в Phase A.
 
 ## Технологии
 
@@ -100,6 +120,7 @@ npm run fix:encoding
 - Mantine UI
 - IndexedDB
 - Chrome Extension Manifest V3
+- MCP Bridge (`veles-mcp-bridge`, Node stdio + HTTP long-poll)
 
 ## Структура проекта
 
@@ -107,8 +128,11 @@ npm run fix:encoding
 - `src/components` - переиспользуемые UI-компоненты.
 - `src/hooks` - логика очередей, результатов и запусков.
 - `src/services` - API, storage, database, logging, import/export.
+- `src/mcp-bridge` - **MCP Bridge** client, protocol, settings, alarms keepalive (background).
+- `src/operations` - headless read operations for MCP tools (not the transport itself).
 - `src/utils` - вспомогательные функции.
 - `src/config` - общие настройки доменов и лимитов.
+- `mcp/` - **MCP Bridge** companion (`veles-mcp-bridge`: stdio + HTTP long-poll).
 - `public` - manifest и статические ресурсы.
 
 ## Ограничения
