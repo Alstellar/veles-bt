@@ -1,8 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Container, Title, Text, Card, Stack, Button, Badge, SegmentedControl, Paper } from '@mantine/core';
-import { IconBug, IconDownload, IconRefresh } from '@tabler/icons-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Container,
+  Title,
+  Text,
+  Card,
+  Stack,
+  Button,
+  Badge,
+  SegmentedControl,
+  Paper,
+  Switch,
+  TextInput,
+  NumberInput,
+  Group
+} from '@mantine/core';
+import { IconBug, IconDownload, IconPlugConnected, IconRefresh } from '@tabler/icons-react';
 import { LogService } from '../../services/LogService';
 import { warmupReferenceDictionaries } from '../../services/apiService';
+import {
+  DEFAULT_MCP_SETTINGS,
+  getMcpSettings,
+  getMcpStatus,
+  setMcpSettings,
+  type McpRuntimeStatus,
+  type McpSettings
+} from '../../bridge/mcpSettings';
+import { DEFAULT_MCP_PORT } from '../../bridge/protocol';
 import styles from './SettingsView.module.css';
 import { ConnectionAlert } from '../ConnectionAlert';
 
@@ -17,6 +40,11 @@ export function SettingsView({ appVersion, connectionError }: Props) {
   const [isVerboseLogging, setIsVerboseLogging] = useState(true);
   const [isLoggingModeLoading, setIsLoggingModeLoading] = useState(true);
   const [isRefreshingExchanges, setIsRefreshingExchanges] = useState(false);
+  const [mcpSettings, setMcpSettingsState] = useState<McpSettings>(DEFAULT_MCP_SETTINGS);
+  const [mcpStatus, setMcpStatusState] = useState<McpRuntimeStatus | null>(null);
+  const [mcpSaving, setMcpSaving] = useState(false);
+  const mcpSettingsRef = useRef(mcpSettings);
+  mcpSettingsRef.current = mcpSettings;
 
   useEffect(() => {
     const loadLoggingMode = async () => {
@@ -29,6 +57,52 @@ export function SettingsView({ appVersion, connectionError }: Props) {
     };
     void loadLoggingMode();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMcp = async () => {
+      const [settings, status] = await Promise.all([getMcpSettings(), getMcpStatus()]);
+      if (cancelled) return;
+      setMcpSettingsState(settings);
+      setMcpStatusState(status);
+    };
+
+    void loadMcp();
+    const timer = window.setInterval(() => {
+      void getMcpStatus().then((status) => {
+        if (!cancelled) setMcpStatusState(status);
+      });
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const persistMcpSettings = async (next: McpSettings) => {
+    setMcpSaving(true);
+    try {
+      const normalized: McpSettings = {
+        enabled: next.enabled,
+        port: next.port > 0 && next.port <= 65535 ? next.port : DEFAULT_MCP_PORT,
+        token: next.token
+      };
+      setMcpSettingsState(normalized);
+      await setMcpSettings(normalized);
+      await LogService.info('settings', 'mcp.settings_saved', {
+        enabled: normalized.enabled,
+        port: normalized.port,
+        hasToken: Boolean(normalized.token.trim())
+      });
+    } catch (error) {
+      await LogService.error('settings', 'mcp.settings_save_failed', error);
+      alert('Не удалось сохранить настройки MCP.');
+    } finally {
+      setMcpSaving(false);
+    }
+  };
 
   const handleExportBugReport = async () => {
     setIsExporting(true);
@@ -180,6 +254,97 @@ export function SettingsView({ appVersion, connectionError }: Props) {
               >
                 Обновить данные бирж
               </Button>
+            </Stack>
+          </Card>
+
+          <Card withBorder radius="md" p="lg" className={`ui-card ui-hover-lift ${styles.sectionCard}`}>
+            <div className={styles.cardTitle}>
+              <IconPlugConnected size={14} />
+              <span>MCP bridge (Phase A)</span>
+            </div>
+            <Stack gap="md">
+              <Text size="sm" c="dimmed">
+                Read-only мост для AI-агентов. Companion: HTTP на
+                {' '}
+                <code>127.0.0.1:port</code>
+                {' '}
+                (long-poll, без WebSocket — Firefox-safe). Popup можно закрыть.
+              </Text>
+
+              <Group justify="space-between" align="center">
+                <div>
+                  <Text fw={600}>Включить MCP</Text>
+                  <Text size="xs" c="dimmed">По умолчанию выключено</Text>
+                </div>
+                <Switch
+                  checked={mcpSettings.enabled}
+                  disabled={mcpSaving}
+                  onChange={(event) => {
+                    const enabled = event.currentTarget.checked;
+                    const next = { ...mcpSettingsRef.current, enabled };
+                    setMcpSettingsState(next);
+                    void persistMcpSettings(next);
+                  }}
+                />
+              </Group>
+
+              <NumberInput
+                label="Port"
+                description={`По умолчанию ${DEFAULT_MCP_PORT}`}
+                value={mcpSettings.port}
+                min={1}
+                max={65535}
+                disabled={mcpSaving}
+                onChange={(value) => {
+                  const port = typeof value === 'number' ? value : DEFAULT_MCP_PORT;
+                  setMcpSettingsState((prev) => ({ ...prev, port }));
+                }}
+              />
+
+              <TextInput
+                label="Session token"
+                description="Должен совпадать с --token companion / Grok config"
+                value={mcpSettings.token}
+                disabled={mcpSaving}
+                onChange={(event) => {
+                  const token = event.currentTarget.value.trim();
+                  setMcpSettingsState((prev) => ({ ...prev, token }));
+                }}
+              />
+
+              <Button
+                loading={mcpSaving}
+                onClick={() => {
+                  void persistMcpSettings(mcpSettingsRef.current);
+                }}
+              >
+                Сохранить и подключить
+              </Button>
+
+              <Group gap="sm">
+                <Badge color={mcpStatus?.connected ? 'green' : 'gray'} variant="light">
+                  {mcpStatus?.connected ? 'Connected' : 'Disconnected'}
+                </Badge>
+                {mcpSettings.enabled && !mcpSettings.token.trim() && (
+                  <Badge color="yellow" variant="light">Token required</Badge>
+                )}
+              </Group>
+
+              {mcpStatus?.lastError && (
+                <Text size="xs" c="red">
+                  {mcpStatus.lastError}
+                </Text>
+              )}
+
+              <Text size="xs" c="dimmed">
+                Companion:
+                {' '}
+                <code>node mcp/dist/index.js --port 17321 --token …</code>
+                {' '}
+                · token должен совпадать · health:
+                {' '}
+                <code>http://127.0.0.1:17321/health</code>
+              </Text>
             </Stack>
           </Card>
         </div>

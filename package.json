@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "check:encoding": "node test-scripts/check-encoding.mjs",
     "fix:encoding": "node test-scripts/check-encoding.mjs --fix",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mcp:install": "npm install --prefix mcp",
+    "mcp:build": "npm run build --prefix mcp",
+    "mcp:start": "npm run start --prefix mcp"
   },
   "dependencies": {
     "@mantine/core": "^8.3.10",

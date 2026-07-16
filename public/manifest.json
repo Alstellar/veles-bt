@@ -13,7 +13,8 @@
     "unlimitedStorage",
     "tabs",
     "webRequest",
-    "notifications" 
+    "notifications",
+    "alarms"
   ],
   "icons": {
       "16": "icons/icon-16.png",
@@ -23,7 +24,9 @@
     },
   "host_permissions": [
     "https://veles.finance/*",
-    "https://ru.veles.finance/*"
+    "https://ru.veles.finance/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
   "background": {
     "service_worker": "background.js",

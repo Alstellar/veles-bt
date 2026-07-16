@@ -90,7 +90,21 @@ npm run watch
 npm run lint
 npm run check:encoding
 npm run fix:encoding
+npm run mcp:install
+npm run mcp:build
+npm run mcp:start
 ```
+
+## MCP (Phase A, read-only)
+
+AI-агенты могут **читать** состояние расширения (connection, batches, results, templates, logs) через локальный MCP companion.
+
+1. `npm run mcp:install && npm run mcp:build && npm run mcp:start`
+2. В расширении: **Настройки → MCP bridge** — enable, port, token из banner companion.
+3. Подключите companion в Cursor/Claude (пример в `mcp/README.md`).
+
+Полное описание tools и checklist: [`mcp/README.md`](./mcp/README.md).  
+Запуск/остановка очереди бектестов через MCP **не входит** в Phase A.
 
 ## Технологии
 
@@ -100,6 +114,7 @@ npm run fix:encoding
 - Mantine UI
 - IndexedDB
 - Chrome Extension Manifest V3
+- MCP companion (Node, stdio)
 
 ## Структура проекта
 
@@ -107,8 +122,11 @@ npm run fix:encoding
 - `src/components` - переиспользуемые UI-компоненты.
 - `src/hooks` - логика очередей, результатов и запусков.
 - `src/services` - API, storage, database, logging, import/export.
+- `src/bridge` - MCP bridge client / protocol (background).
+- `src/operations` - headless read operations for MCP.
 - `src/utils` - вспомогательные функции.
 - `src/config` - общие настройки доменов и лимитов.
+- `mcp/` - local MCP companion process.
 - `public` - manifest и статические ресурсы.
 
 ## Ограничения
