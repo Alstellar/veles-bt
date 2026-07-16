@@ -1,4 +1,4 @@
-import { OpError, OpErrorCode, toOpErrorPayload } from '../bridge/errors';
+import { OpError, OpErrorCode, toOpErrorPayload } from '../mcp-bridge/errors';
 import { getConnection, listTabs } from './connectionOps';
 import { getLogs } from './diagnosticsOps';
 import { getBatch, listBatches, listResults } from './resultsOps';

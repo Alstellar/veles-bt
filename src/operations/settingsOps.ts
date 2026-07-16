@@ -1,6 +1,6 @@
 import { StorageService } from '../services/StorageService';
-import { getMcpSettings, getMcpStatus } from '../bridge/mcpSettings';
-import { PROTOCOL_VERSION } from '../bridge/protocol';
+import { getMcpSettings, getMcpStatus } from '../mcp-bridge/mcpSettings';
+import { PROTOCOL_VERSION } from '../mcp-bridge/protocol';
 
 function getExtensionVersion(): string {
   try {

@@ -1,5 +1,5 @@
 import { StorageService } from '../services/StorageService';
-import { OpError, OpErrorCode } from '../bridge/errors';
+import { OpError, OpErrorCode } from '../mcp-bridge/errors';
 
 export async function listTemplates(params?: { limit?: unknown }) {
   const rawLimit = typeof params?.limit === 'number' ? params.limit : Number(params?.limit);

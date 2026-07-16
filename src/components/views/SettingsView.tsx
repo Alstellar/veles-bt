@@ -24,8 +24,8 @@ import {
   setMcpSettings,
   type McpRuntimeStatus,
   type McpSettings
-} from '../../bridge/mcpSettings';
-import { DEFAULT_MCP_PORT } from '../../bridge/protocol';
+} from '../../mcp-bridge/mcpSettings';
+import { DEFAULT_MCP_PORT } from '../../mcp-bridge/protocol';
 import styles from './SettingsView.module.css';
 import { ConnectionAlert } from '../ConnectionAlert';
 

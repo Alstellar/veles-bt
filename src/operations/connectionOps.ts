@@ -1,6 +1,6 @@
 import { ConnectionService } from '../services/ConnectionService';
 import { VelesService } from '../services/VelesService';
-import { OpErrorCode } from '../bridge/errors';
+import { OpErrorCode } from '../mcp-bridge/errors';
 
 export async function listTabs() {
   const tabs = await VelesService.findTabs();

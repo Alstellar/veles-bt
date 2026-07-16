@@ -1,8 +1,8 @@
 // src/background.ts
 import { VELES_API_REQUEST_PATTERNS } from './config/velesDomains';
-import { McpBridgeClient } from './bridge/McpBridgeClient';
-import { isMcpKeepaliveAlarm } from './bridge/mcpKeepalive';
-import { SETTINGS_KEY } from './bridge/mcpSettings';
+import { McpBridgeClient } from './mcp-bridge/McpBridgeClient';
+import { isMcpKeepaliveAlarm } from './mcp-bridge/mcpKeepalive';
+import { SETTINGS_KEY } from './mcp-bridge/mcpSettings';
 
 // Объявляем chrome как any.
 declare const chrome: any;

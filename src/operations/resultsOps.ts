@@ -1,6 +1,6 @@
 import { DatabaseService } from '../services/DatabaseService';
 import { StorageService } from '../services/StorageService';
-import { OpError, OpErrorCode } from '../bridge/errors';
+import { OpError, OpErrorCode } from '../mcp-bridge/errors';
 
 const DEFAULT_LIMIT = 50;
 const HARD_MAX = 200;

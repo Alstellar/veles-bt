@@ -1,9 +1,11 @@
-# Veles Helper MCP (Phase A)
+# Veles MCP Bridge (Phase A)
 
-Local **read-only** MCP companion for the Veles Helper browser extension.
+Package: `veles-mcp-bridge` — local **read-only** MCP companion for the Veles Helper browser extension.
 
 Agents (Cursor, Claude Desktop, etc.) talk to this process over **stdio MCP**.  
 The companion bridges to the extension over **HTTP long-poll on `127.0.0.1`** (Firefox-safe; no WebSocket).
+
+**Extension side:** `src/mcp-bridge/` (background client, settings, keepalive).
 
 ```
 AI client ──stdio──▶ companion ──HTTP long-poll──▶ extension background ──▶ storage / IDB / connection

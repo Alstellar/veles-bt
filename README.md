@@ -95,9 +95,15 @@ npm run mcp:build
 npm run mcp:start
 ```
 
-## MCP (Phase A, read-only)
+## MCP Bridge (Phase A, read-only)
 
-AI-агенты могут **читать** состояние расширения (connection, batches, results, templates, logs) через локальный MCP companion.
+Отдельный контур **mcp-bridge**: companion-процесс + клиент в background расширения.
+
+| Часть | Путь |
+|-------|------|
+| Companion (stdio MCP + HTTP long-poll) | `mcp/` (`veles-mcp-bridge`) |
+| Extension client / protocol / keepalive | `src/mcp-bridge/` |
+| Read operations (Phase A tools) | `src/operations/` |
 
 1. `npm run mcp:install && npm run mcp:build && npm run mcp:start`
 2. В расширении: **Настройки → MCP bridge** — enable, port, token из banner companion.
@@ -114,7 +120,7 @@ AI-агенты могут **читать** состояние расширен�
 - Mantine UI
 - IndexedDB
 - Chrome Extension Manifest V3
-- MCP companion (Node, stdio)
+- MCP Bridge (`veles-mcp-bridge`, Node stdio + HTTP long-poll)
 
 ## Структура проекта
 
@@ -122,11 +128,11 @@ AI-агенты могут **читать** состояние расширен�
 - `src/components` - переиспользуемые UI-компоненты.
 - `src/hooks` - логика очередей, результатов и запусков.
 - `src/services` - API, storage, database, logging, import/export.
-- `src/bridge` - MCP bridge client / protocol (background).
-- `src/operations` - headless read operations for MCP.
+- `src/mcp-bridge` - **MCP Bridge** client, protocol, settings, alarms keepalive (background).
+- `src/operations` - headless read operations for MCP tools (not the transport itself).
 - `src/utils` - вспомогательные функции.
 - `src/config` - общие настройки доменов и лимитов.
-- `mcp/` - local MCP companion process.
+- `mcp/` - **MCP Bridge** companion (`veles-mcp-bridge`: stdio + HTTP long-poll).
 - `public` - manifest и статические ресурсы.
 
 ## Ограничения
